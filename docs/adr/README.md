@@ -3,8 +3,9 @@
 The design narrative for the host↔user contract. Start with
 [`0015`](0015-host-user-contract.md) (the contract itself), then
 [`0020`](0020-extract-contract-flake.md) (why it's this repo), then
-[`0022`](0022-anyhost-greeter-runtime-binding.md) / [`0023`](0023-user-flake-shape.md)
-(the greeter and user-flake shape that consume it).
+[`0022`](0022-anyhost-greeter-runtime-binding.md) / [`0023`](0023-user-flake-shape.md) /
+[`0024`](0024-greeter-is-a-contract-deliverable.md) (the greeter + user-flake shape the
+contract ships).
 
 | ADR | Decision |
 | --- | --- |
@@ -15,6 +16,7 @@ The design narrative for the host↔user contract. Start with
 | [0021](0021-platform-backend-agnostic-secrets.md) | The platform interface abstracts secret *provisioning*, not just file location |
 | [0022](0022-anyhost-greeter-runtime-binding.md) | The anyHost greeter: tiered runtime binding of a user from a flake URL |
 | [0023](0023-user-flake-shape.md) | The user flake shape and `bindUser` |
+| [0024](0024-greeter-is-a-contract-deliverable.md) | The greeter is a contract deliverable: `bindUser` in `lib` + a reusable greeter module |
 
 ## Numbering
 

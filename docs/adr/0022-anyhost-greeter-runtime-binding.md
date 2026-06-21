@@ -1,6 +1,6 @@
 # The anyHost greeter: tiered runtime binding of a user from a flake URL
 
-**Status:** Accepted (Tier 1 to be built; Tier 2 designed-for, deferred). Depends on [ADR-0023](0023-user-flake-shape.md) (the bound user-flake shape).
+**Status:** Accepted (Tier 1 to be built; Tier 2 designed-for, deferred). Depends on [ADR-0023](0023-user-flake-shape.md) (the bound user-flake shape). **Amended by [ADR-0024](0024-greeter-is-a-contract-deliverable.md):** the greeter (`greetd` + the binding flow below) is a **contract-shipped module**, not a fleet-authored profile; a seat host *enables* it.
 
 The project's north star ([ADR-0018](0018-user-confinement-manifest-greeter.md)): any seat
 host runs a **greeter** that takes a **flake URL + username + password** and transparently
