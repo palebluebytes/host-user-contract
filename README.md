@@ -4,9 +4,10 @@ The shared **contract** a NixOS fleet's hosts and users agree on, so any host ca
 any user — and deny features a user introduces — on rebuild. It is neither host nor user:
 it is the negotiated interface between them.
 
-It depends on nothing but nixpkgs `lib` and evaluates standalone (no host repo). See
-`docs/adr/0015-host-user-contract.md` and `0020-extract-contract-flake.md` in the
-consuming repo for the design.
+It depends on nothing but nixpkgs `lib` and evaluates standalone (no host repo). The full
+design lives in [`docs/adr/`](docs/adr/) — start with `0015-host-user-contract.md` (the
+contract), `0020-extract-contract-flake.md` (this repo), `0022`/`0023` (the greeter +
+user-flake shape that consume it).
 
 ## What it ships
 
