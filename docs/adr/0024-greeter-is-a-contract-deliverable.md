@@ -23,12 +23,14 @@ supplies only bindings — the same split already used for the `platform` interf
   It joins `mkFeatureRecipients` / `mkHostFacts` as a contract function, called by **both** binding
   paths (build-time and runtime) exactly as [ADR-0023](0023-user-flake-shape.md) intended — only
   the home of the function changes.
-- **The contract ships a reusable `greeter` NixOS module.** `nixosModules.greeter` carries the
-  `greetd` service, the eval-free auth flow ([ADR-0022](0022-anyhost-greeter-runtime-binding.md):
-  fetch source → `jq` `identity.json` → verify password/signature → classify tier → `bindUser` with
-  `grants = safeSet` → build → provision), and the privileged **runtime-provisioning helper** that
-  materialises the account from the built home-activation package. A seat host **enables** it; it
-  does not author it.
+- **The contract ships a `greeter` NixOS module — canonical, but replaceable.** `nixosModules.greeter`
+  is a **reference implementation**: the `greetd` service, the eval-free auth flow
+  ([ADR-0022](0022-anyhost-greeter-runtime-binding.md): fetch source → `jq` `identity.json` → verify
+  password/signature → classify tier → `bindUser` with `grants = safeSet` → build → provision), and
+  the privileged **runtime-provisioning helper**. A seat host **enables** it and gets a working
+  greeter for free — but it is `mkDefault`/overridable, so a host may swap its own greeter *program*
+  (its own UI, provisioning policy, greetd integration) as long as it honours the canonical mechanism
+  below. See *Canonical mechanism vs replaceable program*.
 - **The host supplies only bindings**, never mechanism: *which* seat hosts enable the greeter, the
   display/theme binding, the trust-tier **policy** (is this host Tier 1 only, or does it accept Tier
   2?), and the `platform` secrets binding the provisioning step may use. Headless hosts simply never
@@ -40,6 +42,29 @@ supplies only bindings — the same split already used for the `platform` interf
 The runtime binding stays a *parameter* over the build-time mechanism, not a fork: a greeter-bound
 user and an operator-granted user realize identically because both go through the one contract
 `bindUser`.
+
+## Canonical mechanism vs replaceable program
+
+The split is drawn to keep the security-critical part uniform across the fleet while letting the
+heavy, opinionated part be a reference a host can replace — and, deliberately, to keep the contract's
+**hard** dependency package-free ([ADR-0020](0020-extract-contract-flake.md)'s "depends only on
+nixpkgs `lib`").
+
+- **Canonical & mandatory — pure `lib`/module, no package.** `bindUser`, the derived `safeSet`, and
+  the **eval-free auth ordering** (authenticate on inert `identity.json` *before* evaluating any user
+  Nix; grant only the safe set at runtime). This *is* the contract, and the conformance suite proves
+  it against synthetic users with no host repo — so any greeter, reference or replacement, is
+  checkable against the same tests. A host cannot weaken it: it is the contract, not the program.
+- **Reference & replaceable — the program, where the package lives.** The greetd integration, the UI,
+  and the runtime-provisioning helper ship as the default `nixosModules.greeter` but are overridable.
+  A host that wants its own greeter disables the reference module and provides one that calls
+  `bindUser` with `grants = safeSet` and preserves the auth ordering. The bespoke binary — the one
+  artifact that would otherwise make the contract ship a real package — is thus the *replaceable*
+  half, not a hard contract dependency.
+
+A replacement is **conformant** iff it (1) authenticates eval-free on `identity.json` before any user
+Nix runs, (2) binds via the contract `bindUser`, and (3) grants at most the `safeSet`. Those three are
+the contract; everything else about the greeter is the host's to change.
 
 ## What stays host-side
 
@@ -79,3 +104,12 @@ module present but **unbound** (no seat host enabled, no theme) exactly as it ev
 - **Greeter as a contract deliverable (chosen)** — `bindUser` in `lib`, a reusable
   `nixosModules.greeter`, host supplies bindings. One mechanism, host policy at the edges, the
   realization/platform pattern applied to the runtime path.
+- **A single non-replaceable greeter program baked into the contract** — rejected: it would make the
+  contract ship a bespoke privileged binary as a *hard* dependency (against
+  [ADR-0020](0020-extract-contract-flake.md)'s package-free invariant) and force one greetd/UI choice
+  on every fleet. Shipping it as a `mkDefault` reference keeps the mechanism canonical while the
+  program stays replaceable.
+- **Ship only `bindUser` + a spec, no reference greeter** — rejected: it abandons the north star
+  ("any host runs a greeter" out of the box) and makes every fleet re-derive the security-critical
+  auth flow. A tested reference implementation is the point; replaceability is the escape hatch, not
+  the default.
