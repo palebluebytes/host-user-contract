@@ -31,17 +31,6 @@
     description = "User's hashed password";
     default = "";
   };
-  profile = lib.mkOption {
-    type = lib.types.enum [
-      "cli"
-      "gui"
-    ];
-    default = "cli";
-    # Inert in the system path (grants gate now, not the profile); still read by the
-    # standalone mkHome path and the conformance matrix. Defaulted so a manifest need
-    # not carry it (ADR-0018 review, finding 4).
-    description = "Profile type (legacy; grants gate host config now).";
-  };
   extraGroups = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     description = "Additional groups for the user";

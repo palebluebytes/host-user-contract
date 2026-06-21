@@ -12,7 +12,6 @@
 #   name/email/gmail/username .... inert (descriptive)
 #   sshKey/trustedKeys ........... login as that user (public keys; the user's call)
 #   hashedPassword ............... login credential (one-way hash)
-#   profile ...................... no longer gates anything (grants do); kept transitional
 #   extraGroups .................. CLAMPED here — privileged groups need a grant
 #   granted.<feature> ............ the host's decision; the only source of privilege
 # An account that declares a privileged group (e.g. `wheel`) in its identity does NOT get

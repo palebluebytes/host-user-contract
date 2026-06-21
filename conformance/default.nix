@@ -58,7 +58,6 @@ let
           name = "User ${name}";
           email = "${name}@example.invalid";
           username = name;
-          profile = if gui then "gui" else "cli";
         };
       }
       // lib.optionalAttrs gui { gui.session = session; };
@@ -149,7 +148,8 @@ let
     exposed = false;
     grantsFor =
       n:
-      if users.${n}.custom.users.${n}.identity.profile == "gui" then
+      # gui users carry a gui.session (mkUser sets it only when gui); cli users don't.
+      if users.${n}.custom.users.${n} ? gui then
         {
           gui.enable = true;
           workstation.enable = true;
