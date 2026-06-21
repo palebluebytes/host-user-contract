@@ -45,5 +45,16 @@
           nixosSystem = nixpkgs.lib.nixosSystem;
         };
       });
+
+      # Dev shell for working on the contract: gh for the GitHub issue tracker
+      # (see docs/agents/issue-tracker.md), nixpkgs-fmt for the Nix sources.
+      devShells = forAllSystems (system: {
+        default = nixpkgs.legacyPackages.${system}.mkShellNoCC {
+          packages = with nixpkgs.legacyPackages.${system}; [
+            gh
+            nixpkgs-fmt
+          ];
+        };
+      });
     };
 }
