@@ -1,5 +1,7 @@
 # The user flake shape and `bindUser`
 
+**Status:** Accepted (not yet implemented — the contract surface it names is the prerequisite for the greeter, [ADR-0022](0022-anyhost-greeter-runtime-binding.md)). Concretises [ADR-0018](0018-user-confinement-manifest-greeter.md)'s deferred slice-14.
+
 The greeter ([ADR-0022](0022-anyhost-greeter-runtime-binding.md)) binds an *external* user
 flake — which forced the question the in-repo phase deferred (the "user surface becomes a
 flake emitting requests," ADR-0018's deeper slice-14): **what does a user repo export, and how

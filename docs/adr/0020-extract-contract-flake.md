@@ -1,5 +1,7 @@
 # The host↔user contract lives in its own flake, delivered as a registry-baked kit
 
+**Status:** Accepted (implemented — this repo). The user-repo split it defers is carried by [ADR-0023](0023-user-flake-shape.md).
+
 [ADR-0015](0015-host-user-contract.md) stood the contract up **in-repo** as a shared
 module set on `self.contract`, deliberately framing the eventual repo split as "a URL
 change, not a re-wire." The feature-registry refactor (the [ADR-0018](0018-user-confinement-manifest-greeter.md)-review

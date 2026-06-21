@@ -1,5 +1,7 @@
 # A user is a home-manager module: requests, feature modules, and the anyHost greeter
 
+**Status:** Accepted. **Supersedes** [ADR-0015](0015-host-user-contract.md) mechanic 7's curated-catalog model (replaced by the `contract.requests` channel) and the slice-09 "model C" meta-issue. The runtime-binding half is carried forward by [ADR-0022](0022-anyhost-greeter-runtime-binding.md) and [ADR-0023](0023-user-flake-shape.md).
+
 [ADR-0015](0015-host-user-contract.md) mechanic 7 named the eventual goal — evaluate a
 user against a *restricted option universe* so it cannot set arbitrary host options —
 and then **deferred** it ("model A in-repo now, model C at the repo split"). This ADR

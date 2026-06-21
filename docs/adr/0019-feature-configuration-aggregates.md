@@ -1,5 +1,7 @@
 # Host-affecting feature configuration aggregates across granted users (the gui-session union)
 
+**Status:** Accepted (implemented; proven by the conformance suite, eval + VM).
+
 The realization owns host-wide singletons so users don't fight over them (ADR-0015
 mechanic 5). But a user still has host-*affecting* preferences — most visibly, a
 gui user wants a **Wayland** session or an **X11** session. weedySeadragon makes

@@ -1,5 +1,7 @@
 # The platform interface abstracts secret *provisioning*, not just file location
 
+**Status:** Accepted (landed with the extraction, [ADR-0020](0020-extract-contract-flake.md)).
+
 The contract's `platform` interface ([ADR-0015](0015-host-user-contract.md) mechanic 6)
 was meant to keep a feature from naming the host's secrets backend. It only half does:
 `secretFile name → path` resolves *where the ciphertext lives*, but its shape is
@@ -41,6 +43,12 @@ publishing the contract with a sops-shaped interface would make backend-agnostic
   richness agenix lacks natively. The interface either grows a neutral template+placeholder
   seam (mapped per backend) or restic is refactored to compose the repo string at activation
   from the secret file. restic is the *only* template user today, so this is bounded.
+
+  **Update (post-extraction):** `restic` was subsequently dropped from the contract (it is
+  host-side now), and `signing` — the only remaining secret-bearing contract feature — uses
+  no template. The template/placeholder seam is therefore **moot for the contract today**; it
+  returns only if a future contract feature needs a templated secret, at which point the
+  neutral template seam (or activation-time composition) is the open choice.
 - The feature modules that move with the user (`restic`, `signing`) change shape — they
   declare `custom.platform.secrets.<n>` and read a resolved path instead of touching
   `sops.*`. This is behaviour-neutral under the sops binding (same decrypted files at the

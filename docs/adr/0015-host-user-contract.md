@@ -1,5 +1,7 @@
 # Hosts and users live in separate repos, bound by a shared contract
 
+**Status:** Accepted. Mechanic 7's *curated-catalog* framing (a restricted `evalModules` over re-exposed system options) is **superseded by [ADR-0018](0018-user-confinement-manifest-greeter.md)** (the `contract.requests` channel); every other mechanic stands.
+
 The goal is that **any host can enable a user and, on rebuild, that user transparently works** — login, dotfiles, the features they need — and that **a host can deny features a user introduces**. Today `users/` lives inside this host repo and is coupled to it in five ways (`self.lib.getSecret*`, `self.homeManagerModules.*`, host flake inputs, the `custom.users` schema pulled in by the `base` profile, and secrets living in the host's `stash`). "Enable a user on an arbitrary host" cannot hold while the user *is* part of one host repo.
 
 The decision is **three repos joined by a shared contract**, not a self-contained user flake:
