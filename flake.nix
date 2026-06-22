@@ -23,13 +23,16 @@
       # fleet-bound ones (e.g. mkFeatureRecipients self.nixosConfigurations) itself.
       inherit (kit) lib;
 
-      # Data surface the host reads where it wires grants, recipients, and the safe set.
+      # Data surface the host reads where it wires grants, recipients, and the safe set,
+      # plus the identity.json convention (filename + schema) a greeter authenticates on.
       inherit (kit)
         features
         featureMeta
         featureGroups
         privilegedGroups
         safeSet
+        identityFile
+        identitySchema
         ;
 
       # The contract's own conformance suite (ADR-0020 Q5): proves the contract's
@@ -44,6 +47,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           inherit (self) safeSet featureGroups privilegedGroups;
+          inherit (self.lib) loadIdentity;
           nixosSystem = nixpkgs.lib.nixosSystem;
         };
 
