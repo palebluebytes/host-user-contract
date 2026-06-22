@@ -1,6 +1,6 @@
 # A user is a home-manager module: requests, feature modules, and the anyHost greeter
 
-**Status:** Accepted. **Supersedes** [ADR-0015](0015-host-user-contract.md) mechanic 7's curated-catalog model (replaced by the `contract.requests` channel) and the slice-09 "model C" meta-issue. The runtime-binding half is carried forward by [ADR-0022](0022-anyhost-greeter-runtime-binding.md) and [ADR-0023](0023-user-flake-shape.md).
+**Status:** Accepted as the model; **not yet implemented** here. The `contract.requests` channel this ADR introduces does not exist in the contract yet — feature configuration still rides the system side (`custom.users.<u>.<feature>`, per [ADR-0019](0019-feature-configuration-aggregates.md)), which is the staged starting point this ADR's "known knots" #2 sanctions; the home-side requests namespace is tracked by issue #5. The three in-tree leaks this ADR closes are *fleet-repo* artifacts (this contract repo ships no user module). **Supersedes** [ADR-0015](0015-host-user-contract.md) mechanic 7's curated-catalog model (replaced by the `contract.requests` channel) and the slice-09 "model C" meta-issue. The runtime-binding half is carried forward by [ADR-0022](0022-anyhost-greeter-runtime-binding.md) and [ADR-0023](0023-user-flake-shape.md).
 
 [ADR-0015](0015-host-user-contract.md) mechanic 7 named the eventual goal — evaluate a
 user against a *restricted option universe* so it cannot set arbitrary host options —
