@@ -1,6 +1,6 @@
 # The greeter is a contract deliverable: `bindUser` in `lib` + a reusable greeter module
 
-**Status:** Accepted. **Amends** [ADR-0022](0022-anyhost-greeter-runtime-binding.md) and [ADR-0023](0023-user-flake-shape.md), which placed `bindUser` and the greeter host-side; the mechanism moves into the contract. The *threat model* (tiers, untrusted-eval) is unchanged.
+**Status:** Accepted as the design; **not yet implemented**. `bindUser`, `nixosModules.greeter`, and the `default`/`greeter` split of `nixosModules` do not exist yet — the contract ships a single `nixosModules.default` today; this work is tracked by issues #2 and #5. **Amends** [ADR-0022](0022-anyhost-greeter-runtime-binding.md) and [ADR-0023](0023-user-flake-shape.md), which placed `bindUser` and the greeter host-side; the mechanism moves into the contract. The *threat model* (tiers, untrusted-eval) is unchanged.
 
 [ADR-0022](0022-anyhost-greeter-runtime-binding.md) and [ADR-0023](0023-user-flake-shape.md)
 described the greeter as a **consumer**: "the host repo exposes `bindUser`," and "a seat host
