@@ -34,8 +34,10 @@
 
       # The contract's own conformance suite (ADR-0020 Q5): proves the contract's
       # promises against synthetic users on synthetic systems built from the umbrella —
-      # no host repo. Independent CI; the host keeps the coherence gate + display VM.
+      # no host repo. Independent CI; the host keeps only the thin coherence gate.
       checks = forAllSystems (system: {
+        # Eval-level proof: grant/deny, the gui-session union DECISION, the clamp, the
+        # exposed-host ban, and the users × archetypes matrix.
         conformance = import ./conformance {
           inherit system;
           inherit (nixpkgs) lib;
@@ -43,6 +45,16 @@
           contractModule = self.nixosModules.default;
           inherit (self) safeSet featureGroups privilegedGroups;
           nixosSystem = nixpkgs.lib.nixosSystem;
+        };
+
+        # Runtime proof (a booted VM): the gui-session union RENDERS — one seat, two gui
+        # users with different sessions ⇒ both plasma session files live + both accounts
+        # activated. Uses a test-only SDDM/Plasma binding the suite supplies (the contract
+        # itself is display-backend-agnostic). Moved here from the fleet (ADR-0020).
+        conformance-vm = import ./conformance/vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          inherit system;
         };
       });
 
