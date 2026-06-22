@@ -23,10 +23,18 @@ contract ships).
 These numbers are **inherited from the fleet repo** where the contract was designed, and
 are intentionally **non-contiguous**: this arc began at 0015, and `0016`–`0017` are
 fleet-only host decisions (esphome bulbs, the jmap-bridge repo split) that have no place
-here. The original numbers are preserved deliberately — an ADR number is an immutable
-identifier, and the same number refers to the same decision in this repo's code comments,
-the fleet repo's code and `CONTEXT.md`, and git history across both. They are not
-renumbered to close the gap.
+here. The original numbers are preserved deliberately for traceability: within *this* repo
+an ADR number is an immutable identifier, stable across its code comments and git history,
+and the same number traces back to the fleet history where the arc was authored. Two
+caveats keep this short of a clean cross-repo identity, both intentional and harmless:
+
+- the arc's ADRs were **deleted from the fleet on extraction** — they live only here now, so
+  most of these numbers no longer resolve to anything in the fleet repo; and
+- `0023` **collides** — here it is the user-flake shape, but in the fleet `0023` is a
+  different, still-live decision (matrix-hookshot). The repos are separate so nothing breaks,
+  but "ADR-0023" is ambiguous in cross-repo conversation.
+
+The numbers are not renumbered to close the gap or the collision.
 
 Cross-references in these ADRs to ADRs **not** in this repo (e.g. ADR-0002, ADR-0013,
 ADR-0014, ADR-0017) appear as plain `ADR-00NN` text rather than links: those decisions live
