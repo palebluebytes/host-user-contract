@@ -48,9 +48,13 @@ display flags, insecure permits, safe set) must be **byte-identical** before and
   `inputs.contract.*` **explicitly** (no re-export into `self.lib`): the whole point is to
   make the boundary visible at every use, which a re-export would hide.
 - **The conformance suite splits the same way.** The contract flake ships the **generic**
-  suite — the matrix (synthetic users × archetypes), grant/deny, and the gui-union VM,
-  using only synthetic manifests it defines itself — and gains independent CI (testable
-  with no host repo). The host keeps a thin **coherence gate**: every *real* host's
+  suite — the matrix (synthetic users × archetypes), grant/deny, the gui-union *decision*
+  (the session surface asserted at **eval**), and the gui-union **rendering VM** (a booted
+  single-seat host proving the decision renders to two coexisting plasma sessions) — using
+  only synthetic manifests it defines itself, plus a **test-only display binding** the
+  suite supplies to render the otherwise backend-agnostic decision (the shipped contract
+  names no display backend; the *test* picks one). It gains independent CI (testable with
+  no host repo). The host keeps only a thin **coherence gate**: every *real* host's
   trait-tuple is covered by an archetype, and the real inkpotmonkey manifest realizes.
 - **The platform binding stays host-side.** The contract ships only the typed `platform`
   *interface*; the host supplies the *binding* (`config.custom.platform = …`, which reads
