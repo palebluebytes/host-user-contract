@@ -23,17 +23,20 @@ let
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (
     map (f: f.config or { }) (lib.attrValues registry)
   );
-  featureMeta = lib.mapAttrs (
-    _: f:
-    {
-      secretBearing = f.secretBearing or false;
-    }
-    // lib.optionalAttrs (f ? secretFiles) { inherit (f) secretFiles; }
-  ) registry;
+  featureMeta = lib.mapAttrs
+    (
+      _: f:
+        {
+          secretBearing = f.secretBearing or false;
+        }
+        // lib.optionalAttrs (f ? secretFiles) { inherit (f) secretFiles; }
+    )
+    registry;
 
   # --- closed-over modules + option fragments ---
   realization = import ./realization.nix { inherit privilegedGroups featureGroups; };
   identityOptions = import ./identity.nix { inherit lib; };
+  identityJson = import ./identity-json.nix { inherit lib; };
   platformOptions = import ./platform.nix { inherit lib; };
   homeProfileOptions = import ./home-profiles.nix { inherit lib; };
 
@@ -70,10 +73,17 @@ in
     ;
   inherit (contractLib) safeSet;
 
+  # The identity.json schema, exposed so a host/greeter can introspect the jq-readable
+  # shape it authenticates against before any eval (ADR-0023, issue #5).
+  inherit (identityJson) identityFile identitySchema;
+
   # Public derivation functions hosts consume (ADR-0020 Q4). The internal predicates
   # (runtimeEligibleFeature, exposedHostOffenders) stay internal to ./lib.nix.
   lib = {
     inherit (contractLib) mkFeatureRecipients mkHostFacts;
+    # The identity.json loader (ADR-0023): lossless over identity.nix, used by both the
+    # user's home module and host-side bindUser.
+    inherit (identityJson) loadIdentity;
   };
 
   # The umbrella modules (one per eval-side).

@@ -6,15 +6,16 @@
 # Because the display *backend* is a host binding (the contract only decides), this suite
 # asserts the session-union DECISION (custom.gui.surface), not SDDM/Plasma. The rendering
 # test (the gui-union VM) and the real-fleet coherence gate stay in the host repo.
-{
-  lib,
-  pkgs,
-  contractModule,
-  safeSet,
-  featureGroups,
-  privilegedGroups,
-  nixosSystem,
-  system,
+{ lib
+, pkgs
+, contractModule
+, safeSet
+, featureGroups
+, privilegedGroups
+, loadIdentity
+, nixosSystem
+, system
+,
 }:
 let
   # A minimal bootable system built from ONLY the contract umbrella + bare nixpkgs.
@@ -48,9 +49,9 @@ let
   # session preference, no grants (the host grants), no system config.
   mkUser =
     name:
-    {
-      gui ? true,
-      session ? "wayland",
+    { gui ? true
+    , session ? "wayland"
+    ,
     }:
     {
       custom.users.${name} = {
@@ -119,6 +120,28 @@ let
     (grant "alice" { signing.enable = true; })
     { networking.hostName = "box"; }
   ];
+
+  # --- the identity.json loader (ADR-0023, issue #5): lossless over identity.nix ---
+  # A fixture identity.json written at eval time, carrying the optional fields ADR-0023's
+  # first 5-field schema dropped (trustedKeys, extraGroups) — the realization reads both,
+  # so the loader must carry both.
+  identityFixture = builtins.toFile "identity.json" (
+    builtins.toJSON {
+      name = "Dana Example";
+      email = "dana@example.invalid";
+      username = "dana";
+      sshKey = "ssh-ed25519 AAAAprimary";
+      trustedKeys = [ "ssh-ed25519 AAAAtrusted" ];
+      extraGroups = [
+        "audio"
+        "docker"
+      ]; # docker is privileged ⇒ must be clamped even via the loader
+    }
+  );
+  loadedIdentity = loadIdentity identityFixture;
+  loadedHost = eval [{ custom.users.dana.identity = loadedIdentity; }];
+  danaKeys = loadedHost.users.users.dana.openssh.authorizedKeys.keys;
+  danaGroups = loadedHost.users.users.dana.extraGroups;
 
   # --- the matrix: synthetic users × host archetypes ---
   users = {
@@ -243,6 +266,18 @@ let
       ok = lib.elem "libvirtd" featureGroups.virtualization;
     }
     {
+      name = "identity.json: loadIdentity realizes the account (required fields carried)";
+      ok = loadedHost.users.users.dana.isNormalUser && loadedHost.users.users.dana.description == "Dana Example";
+    }
+    {
+      name = "identity.json: sshKey + trustedKeys both reach authorizedKeys (lossless)";
+      ok = lib.elem "ssh-ed25519 AAAAprimary" danaKeys && lib.elem "ssh-ed25519 AAAAtrusted" danaKeys;
+    }
+    {
+      name = "identity.json: a non-privileged extraGroup passes, a privileged one is clamped";
+      ok = lib.elem "audio" danaGroups && !(lib.elem "docker" danaGroups);
+    }
+    {
       name = "matrix: every user realizes on every archetype, no failing assertion";
       ok = lib.all (sys: (accountsRealized sys) && (failing sys.config == [ ])) archetypes;
     }
@@ -261,9 +296,11 @@ let
     }
   ];
   failures = builtins.filter (a: !a.ok) assertions;
-  report = lib.concatMapStringsSep "\n" (
-    a: "  ${if a.ok then "ok  " else "FAIL"}  ${a.name}"
-  ) assertions;
+  report = lib.concatMapStringsSep "\n"
+    (
+      a: "  ${if a.ok then "ok  " else "FAIL"}  ${a.name}"
+    )
+    assertions;
 in
 pkgs.runCommand "contract-conformance" { } ''
   cat <<'EOF'
