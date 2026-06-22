@@ -15,4 +15,4 @@ Default vocabulary — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-f
 
 ### Domain docs
 
-Single-context — `docs/adr/` plus a lazily-created `CONTEXT.md` (the glossary, written by `/grill-with-docs` as terms settle) at the repo root. See `docs/agents/domain.md`.
+Single-context — one `CONTEXT.md` (the domain glossary) + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

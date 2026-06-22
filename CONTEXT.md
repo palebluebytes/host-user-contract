@@ -1,0 +1,182 @@
+# CONTEXT
+
+The domain glossary for the **host↔user contract** — the shared interface a NixOS fleet's
+hosts and users agree on, so any host can enable any user (and deny features a user
+introduces) on rebuild. It is neither host nor user: it is the negotiated interface between
+them, and it depends on nothing but nixpkgs `lib`.
+
+This file is the vocabulary. When an issue, a hypothesis, a test name, or an ADR names a
+domain concept, use the term as defined here and avoid the synonyms called out under
+[Terms to keep distinct](#terms-to-keep-distinct). The full rationale for each decision
+lives in [`docs/adr/`](docs/adr/); this is the index of *language*, not decisions.
+
+Entries marked **(designed; not yet built)** name a decided-but-unimplemented concept —
+the term is stable, the code is pending (see the cited issue).
+
+## The boundary
+
+- **the contract** — the shared schema + host-invariant realization + derivation logic both
+  sides agree on. Ships as `nixosModules.default` / `homeModules.default` (the umbrella),
+  `lib` (the functions), and a data surface (`features`, `featureMeta`, `featureGroups`,
+  `privilegedGroups`, `safeSet`). Neither host nor user. (ADR-0015, ADR-0020)
+- **host** — a machine config that imports the contract, materializes user accounts,
+  **grants** features, and supplies **bindings**. Sovereign: it runs only what it grants.
+- **user** — a public identity + home config + the features it *offers*; host-agnostic (it
+  never names a secrets backend or a host's `self`/inputs). Target shape: a home-manager
+  config repo consumed via `bindUser` (ADR-0023); today still in-repo in the fleet.
+- **umbrella / kit** — the assembled shipped surface (`kit.nix`). `nixosModules.default` =
+  the `custom.users` schema + `platform` interface + `custom.host.exposed` + the
+  exposed-host ban + realization + the insecure-package aggregator. `homeModules.default` =
+  identity + home profiles + the `platform` interface.
+- **mechanism vs binding** — the contract ships generic **mechanism**; the host supplies
+  only **bindings** (the `platform` secrets binding, the display/theme, *which* hosts, the
+  trust-tier policy). The split keeps every fleet from re-implementing — and drifting on —
+  the security-critical parts. (ADR-0024)
+
+## Features and the registry
+
+- **feature** — one entry in the registry: the unit of capability a host grants or denies,
+  and the shared name "deny" keys on. Per-entry fields: `grant`, `groups`, `secretBearing`,
+  `secretFiles`, `execPayload`, `config`. (`features.nix`)
+- **registry** — `features.nix`, the **single source of truth** for the feature vocabulary.
+- **projection** — any surface *derived* from the registry (`featureMeta`, `featureGroups`,
+  `grantedOptions`, `featureConfigOptions`, `safeSet`, the sops recipients). Keys can't
+  drift across projections because there is one set of keys. (`kit.nix`)
+- **offer** — *implicit*: a user emitting configuration for a feature is offering it. No
+  formal `offers` field exists until the separate-repo future needs one. (ADR-0018)
+
+## Grants and confinement
+
+- **grant** — a host's decision to enable a feature for a user
+  (`custom.users.<u>.granted.<f>.enable`). **Host-write-only**, and the *only* source of
+  privilege. (ADR-0015 mechanic 2)
+- **deny** — the **absence of a grant**. Not a veto, not a default-open block — a host runs
+  only what it explicitly grants.
+- **feature configuration** *(a feature's **parameters**)* — user-owned knobs of a feature,
+  distinct from the grant (the yes/no). E.g. `gui.session`. Host-affecting parameters
+  **aggregate** across granted users. Carried **system-side** today as
+  `custom.users.<u>.<feature>.*` (`featureConfigOptions`). (ADR-0019)
+- **request** / **`contract.requests`** — the **home-side** channel the same parameters flow
+  through once the user surface is a home-manager module: the user *emits* read-only request
+  data inside home-manager's sandbox, and `bindUser` harvests it post-eval and applies only
+  the **granted** ones. Same data as *feature configuration*, emitted from the user's side
+  rather than written system-side; a request **names** a host effect but never performs it.
+  **(designed; not yet built — issue #5)**; supersedes the system-side carriage as the
+  confinement model matures. (ADR-0018, ADR-0023)
+- **realization** — the host-invariant module mapping each `custom.users.<u>` to a
+  `users.users` account. Powers route through *grants*, not raw identity. (`realization.nix`,
+  ADR-0015 mechanic 5)
+- **clamp** — the realization filtering privileged groups out of a user's self-declared
+  `identity.extraGroups` (untrusted input). Privileged groups come only from a grant — a
+  user can never self-escalate by listing `docker`/`wheel` in its identity.
+- **gui-session union** — the realization deriving the host's display surface
+  (`custom.gui.surface`) as the union of every granted gui user's `gui.session`, so a
+  Wayland user and an X11 user coexist on one seat. (ADR-0019)
+- **model A / B / C** — trust postures for the user surface (ADR-0015 mechanic 7): A = user
+  exports arbitrary modules (in-repo migration only; "deny" cosmetic); B = flat data only
+  (deny enforceable, expressiveness lost); C = restricted `evalModules` over a curated
+  catalog — the old target, **superseded** by the request channel (home-manager *is* a
+  restricted universe, so no catalog). (ADR-0018)
+
+## Secrets and the platform
+
+- **platform — interface vs binding** — the backend-neutral secret-provisioning seam
+  (`platform.nix`). A feature declares a *logical* secret and reads a resolved **runtime
+  path**; the host **binding** owns the backend (sops/agenix) and is the only place a
+  backend is named. The contract ships the **interface**; the host supplies the **binding**.
+  (ADR-0021)
+- **secret-bearing** — a feature that pulls a secret onto a host (`secretBearing = true`).
+  Excluded from the safe set; an exposed host may not be granted it.
+- **user secret (three tiers)** — *public identity* (`authorizedKeys`, name, email,
+  username — not secret); *`hashedPassword`* (a one-way hash; handling depends on repo
+  visibility); *feature secrets* (the real secrets — private keys, tokens). Keep these
+  distinct; "user secret" alone is ambiguous. (ADR-0015 mechanic 1)
+- **recipients-from-grants** — `mkFeatureRecipients`: for each secret-bearing feature's sops
+  file, the set of hosts that *grant* it — the single source of truth for `.sops.yaml`
+  recipients, making recipients ≡ grants. (`lib.nix`, ADR-0015)
+- **revocation = remove recipient + rotate** — un-granting a secret-bearing feature is not
+  enough: a host that ever held it saw cleartext, so revocation removes the host as a sops
+  recipient **and** rotates the secret. (ADR-0015 threat model)
+
+## Hosts and trust
+
+- **exposed host / the exposed-host ban** — a host marked `custom.host.exposed` (an
+  agent/code-executing or otherwise exposed box) may not be granted *any* secret-bearing
+  feature; enforced as a NixOS assertion (`exposedHostOffenders`). The hosts most likely to
+  be compromised then hold no cleartext. (ADR-0015 threat model)
+- **incapacity vs prohibition** — a *headless* host has no greeter because it has no display:
+  **incapacity**, not a ban. **Prohibition** (the exposed-host rule) is the security verb;
+  don't model "no screen" as a ban or you dilute the one word that carries security weight.
+  (ADR-0018)
+- **hostFacts** — the restricted, read-only, **self-scoped** projection of host state a
+  user's home module may read: `{ exposed, platform, granted }`. Deliberately excludes
+  `hostName` so adaptation keys on *semantic* facts, not host identity. (`mkHostFacts`,
+  ADR-0018)
+
+## The greeter and binding
+
+- **build-time binding vs runtime binding** — two paths over one contract. Build-time =
+  operator-authored fleet declaration, **default-closed**. Runtime = the **greeter**,
+  **default-open over the safe set**. Opposite defaults, *one* mechanism (`bindUser`).
+  (ADR-0018, ADR-0022)
+- **bindUser** — the single function (in the contract's `lib`) both paths call: import the
+  user's home module + the contract's `homeModules`, inject `pkgs` + `hostFacts`, harvest
+  `contract.requests`, apply the granted ones. **(designed; not yet built — issues #5, #2)**
+  (ADR-0023, ADR-0024)
+- **greeter** — the runtime path: a seat host's greetd flow that fetches a user flake,
+  authenticates **eval-free** on `identity.json`, classifies the tier, calls `bindUser` with
+  `grants = safeSet`, builds, and provisions the account. Ships as the replaceable
+  `nixosModules.greeter`. The project's north star. **(designed; not yet built — issue #2)**
+  (ADR-0018, ADR-0022, ADR-0024)
+- **safe set** — the features a runtime/greeter login may auto-grant: the **runtime-eligible**
+  ones. `safeSet = ["gui"]` today. (`lib.nix`)
+- **runtime-eligible** — *derived*, not declared (`runtimeEligibleFeature`): a feature is in
+  the safe set iff it bears no secret, confers no privileged group, **and** carries no exec
+  payload. Deriving it keeps "what a stranger may have" tied to "what confers no privilege."
+- **tier (Tier 1 / Tier 2)** — the greeter's trust classification of a flake URL. Tier 1 =
+  semi-trusted (own, *signed* repo; persisted home; restricted eval guarding accidents) —
+  built first. Tier 2 = untrusted (anyone; hardened eval; ephemeral home) — designed-for,
+  deferred. A tier is a *parameter* over one mechanism, not a separate code path. (ADR-0022)
+- **identity.json** — the contract-conventional **data** file (not Nix) carrying a user's
+  public identity. The greeter authenticates against it with `jq` **before** evaluating any
+  user Nix (**data before code** — eval is not a sandbox). Schema convention owned by the
+  contract. **(loader designed; not yet built — issue #5)** (ADR-0022, ADR-0023)
+- **inert payload vs exec payload** — a request payload the host merely *reads* (the
+  `session` enum) is **inert**; one the host *executes with privilege* (a `kanata-with-cmd`
+  keymap running shell) is an **exec payload** (`execPayload = true`) — a code-exec vector,
+  never safe-set-eligible, build-time-only. No feature sets it yet. (ADR-0018, issue #3)
+
+## Testing
+
+- **conformance suite** — the contract's own tests (`conformance/`): synthetic users × the
+  umbrella, no host repo. **Eval** (`default.nix`) proves grant/deny, the gui-union
+  *decision*, the clamp, the exposed-host ban, the safe set, and the users × archetypes
+  matrix; the **VM** (`vm.nix`, a `runNixOSTest` boot) proves the gui-union *renders* — two
+  gui users with different sessions, both plasma session files live, both accounts realized.
+- **coherence gate** — the thin host-side check (in the fleet) that every real host's
+  trait-tuple is archetype-covered and the real manifest realizes — the fleet's tie-back to
+  the contract suite. (ADR-0020)
+
+## Terms to keep distinct
+
+- **deny** is the *absence of a grant*, never a "veto" or a default-open block.
+- **ban** is only for **prohibition** (the exposed-host rule). A headless host lacking a
+  greeter is **incapacity**, not a ban.
+- a feature's **grant** (the yes/no) vs its **configuration / parameters** (the knobs):
+  never call configuration a "grant."
+- **request** (home-side, ADR-0018/0023) and **feature configuration** (the same data,
+  system-side today, ADR-0019) name the *same* concept at different stages/sides — pick the
+  word for the side you mean; don't invent a third term.
+- **platform** names the secret-provisioning **interface**; don't conflate the interface
+  (contract) with the **binding** (host).
+- **user secret** is ambiguous on its own — say *public identity*, *hashedPassword*, or
+  *feature secret*.
+
+## Load-bearing invariants
+
+- The contract **depends only on nixpkgs `lib`** — no `self`, no `inputs`, no secrets
+  backend, no package. (ADR-0020; the extraction litmus test)
+- **One nixpkgs**: a user pins `inputs.nixpkgs.follows` to the host's — no second nixpkgs.
+- **Privilege is build-time-only**; the runtime greeter confers only the safe set.
+- **A request names a host effect but never performs it** — the host writes, only on grant.
+- **Data before code** — authenticate on `identity.json` before evaluating any user Nix.
