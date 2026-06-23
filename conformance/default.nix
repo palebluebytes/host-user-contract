@@ -16,6 +16,7 @@
   privilegedGroups,
   loadIdentity,
   bindUser,
+  bindUserModule,
   nixosSystem,
   system,
 }:
@@ -187,6 +188,60 @@ let
   # Realize bindUser's system fragment on a synthetic host ⇒ exercises realization + union.
   boundHost = eval [ boundRuntime.system ];
 
+  # --- the REAL bind: bindUserModule (ADR-0024, issue #8) ---
+  # The mechanism the host actually imports: the home is evaluated ONCE by the host's
+  # home-manager and the request→feature bridge is a config reference, so a REAL home that
+  # also sets home-manager options binds (the tracer's bare evalModules would throw on them).
+  #
+  # The contract can't depend on home-manager (ADR-0020), so this suite supplies a package-free
+  # STAND-IN for the `home-manager.users` option the bind module references: an attrsOf a
+  # freeform submodule. That is exactly the part of home-manager's contract the mechanism needs
+  # — it declares the option path so the config reference resolves, and the freeformType makes a
+  # home that sets non-contract options (programs.git) evaluate without throwing, the way real
+  # home-manager does. The contract home umbrella itself is NOT imported here: the bind module
+  # imports it via the per-user `imports`, the same as the real flow. (Real home-manager
+  # RENDERING — that programs.git actually materializes a dotfile — is the host's integration
+  # test, the same boundary as the gui-union VM vs the gui DECISION proven here.)
+  hmStub =
+    { lib, ... }:
+    {
+      options.home-manager.users = lib.mkOption {
+        default = { };
+        type = lib.types.attrsOf (
+          lib.types.submoduleWith {
+            modules = [ { freeformType = lib.types.attrsOf lib.types.anything; } ];
+          }
+        );
+      };
+    };
+  # A REAL-ish home: it sets a non-contract home-manager option (programs.git, reading the
+  # injected identity) AND emits a contract request. The tracer would throw on programs.git;
+  # the real bind must not. (Kept inline, NOT in examples/user/home.nix, which stays
+  # contract-pure so the tracer can still harvest it — ADR-0024 / issue #5.)
+  realHome =
+    { config, ... }:
+    {
+      programs.git.userName = config.identity.name;
+      contract.requests.gui.session = "wayland";
+    };
+  realBound =
+    grants:
+    eval [
+      hmStub
+      (bindUserModule {
+        userModule = realHome;
+        identity = exampleIdentity; # username "example", name "Example User"
+        inherit grants;
+        hostFacts = exampleHostFacts;
+      })
+    ];
+  realBoundRuntime = realBound (
+    lib.genAttrs safeSet (_: {
+      enable = true;
+    })
+  );
+  realBoundNone = realBound { };
+
   # --- the matrix: synthetic users × host archetypes ---
   users = {
     alice = mkUser "alice" { session = "wayland"; };
@@ -356,6 +411,32 @@ let
     {
       name = "bindUser: an ungranted request is inert (no system feature config bridged)";
       ok = !(boundNone.system.custom.users.example ? gui);
+    }
+    {
+      # issue #8: a REAL home (programs.git, a non-contract option) binds without throwing —
+      # the harvest happens inside home-manager, not the tracer's bare evalModules.
+      name = "bindUserModule: a real home-manager home (programs.git) binds and evaluates";
+      ok =
+        realBoundRuntime.home-manager.users.example.programs.git.userName == "Example User"
+        && realBoundRuntime.home-manager.users.example.contract.requests.gui.session == "wayland";
+    }
+    {
+      name = "bindUserModule: the account materializes from identity.json";
+      ok =
+        realBoundRuntime.users.users.example.isNormalUser
+        && realBoundRuntime.users.users.example.description == "Example User";
+    }
+    {
+      # The bridge is a CONFIG REFERENCE into the single home eval — the granted request feeds
+      # the union without a second harvest (ADR-0018 data-flow inversion).
+      name = "bindUserModule: a granted request bridges by config reference, feeding the union (wayland)";
+      ok = realBoundRuntime.custom.gui.surface.enabled && realBoundRuntime.custom.gui.surface.wayland;
+    }
+    {
+      # Post-eval `custom.users.<u>.gui` always exists (it is a declared option), so inertness
+      # is proven by the observable effect: ungranted ⇒ the wayland request feeds NO surface.
+      name = "bindUserModule: an ungranted request is inert (the union offers no surface)";
+      ok = !realBoundNone.custom.gui.surface.enabled;
     }
     {
       name = "matrix: every user realizes on every archetype, no failing assertion";
