@@ -84,6 +84,9 @@ in
     # The identity.json loader (ADR-0023): lossless over identity.nix, used by both the
     # user's home module and host-side bindUser.
     inherit (identityJson) loadIdentity;
+    # bindUser (ADR-0023/0024): the one binding mechanism, partially applied over the
+    # contract's own homeModule so a caller passes only { userModule, identity, grants, … }.
+    bindUser = args: contractLib.bindUser (args // { homeModule = modules.homeModule; });
   };
 
   # The umbrella modules (one per eval-side).
