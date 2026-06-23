@@ -1,0 +1,10 @@
+{
+  "name": "Example User",
+  "email": "example@user.invalid",
+  "username": "example",
+  "gmail": "",
+  "sshKey": "ssh-ed25519 AAAAexamplekey example@user.invalid",
+  "hashedPassword": "",
+  "extraGroups": [],
+  "trustedKeys": []
+}
