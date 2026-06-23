@@ -4,30 +4,19 @@
 # Nix (ADR-0022, data-before-code: eval is not a sandbox), while the user's home module
 # loads it with `loadIdentity` so the two can never drift.
 #
-# The schema MIRRORS identity.nix exactly — every field the realization reads — so a user
-# materialized purely from `identity.json` loses nothing (issue #5 schema reconciliation:
-# `trustedKeys` and `extraGroups` are read by realization.nix and so MUST be carriable
-# here, not just the five fields ADR-0023 first named). `loadIdentity` is therefore lossless
-# and total over identity.nix: required fields mirror identity.nix's no-default options,
-# optional fields mirror its defaulted ones, and an unknown key is a loud error (a typo-net),
-# never a silently-dropped field.
-{ lib }:
+# The schema is DERIVED from identity.nix — the single identity source — exactly as every
+# feature surface is a projection of the registry (kit.nix). So it cannot drift: there is no
+# second field list to keep in sync. `loadIdentity` is lossless and total over identity.nix
+# (issue #5 schema reconciliation: `trustedKeys`/`extraGroups` are read by realization.nix
+# and so MUST be carriable here, not just the five fields ADR-0023 first named), and an
+# unknown key is a loud error (a typo-net), never a silently-dropped field.
+{ lib, identityOptions }:
 let
-  # Mirrors identity.nix: `required` = the options with no default there; `optional` = the
-  # defaulted ones. Keep this in lockstep with identity.nix (the one place that can drift).
-  required = [
-    "name"
-    "email"
-    "username"
-  ];
-  optional = [
-    "gmail"
-    "sshKey"
-    "hashedPassword"
-    "extraGroups"
-    "trustedKeys"
-  ];
-  known = required ++ optional;
+  # Projected from identity.nix's option set: `required` = its no-default options (the ones
+  # that must be present), `optional` = its defaulted ones, `known` = all of them.
+  required = lib.attrNames (lib.filterAttrs (_: o: !(o ? default)) identityOptions);
+  optional = lib.attrNames (lib.filterAttrs (_: o: o ? default) identityOptions);
+  known = lib.attrNames identityOptions;
 in
 {
   # The schema, exposed for introspection (and to document the jq-readable shape a host
