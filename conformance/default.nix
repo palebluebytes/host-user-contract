@@ -12,6 +12,7 @@
   contractModule,
   homeModule,
   safeSet,
+  greeterGrants,
   featureGroups,
   privilegedGroups,
   loadIdentity,
@@ -169,13 +170,11 @@ let
     platform = system;
     granted = { };
   };
-  # Runtime path: grants = safeSet (default-open over the safe set; safeSet == ["gui"]).
+  # Runtime path: the canonical greeter grant — default-open over the safe set (greeterGrants).
   boundRuntime = bindUser {
     userModule = exampleHome;
     identity = exampleIdentity;
-    grants = lib.genAttrs safeSet (_: {
-      enable = true;
-    });
+    grants = greeterGrants;
     hostFacts = exampleHostFacts;
   };
   # No grants: the same gui.session request must be inert (never bridged).
@@ -235,11 +234,7 @@ let
         hostFacts = exampleHostFacts;
       })
     ];
-  realBoundRuntime = realBound (
-    lib.genAttrs safeSet (_: {
-      enable = true;
-    })
-  );
+  realBoundRuntime = realBound greeterGrants;
   realBoundNone = realBound { };
 
   # --- the matrix: synthetic users × host archetypes ---
@@ -437,6 +432,24 @@ let
       # is proven by the observable effect: ungranted ⇒ the wayland request feeds NO surface.
       name = "bindUserModule: an ungranted request is inert (the union offers no surface)";
       ok = !realBoundNone.custom.gui.surface.enabled;
+    }
+    {
+      # The greeter grant (ADR-0022/0024): default-open over the safe set — it enables exactly
+      # the runtime-eligible features, no operator choice, no more.
+      name = "greeterGrants: enables exactly the safe set (default-open, nothing beyond it)";
+      ok =
+        (lib.sort (a: b: a < b) (lib.attrNames greeterGrants) == lib.sort (a: b: a < b) safeSet)
+        && lib.all (n: greeterGrants.${n}.enable) (lib.attrNames greeterGrants);
+    }
+    {
+      # ADR-0024 conformance condition (3): a greeter grants AT MOST the safe set, so a
+      # runtime-bound user can never receive a privileged-group or secret-bearing feature —
+      # escalation is impossible by construction, not by a deny rule.
+      name = "greeterGrants: grants no privileged-group or secret-bearing feature (no escalation)";
+      ok =
+        !(lib.elem "workstation" (lib.attrNames greeterGrants))
+        && !(lib.elem "virtualization" (lib.attrNames greeterGrants))
+        && !(lib.elem "signing" (lib.attrNames greeterGrants));
     }
     {
       name = "matrix: every user realizes on every archetype, no failing assertion";
