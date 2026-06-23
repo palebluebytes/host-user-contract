@@ -42,8 +42,8 @@ the term is stable, the code is pending (see the cited issue).
 - **projection** — any surface *derived* from the registry (`featureMeta`, `featureGroups`,
   `grantedOptions`, `featureConfigOptions`, `safeSet`, the sops recipients). Keys can't
   drift across projections because there is one set of keys. (`kit.nix`)
-- **offer** — *implicit*: a user emitting configuration for a feature is offering it. No
-  formal `offers` field exists until the separate-repo future needs one. (ADR-0018)
+- **offer** — *implicit*: a user emitting a `contract.requests` entry for a feature is
+  offering it. No formal `offers` field exists until the separate-repo future needs one. (ADR-0018)
 
 ## Grants and confinement
 
@@ -52,17 +52,18 @@ the term is stable, the code is pending (see the cited issue).
   privilege. (ADR-0015 mechanic 2)
 - **deny** — the **absence of a grant**. Not a veto, not a default-open block — a host runs
   only what it explicitly grants.
-- **feature configuration** *(a feature's **parameters**)* — user-owned knobs of a feature,
-  distinct from the grant (the yes/no). E.g. `gui.session`. Host-affecting parameters
-  **aggregate** across granted users. Carried **system-side** today as
-  `custom.users.<u>.<feature>.*` (`featureConfigOptions`). (ADR-0019)
-- **request** / **`contract.requests`** — the **home-side** channel the same parameters flow
-  through once the user surface is a home-manager module: the user *emits* read-only request
-  data inside home-manager's sandbox, and `bindUser` harvests it post-eval and applies only
-  the **granted** ones. Same data as *feature configuration*, emitted from the user's side
-  rather than written system-side; a request **names** a host effect but never performs it.
-  **(designed; not yet built — issue #5)**; supersedes the system-side carriage as the
-  confinement model matures. (ADR-0018, ADR-0023)
+- **feature configuration** *(a feature's **parameters**)* — the **host-owned** parameters the
+  realization consumes (`custom.users.<u>.<feature>.*`, e.g. `gui.session`), distinct from the
+  grant (the yes/no). The **consumer** end of a producer→consumer pair with **request**:
+  written only host-side — operator grant-data, or `bindUser` bridging a granted request —
+  **never** by the user across the trust boundary. Host-affecting parameters **aggregate**
+  across granted users. (ADR-0019, `featureConfigOptions`)
+- **request** / **`contract.requests`** — the **user's** voice: the home-side namespace a
+  user's home module *emits* (read-only data inside home-manager's sandbox) to ask for a
+  feature's parameters. The **producer** end of the pair with **feature configuration**:
+  `bindUser` harvests it post-eval and bridges only the **granted** ones into the system-side
+  feature configuration the realization reads. A request *names* a host effect but never
+  performs it; the user never writes system-side. (ADR-0018, ADR-0023; `homeModules.default`)
 - **realization** — the host-invariant module mapping each `custom.users.<u>` to a
   `users.users` account. Powers route through *grants*, not raw identity. (`realization.nix`,
   ADR-0015 mechanic 5)
@@ -119,10 +120,13 @@ the term is stable, the code is pending (see the cited issue).
   operator-authored fleet declaration, **default-closed**. Runtime = the **greeter**,
   **default-open over the safe set**. Opposite defaults, *one* mechanism (`bindUser`).
   (ADR-0018, ADR-0022)
-- **bindUser** — the single function (in the contract's `lib`) both paths call: import the
-  user's home module + the contract's `homeModules`, inject `pkgs` + `hostFacts`, harvest
-  `contract.requests`, apply the granted ones. **(designed; not yet built — issues #5, #2)**
-  (ADR-0023, ADR-0024)
+- **bindUser** — the function (`self.lib.bindUser`) that binds a user's home module to the
+  contract: inject `identity` (single loader, ADR-0025) + `pkgs` + `hostFacts`, harvest
+  `contract.requests`, and **bridge** the granted ones into the system-side feature
+  configuration. The **headless tracer** is built — it harvests by evaluating the home against
+  the contract umbrella alone, so it handles only *contract-pure* homes; harvesting a real
+  (home-manager-using) home via the host's single home-manager eval is issue #8, and the
+  greeter program that drives it at runtime is issue #2. (ADR-0023, ADR-0024, ADR-0025)
 - **greeter** — the runtime path: a seat host's greetd flow that fetches a user flake,
   authenticates **eval-free** on `identity.json`, classifies the tier, calls `bindUser` with
   `grants = safeSet`, builds, and provisions the account. Ships as the replaceable
@@ -139,8 +143,9 @@ the term is stable, the code is pending (see the cited issue).
   deferred. A tier is a *parameter* over one mechanism, not a separate code path. (ADR-0022)
 - **identity.json** — the contract-conventional **data** file (not Nix) carrying a user's
   public identity. The greeter authenticates against it with `jq` **before** evaluating any
-  user Nix (**data before code** — eval is not a sandbox). Schema convention owned by the
-  contract. **(loader designed; not yet built — issue #5)** (ADR-0022, ADR-0023)
+  user Nix (**data before code** — eval is not a sandbox). The contract owns the schema and
+  ships `loadIdentity`, a lossless loader whose schema is **projected from `identity.nix`**
+  (the single identity source). (ADR-0022, ADR-0023; `identity-json.nix`)
 - **inert payload vs exec payload** — a request payload the host merely *reads* (the
   `session` enum) is **inert**; one the host *executes with privilege* (a `kanata-with-cmd`
   keymap running shell) is an **exec payload** (`execPayload = true`) — a code-exec vector,
@@ -164,9 +169,11 @@ the term is stable, the code is pending (see the cited issue).
   greeter is **incapacity**, not a ban.
 - a feature's **grant** (the yes/no) vs its **configuration / parameters** (the knobs):
   never call configuration a "grant."
-- **request** (home-side, ADR-0018/0023) and **feature configuration** (the same data,
-  system-side today, ADR-0019) name the *same* concept at different stages/sides — pick the
-  word for the side you mean; don't invent a third term.
+- **request** (user-emitted, home-side) and **feature configuration** (host-owned,
+  system-side) are a **producer→consumer pair**, *not* interchangeable: the user writes a
+  request, `bindUser` bridges granted ones into feature configuration, the realization reads
+  feature configuration. Same shape, different owner and trust-side — never call a user's
+  request "feature configuration," or a host-written value a "request."
 - **platform** names the secret-provisioning **interface**; don't conflate the interface
   (contract) with the **binding** (host).
 - **user secret** is ambiguous on its own — say *public identity*, *hashedPassword*, or
