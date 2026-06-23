@@ -74,22 +74,25 @@ in
     granted = config.custom.users.${userName}.granted;
   };
 
-  # bindUser (ADR-0023, ADR-0024): the ONE mechanism BOTH binding paths call — build-time
-  # with the operator's grants (default-closed), the greeter with `grants = safeSet`
-  # (default-open over the safe set). It binds an external user's home module to the
-  # contract: it harvests the user's `contract.requests` by evaluating the home against the
-  # contract umbrella, then returns the system fragment that realizes the account
-  # (identity), records the grants, and BRIDGES the GRANTED requests to the system-side
-  # feature configuration the realization consumes (ADR-0019). Ungranted requests are inert
-  # — never bridged — so requesting an ungranted feature is a silent no-op, not an error
-  # (ADR-0018: "the grant is the sole enabler; degradation is silent").
+  # bindUser (ADR-0023, ADR-0024): binds an external user's home module to the contract —
+  # it harvests the user's `contract.requests`, then returns the system fragment that realizes
+  # the account (identity), records the grants, and BRIDGES the GRANTED requests to the
+  # system-side feature configuration the realization consumes (ADR-0019). Ungranted requests
+  # are inert — never bridged — so requesting an ungranted feature is a silent no-op, not an
+  # error (ADR-0018: "the grant is the sole enabler; degradation is silent"). `homeModule` is
+  # the contract's homeModules.default, partially applied by the kit so a caller passes only
+  # the user side.
   #
-  # Pure and home-manager-free (ADR-0024's package-free invariant): it uses lib.evalModules
-  # ONLY to read the requests namespace. The real home-activation package is built by the
-  # HOST's home-manager from the returned `home` eval — that build is deliberately the
-  # host's step, not the contract's, so the contract ships no home-manager dependency.
-  # `homeModule` is the contract's homeModules.default, partially applied by the kit so a
-  # caller passes only the user side.
+  # SCOPE — this is the HEADLESS TRACER (issue #5), not yet the full "one mechanism both paths
+  # call" of ADR-0024. It harvests by evaluating the home against the contract umbrella ALONE
+  # (lib.evalModules, no home-manager — ADR-0020's package-free invariant), so it can only
+  # evaluate a CONTRACT-PURE home that sets nothing but contract options. A REAL home module
+  # also sets home-manager options (programs.*, home.*), which are undeclared here and would
+  # throw. The real bound flow therefore evaluates the home ONCE inside the host's
+  # home-manager and reads `contract.requests` from THAT eval (the bridge becomes a config
+  # reference, not a separate harvest) — host integration tracked as a follow-up issue. The
+  # tracer proves the confined request→grant→bridge logic with zero home-manager dependency;
+  # it does not yet harvest real homes.
   bindUser =
     {
       homeModule,
