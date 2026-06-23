@@ -46,6 +46,7 @@
           inherit (nixpkgs) lib;
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
+          homeModule = self.homeModules.default;
           inherit (self) safeSet featureGroups privilegedGroups;
           inherit (self.lib) loadIdentity;
           nixosSystem = nixpkgs.lib.nixosSystem;
