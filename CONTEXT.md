@@ -144,6 +144,12 @@ the term is stable, the code is pending (see the cited issue).
   (ADR-0018, ADR-0022, ADR-0024)
 - **safe set** — the features a runtime/greeter login may auto-grant: the **runtime-eligible**
   ones. `safeSet = ["gui"]` today. (`lib.nix`)
+- **greeterGrants** — the **canonical runtime grant value** (`self.greeterGrants`): the safe set
+  lifted into a grant attrset (`{ <feature>.enable = true; }`), i.e. **default-open over the
+  safe set**. The greeter binds with it (`bindUserModule { grants = greeterGrants; }`); it is
+  ADR-0024's conformance condition (3) — *a greeter grants at most the safe set* — made a
+  single-sourced value, so escalation is impossible by construction, not by a deny rule.
+  (`lib.nix`; ADR-0022, ADR-0024)
 - **runtime-eligible** — *derived*, not declared (`runtimeEligibleFeature`): a feature is in
   the safe set iff it bears no secret, confers no privileged group, **and** carries no exec
   payload. Deriving it keeps "what a stranger may have" tied to "what confers no privilege."
