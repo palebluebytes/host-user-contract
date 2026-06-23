@@ -9,6 +9,7 @@
 { lib
 , pkgs
 , contractModule
+, homeModule
 , safeSet
 , featureGroups
 , privilegedGroups
@@ -143,6 +144,18 @@ let
   danaKeys = loadedHost.users.users.dana.openssh.authorizedKeys.keys;
   danaGroups = loadedHost.users.users.dana.extraGroups;
 
+  # --- the contract.requests namespace (ADR-0018/0023, issue #5) ---
+  # The home eval-side: a user's home module populates contract.requests; evalModules with
+  # only the home umbrella proves the namespace's shape + enforcement with no home-manager.
+  evalHome = mods: (lib.evalModules { modules = [ homeModule ] ++ mods; }).config;
+  guiRequest = evalHome [ { contract.requests.gui.session = "x11"; } ];
+  # An unknown FEATURE key is accepted (freeformType) and ignored — build still happens.
+  unknownRequest = evalHome [ { contract.requests.bogusFeature.whatever = 42; } ];
+  # A malformed KNOWN request (bad enum) must fail to evaluate (the typo-net).
+  malformedRequest = builtins.tryEval (
+    (evalHome [ { contract.requests.gui.session = "macos"; } ]).contract.requests.gui.session
+  );
+
   # --- the matrix: synthetic users × host archetypes ---
   users = {
     alice = mkUser "alice" { session = "wayland"; };
@@ -276,6 +289,18 @@ let
     {
       name = "identity.json: a non-privileged extraGroup passes, a privileged one is clamped";
       ok = lib.elem "audio" danaGroups && !(lib.elem "docker" danaGroups);
+    }
+    {
+      name = "requests: a known request (gui.session) is readable on the home eval";
+      ok = guiRequest.contract.requests.gui.session == "x11";
+    }
+    {
+      name = "requests: an unknown feature key is accepted and ignored (build still happens)";
+      ok = unknownRequest.contract.requests.bogusFeature.whatever == 42;
+    }
+    {
+      name = "requests: a malformed known request (bad gui.session enum) errors";
+      ok = !malformedRequest.success;
     }
     {
       name = "matrix: every user realizes on every archetype, no failing assertion";
