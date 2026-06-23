@@ -118,18 +118,28 @@ the term is stable, the code is pending (see the cited issue).
 
 - **build-time binding vs runtime binding** — two paths over one contract. Build-time =
   operator-authored fleet declaration, **default-closed**. Runtime = the **greeter**,
-  **default-open over the safe set**. Opposite defaults, *one* mechanism (`bindUser`).
+  **default-open over the safe set**. Opposite defaults, *one* mechanism (`bindUserModule`).
   (ADR-0018, ADR-0022)
-- **bindUser** — the function (`self.lib.bindUser`) that binds a user's home module to the
-  contract: inject `identity` (single loader, ADR-0025) + `pkgs` + `hostFacts`, harvest
-  `contract.requests`, and **bridge** the granted ones into the system-side feature
-  configuration. The **headless tracer** is built — it harvests by evaluating the home against
-  the contract umbrella alone, so it handles only *contract-pure* homes; harvesting a real
-  (home-manager-using) home via the host's single home-manager eval is issue #8, and the
-  greeter program that drives it at runtime is issue #2. (ADR-0023, ADR-0024, ADR-0025)
+- **bindUser** — binding a user's home module to the contract: inject `identity` (single
+  loader, ADR-0025) + `hostFacts`, evaluate the home, and **bridge** the granted
+  `contract.requests` into the system-side feature configuration. It ships in **two shapes**,
+  both in `self.lib`:
+  - **`bindUserModule`** — the **real mechanism both binding paths call** (operator grant +
+    greeter): a NixOS module the host imports. The home is evaluated **once** by the host's
+    home-manager and the bridge is a **config reference**
+    (`config.home-manager.users.<u>.contract.requests`), so a real home-manager home
+    (`programs.*`, `home.*`) binds. The host supplies home-manager; the contract only
+    *references* its option paths, staying package-free (ADR-0020). **(built — issue #8)**
+  - **`bindUser`** — the **headless tracer**: the package-purest proof of the same
+    request→grant→bridge logic, harvesting a *contract-pure* home via bare `evalModules` (no
+    home-manager, not even a stub). Returns a record (`{ system, home, requests, … }`) for
+    eval testing. **(built — issue #5)**
+
+  The greeter program that drives `bindUserModule` at runtime is issue #2. (ADR-0023, ADR-0024,
+  ADR-0025)
 - **greeter** — the runtime path: a seat host's greetd flow that fetches a user flake,
-  authenticates **eval-free** on `identity.json`, classifies the tier, calls `bindUser` with
-  `grants = safeSet`, builds, and provisions the account. Ships as the replaceable
+  authenticates **eval-free** on `identity.json`, classifies the tier, calls `bindUserModule`
+  with `grants = safeSet`, builds, and provisions the account. Ships as the replaceable
   `nixosModules.greeter`. The project's north star. **(designed; not yet built — issue #2)**
   (ADR-0018, ADR-0022, ADR-0024)
 - **safe set** — the features a runtime/greeter login may auto-grant: the **runtime-eligible**
