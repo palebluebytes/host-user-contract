@@ -10,11 +10,14 @@
 # `home.*` (username/stateVersion live in the standalone flake's module list), so the same
 # module evaluates headlessly against just the contract umbrella when bindUser harvests its
 # requests — no home-manager needed for the harvest (ADR-0024's package-free contract).
-# The binding injects `hostFacts` (and `pkgs`) into scope for READ-ONLY host adaptation —
-# never raw osConfig, never hostName (ADR-0018). A real home module destructures
-# `{ hostFacts, ... }` and branches its dotfiles on semantic facts, e.g.
-# `hostFacts.granted.signing.enable` to pick a git signing backend. Requests stay
-# host-independent, so this fixture needs neither and takes none.
+# The binding (bindUser) injects the user's `identity` into this home and exposes
+# `hostFacts` + `pkgs` in scope — the home never loads identity.json itself (ADR-0025: the
+# binding is the single loader). A real home module reads `config.identity.{name,email}` for
+# its dotfiles (e.g. `programs.git.userName`) and branches READ-ONLY on `hostFacts` — never
+# raw osConfig, never hostName (ADR-0018), e.g. `hostFacts.granted.signing.enable` to pick a
+# git signing backend. Those touch home-manager options, which exist only in the full home
+# build (the flake below / the host's home-manager), not in bindUser's contract-only harvest
+# eval — so this fixture, which must evaluate in both, only emits its request.
 { ... }:
 {
   # A host-affecting REQUEST: this user wants an X11 session. It is inert until a host

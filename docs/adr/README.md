@@ -17,6 +17,7 @@ contract ships).
 | [0022](0022-anyhost-greeter-runtime-binding.md) | The anyHost greeter: tiered runtime binding of a user from a flake URL |
 | [0023](0023-user-flake-shape.md) | The user flake shape and `bindUser` |
 | [0024](0024-greeter-is-a-contract-deliverable.md) | The greeter is a contract deliverable: `bindUser` in `lib` + a reusable greeter module |
+| [0025](0025-binduser-single-identity-loader.md) | `bindUser` is the single identity loader; the home holds its identity, it does not load it |
 
 ## Numbering
 
