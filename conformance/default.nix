@@ -6,18 +6,18 @@
 # Because the display *backend* is a host binding (the contract only decides), this suite
 # asserts the session-union DECISION (custom.gui.surface), not SDDM/Plasma. The rendering
 # test (the gui-union VM) and the real-fleet coherence gate stay in the host repo.
-{ lib
-, pkgs
-, contractModule
-, homeModule
-, safeSet
-, featureGroups
-, privilegedGroups
-, loadIdentity
-, bindUser
-, nixosSystem
-, system
-,
+{
+  lib,
+  pkgs,
+  contractModule,
+  homeModule,
+  safeSet,
+  featureGroups,
+  privilegedGroups,
+  loadIdentity,
+  bindUser,
+  nixosSystem,
+  system,
 }:
 let
   # A minimal bootable system built from ONLY the contract umbrella + bare nixpkgs.
@@ -51,9 +51,9 @@ let
   # session preference, no grants (the host grants), no system config.
   mkUser =
     name:
-    { gui ? true
-    , session ? "wayland"
-    ,
+    {
+      gui ? true,
+      session ? "wayland",
     }:
     {
       custom.users.${name} = {
@@ -141,7 +141,7 @@ let
     }
   );
   loadedIdentity = loadIdentity identityFixture;
-  loadedHost = eval [{ custom.users.dana.identity = loadedIdentity; }];
+  loadedHost = eval [ { custom.users.dana.identity = loadedIdentity; } ];
   danaKeys = loadedHost.users.users.dana.openssh.authorizedKeys.keys;
   danaGroups = loadedHost.users.users.dana.extraGroups;
 
@@ -172,7 +172,9 @@ let
   boundRuntime = bindUser {
     userModule = exampleHome;
     identity = exampleIdentity;
-    grants = lib.genAttrs safeSet (_: { enable = true; });
+    grants = lib.genAttrs safeSet (_: {
+      enable = true;
+    });
     hostFacts = exampleHostFacts;
   };
   # No grants: the same gui.session request must be inert (never bridged).
@@ -309,7 +311,9 @@ let
     }
     {
       name = "identity.json: loadIdentity realizes the account (required fields carried)";
-      ok = loadedHost.users.users.dana.isNormalUser && loadedHost.users.users.dana.description == "Dana Example";
+      ok =
+        loadedHost.users.users.dana.isNormalUser
+        && loadedHost.users.users.dana.description == "Dana Example";
     }
     {
       name = "identity.json: sshKey + trustedKeys both reach authorizedKeys (lossless)";
@@ -368,11 +372,9 @@ let
     }
   ];
   failures = builtins.filter (a: !a.ok) assertions;
-  report = lib.concatMapStringsSep "\n"
-    (
-      a: "  ${if a.ok then "ok  " else "FAIL"}  ${a.name}"
-    )
-    assertions;
+  report = lib.concatMapStringsSep "\n" (
+    a: "  ${if a.ok then "ok  " else "FAIL"}  ${a.name}"
+  ) assertions;
 in
 pkgs.runCommand "contract-conformance" { } ''
   cat <<'EOF'
