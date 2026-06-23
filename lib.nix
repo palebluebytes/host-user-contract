@@ -36,6 +36,24 @@ let
     lib.foldl' (
       acc: f: if requests ? ${f} then acc // { ${f} = requests.${f}; } else acc
     ) { } grantedNames;
+
+  # The system account fragment a bind PRODUCES, given the user's identity, the host's grants,
+  # and the user's harvested `contract.requests`: the account the realization materializes, the
+  # grants that power it, and the granted requests bridged into feature configuration. BOTH
+  # bind shapes emit exactly this — the tracer nested under `system`, the module at top level —
+  # so they share their whole output shape, not just the bridge step, and differ only in where
+  # `requests` come from (a harvest value vs a config reference) and what wrapper they return.
+  mkUserAccount =
+    {
+      identity,
+      grants,
+      requests,
+    }:
+    {
+      inherit identity;
+      granted = grants;
+    }
+    // bridgeRequests requests (grantedNamesOf grants);
 in
 {
   inherit runtimeEligibleFeature;
@@ -133,20 +151,12 @@ in
         specialArgs = { inherit hostFacts pkgs lib; };
       };
       requests = home.config.contract.requests;
-      bridged = bridgeRequests requests (grantedNamesOf grants);
     in
     {
       inherit username home requests;
-      # The system module a host merges to realize this user: the realization reads
-      # custom.users.<u> for the account, the grants decide its powers, and the bridged
-      # request params (e.g. gui.session) feed the gui-session union.
-      system = {
-        custom.users.${username} = {
-          inherit identity;
-          granted = grants;
-        }
-        // bridged;
-      };
+      # The system module a host merges to realize this user (the account, its powers, and the
+      # bridged request params that feed the gui-session union) — see `mkUserAccount`.
+      system.custom.users.${username} = mkUserAccount { inherit identity grants requests; };
     };
 
   # bindUserModule (ADR-0024, issue #8): the REAL binding mechanism, called by BOTH paths an
@@ -176,18 +186,14 @@ in
     { config, ... }:
     let
       username = identity.username;
-      bridged = bridgeRequests config.home-manager.users.${username}.contract.requests (
-        grantedNamesOf grants
-      );
     in
     {
-      # The system account: realized from identity, powered by the grants, fed the bridged
-      # request params (e.g. gui.session) the realization + gui-session union consume (ADR-0019).
-      custom.users.${username} = {
-        inherit identity;
-        granted = grants;
-      }
-      // bridged;
+      # The system account (identity + grants + bridged requests, see `mkUserAccount`). The
+      # requests are read by CONFIG REFERENCE from the single home eval — no second harvest.
+      custom.users.${username} = mkUserAccount {
+        inherit identity grants;
+        requests = config.home-manager.users.${username}.contract.requests;
+      };
       # The home, evaluated once by the host's home-manager. identity is injected (ADR-0025);
       # hostFacts rides the submodule's module args so the home reads its self-scoped, read-only
       # host projection (ADR-0018) without a global specialArg.
