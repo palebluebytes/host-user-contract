@@ -59,6 +59,17 @@ let
       ;
     inherit (contractLib) exposedHostOffenders;
   };
+
+  # The opt-in reference greeter (ADR-0024, issue #2): a SEPARATE nixosModule a seat host
+  # enables, not part of nixosModule.default (a headless host wants the schema, not the
+  # greeter). It is the one module that references real packages — supplied by the host's
+  # `pkgs`, so the contract FLAKE still inputs only nixpkgs `lib` (ADR-0020). It is closed
+  # over the fixed runtime grant + the identity.json filename it authenticates on.
+  greeterModule = import ./greeter.nix {
+    inherit lib;
+    inherit (contractLib) greeterGrants;
+    inherit (identityJson) identityFile;
+  };
 in
 {
   # Public data surface — introspection API for consumers (a host grant matrix, the
@@ -94,6 +105,7 @@ in
     bindUserModule = args: contractLib.bindUserModule (args // { homeModule = modules.homeModule; });
   };
 
-  # The umbrella modules (one per eval-side).
+  # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0024).
   inherit (modules) nixosModule homeModule;
+  inherit greeterModule;
 }

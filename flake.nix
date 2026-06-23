@@ -16,7 +16,13 @@
     {
       # The umbrella kit (ADR-0020 Q2): one module per eval-side, closed over the
       # registry. A consumer imports these and binds the platform host-side.
+      #
+      # `nixosModules` is deliberately NOT a single `default` (ADR-0024): `default` is the
+      # schema + realization + features every host wants; `greeter` is the opt-in reference
+      # runtime greeter (greetd + the eval-free bind→provision flow) a SEAT host enables and a
+      # headless host omits — à-la-carte justified precisely by that split.
       nixosModules.default = kit.nixosModule;
+      nixosModules.greeter = kit.greeterModule;
       homeModules.default = kit.homeModule;
 
       # The contract derivation functions (ADR-0020 Q4). The host applies the
@@ -47,6 +53,7 @@
           inherit (nixpkgs) lib;
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
+          greeterModule = self.nixosModules.greeter;
           homeModule = self.homeModules.default;
           inherit (self)
             safeSet
