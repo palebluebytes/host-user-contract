@@ -1,6 +1,6 @@
 # The user flake shape and `bindUser`
 
-**Status:** Accepted (not yet implemented — the contract surface it names is the prerequisite for the greeter, [ADR-0022](0022-anyhost-greeter-runtime-binding.md)). Concretises [ADR-0018](0018-user-confinement-manifest-greeter.md)'s deferred slice-14. **Amended by [ADR-0024](0024-greeter-is-a-contract-deliverable.md):** `bindUser` lives in the **contract's `lib`**, not "the host repo," — the host calls it.
+**Status:** Accepted. The contract surface it names — the `identity.json` convention + `loadIdentity`, the `contract.requests` namespace, and the headless `bindUser` — is **implemented** (issue #5); the greeter program that drives `bindUser` at runtime is not ([ADR-0022](0022-anyhost-greeter-runtime-binding.md), issue #2). Concretises [ADR-0018](0018-user-confinement-manifest-greeter.md)'s deferred slice-14. **Amended by [ADR-0024](0024-greeter-is-a-contract-deliverable.md)** (`bindUser` lives in the contract's `lib`, not "the host repo" — the host calls it) and **[ADR-0025](0025-binduser-single-identity-loader.md)** (the home *holds* its identity via `bindUser`'s single load + injection, rather than loading `identity.json` itself).
 
 The greeter ([ADR-0022](0022-anyhost-greeter-runtime-binding.md)) binds an *external* user
 flake — which forced the question the in-repo phase deferred (the "user surface becomes a

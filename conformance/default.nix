@@ -340,6 +340,10 @@ let
       ok = (boundRuntime.home ? config) && boundRuntime.requests.gui.session == "x11";
     }
     {
+      name = "bindUser: the home HOLDS the injected identity (single loader, ADR-0025)";
+      ok = boundRuntime.home.config.identity.name == "Example User";
+    }
+    {
       name = "bindUser: the account materializes from identity.json";
       ok =
         boundHost.users.users.example.isNormalUser

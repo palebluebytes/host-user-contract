@@ -101,11 +101,15 @@ in
     }:
     let
       username = identity.username;
-      # Evaluate the user's home against the contract home umbrella, injecting the
-      # read-only hostFacts projection + host-following pkgs the user's module adapts to.
+      # Evaluate the user's home against the contract home umbrella. bindUser is the SINGLE
+      # reader of the loaded identity (ADR-0025): it injects the same value into the home it
+      # gives the system account, so the home HOLDS its identity (e.g. for git name/email)
+      # and the account and home can never disagree about who the user is — the home never
+      # loads identity.json itself. hostFacts/pkgs are injected for the user module to adapt to.
       home = lib.evalModules {
         modules = [
           homeModule
+          { inherit identity; }
           userModule
         ];
         specialArgs = { inherit hostFacts pkgs lib; };
