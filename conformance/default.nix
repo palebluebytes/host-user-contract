@@ -14,6 +14,7 @@
 , featureGroups
 , privilegedGroups
 , loadIdentity
+, bindUser
 , nixosSystem
 , system
 ,
@@ -155,6 +156,34 @@ let
   malformedRequest = builtins.tryEval (
     (evalHome [ { contract.requests.gui.session = "macos"; } ]).contract.requests.gui.session
   );
+
+  # --- the headless bindUser tracer (ADR-0023/0024, issue #5) ---
+  # The first tracer bullet (ADR-0022): bind the example user against the contract with no
+  # UI and no home-manager — eval the home → read identity.json → safe-set grant → the
+  # system fragment that realizes the account and bridges the granted request.
+  exampleHome = import ../examples/user/home.nix;
+  exampleIdentity = loadIdentity ../examples/user/identity.json;
+  exampleHostFacts = {
+    exposed = false;
+    platform = system;
+    granted = { };
+  };
+  # Runtime path: grants = safeSet (default-open over the safe set; safeSet == ["gui"]).
+  boundRuntime = bindUser {
+    userModule = exampleHome;
+    identity = exampleIdentity;
+    grants = lib.genAttrs safeSet (_: { enable = true; });
+    hostFacts = exampleHostFacts;
+  };
+  # No grants: the same gui.session request must be inert (never bridged).
+  boundNone = bindUser {
+    userModule = exampleHome;
+    identity = exampleIdentity;
+    grants = { };
+    hostFacts = exampleHostFacts;
+  };
+  # Realize bindUser's system fragment on a synthetic host ⇒ exercises realization + union.
+  boundHost = eval [ boundRuntime.system ];
 
   # --- the matrix: synthetic users × host archetypes ---
   users = {
@@ -301,6 +330,24 @@ let
     {
       name = "requests: a malformed known request (bad gui.session enum) errors";
       ok = !malformedRequest.success;
+    }
+    {
+      name = "bindUser: the home evaluates and its gui.session request is harvested";
+      ok = (boundRuntime.home ? config) && boundRuntime.requests.gui.session == "x11";
+    }
+    {
+      name = "bindUser: the account materializes from identity.json";
+      ok =
+        boundHost.users.users.example.isNormalUser
+        && boundHost.users.users.example.description == "Example User";
+    }
+    {
+      name = "bindUser: a safe-set grant bridges the gui request, feeding the union (x11)";
+      ok = boundHost.custom.gui.surface.enabled && boundHost.custom.gui.surface.x11;
+    }
+    {
+      name = "bindUser: an ungranted request is inert (no system feature config bridged)";
+      ok = !(boundNone.system.custom.users.example ? gui);
     }
     {
       name = "matrix: every user realizes on every archetype, no failing assertion";
