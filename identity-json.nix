@@ -49,13 +49,9 @@ in
       missing = lib.subtractLists keys required;
       unknown = lib.subtractLists known keys;
     in
-    assert lib.assertMsg
-      (
-        missing == [ ]
-      ) "identity.json (${toString path}) is missing required field(s): ${lib.concatStringsSep ", " missing}";
-    assert lib.assertMsg
-      (
-        unknown == [ ]
-      ) "identity.json (${toString path}) has unknown field(s): ${lib.concatStringsSep ", " unknown} — schema is: ${lib.concatStringsSep ", " known}";
+    assert lib.assertMsg (missing == [ ])
+      "identity.json (${toString path}) is missing required field(s): ${lib.concatStringsSep ", " missing}";
+    assert lib.assertMsg (unknown == [ ])
+      "identity.json (${toString path}) has unknown field(s): ${lib.concatStringsSep ", " unknown} — schema is: ${lib.concatStringsSep ", " known}";
     raw;
 }

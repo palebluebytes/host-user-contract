@@ -23,15 +23,13 @@ let
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (
     map (f: f.config or { }) (lib.attrValues registry)
   );
-  featureMeta = lib.mapAttrs
-    (
-      _: f:
-        {
-          secretBearing = f.secretBearing or false;
-        }
-        // lib.optionalAttrs (f ? secretFiles) { inherit (f) secretFiles; }
-    )
-    registry;
+  featureMeta = lib.mapAttrs (
+    _: f:
+    {
+      secretBearing = f.secretBearing or false;
+    }
+    // lib.optionalAttrs (f ? secretFiles) { inherit (f) secretFiles; }
+  ) registry;
 
   # --- closed-over modules + option fragments ---
   realization = import ./realization.nix { inherit privilegedGroups featureGroups; };
