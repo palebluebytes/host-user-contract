@@ -74,6 +74,16 @@
           contractModule = self.nixosModules.default;
           inherit system;
         };
+
+        # Runtime proof of the greeter's provisioning CRUX (ADR-0022, issue #2): a booted seat
+        # host with nixosModules.greeter enabled materializes the example user's account and
+        # activates a built home at runtime — the declarative→runtime bridge eval cannot show.
+        greeter-vm = import ./conformance/greeter-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          greeterModule = self.nixosModules.greeter;
+          inherit system;
+        };
       });
 
       # `nix fmt` canonical formatter: nixfmt (RFC 166), the official successor to the
