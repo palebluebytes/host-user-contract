@@ -82,9 +82,16 @@ in
     # The identity.json loader (ADR-0023): lossless over identity.nix, used by both the
     # user's home module and host-side bindUser.
     inherit (identityJson) loadIdentity;
-    # bindUser (ADR-0023/0024): the one binding mechanism, partially applied over the
-    # contract's own homeModule so a caller passes only { userModule, identity, grants, … }.
+    # The binding mechanism (ADR-0023/0024), each partially applied over the contract's own
+    # homeModule so a caller passes only { userModule, identity, grants, … }:
+    #   - bindUser (issue #5): the headless tracer — harvests a contract-pure home via bare
+    #     evalModules, returns { username, home, requests, system }. The logic-level proof.
+    #   - bindUserModule (issue #8): the REAL mechanism both paths call — a NixOS module the
+    #     host imports; the home is evaluated once by the host's home-manager and the bridge is
+    #     a config reference, so real homes (programs.*, home.*) bind. The host supplies
+    #     home-manager; the contract stays package-free.
     bindUser = args: contractLib.bindUser (args // { homeModule = modules.homeModule; });
+    bindUserModule = args: contractLib.bindUserModule (args // { homeModule = modules.homeModule; });
   };
 
   # The umbrella modules (one per eval-side).

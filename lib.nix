@@ -20,6 +20,22 @@ let
     !(f.secretBearing or false)
     && (lib.intersectLists (f.groups or [ ]) privilegedGroups == [ ])
     && !(f.execPayload or false);
+
+  # The request→feature-configuration bridge, shared by BOTH binding shapes (the headless
+  # tracer below and the real `bindUserModule`). Given a user's harvested `contract.requests`
+  # and the set of features the host GRANTED, copy each granted feature's request params into
+  # the system-side feature-configuration shape the realization consumes (ADR-0019) — the two
+  # shapes are identical (both are featureConfigOptions), so it is a direct copy. Only KNOWN
+  # granted features with request data are bridged; an ungranted request is never copied, so
+  # requesting an ungranted feature is a silent no-op (ADR-0018: "the grant is the sole
+  # enabler; degradation is silent"). `requests` is a value in the tracer and a CONFIG
+  # REFERENCE in the module — the fold is identical either way.
+  grantedNamesOf = grants: lib.filter (f: grants.${f}.enable or false) (lib.attrNames grants);
+  bridgeRequests =
+    requests: grantedNames:
+    lib.foldl' (
+      acc: f: if requests ? ${f} then acc // { ${f} = requests.${f}; } else acc
+    ) { } grantedNames;
 in
 {
   inherit runtimeEligibleFeature;
@@ -83,16 +99,15 @@ in
   # the contract's homeModules.default, partially applied by the kit so a caller passes only
   # the user side.
   #
-  # SCOPE — this is the HEADLESS TRACER (issue #5), not yet the full "one mechanism both paths
-  # call" of ADR-0024. It harvests by evaluating the home against the contract umbrella ALONE
-  # (lib.evalModules, no home-manager — ADR-0020's package-free invariant), so it can only
-  # evaluate a CONTRACT-PURE home that sets nothing but contract options. A REAL home module
-  # also sets home-manager options (programs.*, home.*), which are undeclared here and would
-  # throw. The real bound flow therefore evaluates the home ONCE inside the host's
-  # home-manager and reads `contract.requests` from THAT eval (the bridge becomes a config
-  # reference, not a separate harvest) — host integration tracked as a follow-up issue. The
-  # tracer proves the confined request→grant→bridge logic with zero home-manager dependency;
-  # it does not yet harvest real homes.
+  # SCOPE — this is the HEADLESS TRACER (issue #5): the package-PUREST proof of the confined
+  # request→grant→bridge logic. It harvests by evaluating the home against the contract
+  # umbrella ALONE (lib.evalModules, no home-manager, not even a stub — ADR-0020's package-free
+  # invariant), so it can only evaluate a CONTRACT-PURE home that sets nothing but contract
+  # options. A REAL home module also sets home-manager options (programs.*, home.*), which are
+  # undeclared here and would throw. `bindUserModule` below is the REAL binding mechanism both
+  # paths (operator-grant + greeter) call — it evaluates the home once inside the host's
+  # home-manager and bridges by config reference, so real homes bind (issue #8). The tracer
+  # remains the logic-level proof: same bridge (`bridgeRequests`), zero home-manager dependency.
   bindUser =
     {
       homeModule,
@@ -118,13 +133,7 @@ in
         specialArgs = { inherit hostFacts pkgs lib; };
       };
       requests = home.config.contract.requests;
-      grantedNames = lib.filter (f: grants.${f}.enable or false) (lib.attrNames grants);
-      # Bridge each granted feature's request params into custom.users.<u>.<feature>; the
-      # request shape IS the system featureConfig shape (both are featureConfigOptions), so
-      # this is a direct copy. Only KNOWN granted features with request data are bridged.
-      bridged = lib.foldl' (
-        acc: f: if requests ? ${f} then acc // { ${f} = requests.${f}; } else acc
-      ) { } grantedNames;
+      bridged = bridgeRequests requests (grantedNamesOf grants);
     in
     {
       inherit username home requests;
@@ -137,6 +146,58 @@ in
           granted = grants;
         }
         // bridged;
+      };
+    };
+
+  # bindUserModule (ADR-0024, issue #8): the REAL binding mechanism, called by BOTH paths an
+  # operator build-time grant and a runtime greeter (ADR-0022). Unlike the tracer, it harvests
+  # nothing itself — it returns a NixOS MODULE the host imports, and the home is evaluated ONCE
+  # by the host's home-manager. The bridge is then a CONFIG REFERENCE
+  # (config.home-manager.users.<u>.contract.requests), not a second eval, so the data flows the
+  # right way (ADR-0018: the system reads the home eval) and a REAL home that sets home-manager
+  # options (programs.git, home.packages) binds — those options are declared by the host's
+  # home-manager, the very thing the tracer's bare evalModules lacks.
+  #
+  # PACKAGE-FREE (ADR-0020): this module only *references* `home-manager.*` option paths; it
+  # does NOT import home-manager. The HOST supplies home-manager (it already does to build
+  # homes) — so the contract keeps depending on nixpkgs `lib` alone. Identity is the single
+  # loaded value injected into both the account and the home (ADR-0025), exactly as the tracer;
+  # `hostFacts` is injected per-user via the home submodule's `_module.args` (home-manager's
+  # `extraSpecialArgs` is global, so the read-only, per-user host projection rides the submodule
+  # instead). `pkgs` needs no injection here — home-manager provides it to the home natively.
+  bindUserModule =
+    {
+      homeModule,
+      userModule,
+      identity,
+      grants ? { },
+      hostFacts ? { },
+    }:
+    { config, ... }:
+    let
+      username = identity.username;
+      bridged = bridgeRequests config.home-manager.users.${username}.contract.requests (
+        grantedNamesOf grants
+      );
+    in
+    {
+      # The system account: realized from identity, powered by the grants, fed the bridged
+      # request params (e.g. gui.session) the realization + gui-session union consume (ADR-0019).
+      custom.users.${username} = {
+        inherit identity;
+        granted = grants;
+      }
+      // bridged;
+      # The home, evaluated once by the host's home-manager. identity is injected (ADR-0025);
+      # hostFacts rides the submodule's module args so the home reads its self-scoped, read-only
+      # host projection (ADR-0018) without a global specialArg.
+      home-manager.users.${username} = {
+        imports = [
+          homeModule
+          { inherit identity; }
+          userModule
+        ];
+        _module.args.hostFacts = hostFacts;
       };
     };
 }
