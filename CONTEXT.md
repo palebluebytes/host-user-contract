@@ -26,7 +26,8 @@ the term is stable, the code is pending (see the cited issue).
   config repo consumed via `bindUser` (ADR-0023); today still in-repo in the fleet.
 - **umbrella / kit** — the assembled shipped surface (`kit.nix`). `nixosModules.default` =
   the `custom.users` schema + `platform` interface + `custom.host.exposed` + the
-  exposed-host ban + realization + the insecure-package aggregator. `homeModules.default` =
+  exposed-host ban + realization + the insecure-package aggregator. `nixosModules.greeter` =
+  the opt-in reference runtime greeter (a seat host enables it). `homeModules.default` =
   identity + home profiles + the `platform` interface.
 - **mechanism vs binding** — the contract ships generic **mechanism**; the host supplies
   only **bindings** (the `platform` secrets binding, the display/theme, *which* hosts, the
@@ -138,10 +139,29 @@ the term is stable, the code is pending (see the cited issue).
   The greeter program that drives `bindUserModule` at runtime is issue #2. (ADR-0023, ADR-0024,
   ADR-0025)
 - **greeter** — the runtime path: a seat host's greetd flow that fetches a user flake,
-  authenticates **eval-free** on `identity.json`, classifies the tier, calls `bindUserModule`
-  with `grants = safeSet`, builds, and provisions the account. Ships as the replaceable
-  `nixosModules.greeter`. The project's north star. **(designed; not yet built — issue #2)**
-  (ADR-0018, ADR-0022, ADR-0024)
+  authenticates **eval-free** on `identity.json`, classifies the tier, binds with
+  `grants = greeterGrants`, builds, and provisions the account. Ships as the opt-in, replaceable
+  `nixosModules.greeter` (`greeter.nix`) — `nixosModules` is split `default` (every host) +
+  `greeter` (a seat host enables it). The project's north star. **(built — issue #2)** (ADR-0018,
+  ADR-0022, ADR-0024)
+- **greeter mechanism vs program** — ADR-0024's split, what makes `nixosModules.greeter` both
+  canonical and replaceable. **Mandatory mechanism** (pure `lib`/module, no package): authenticate
+  **eval-free** on `identity.json` before any user Nix, bind via the contract, grant at most the
+  `safeSet`. **Replaceable program** (where packages live): the greetd integration, the UI, and the
+  runtime-provisioning helper. The reference module ships scripts that reference packages from the
+  **host's** `pkgs`, so the contract *flake* still inputs only nixpkgs `lib` (ADR-0020) — the one
+  place a package is allowed without breaking the package-free invariant.
+- **contract-greeter-{bind,auth,provision}** — the reference greeter's three scripts. `auth` is
+  the **canonical eval-free** step (`jq` over `identity.json` + libc-crypt password + Tier-1 SSH
+  signature, running zero user Nix); `provision` is the **runtime-provisioning helper** — the
+  privileged crux that materializes the (Tier-1 persisted) account and **activates the built home
+  AS the user** outside NixOS's declarative build-time model; `bind` is the greetd orchestrator
+  tying the ordering together. (`greeter.nix`; ADR-0022 "genuinely novel work")
+- **homeBuilder** — the greeter's one **host binding** (`custom.greeter.homeBuilder`, null by
+  default): the command that evaluates + builds a user's home *through the contract* under the
+  tier's restricted eval and prints the activation package. It is host-side because building a real
+  home needs home-manager, which the contract does not depend on — exactly as the platform/display
+  bindings are host-side. Everything else in the greeter is package-free at the flake level.
 - **safe set** — the features a runtime/greeter login may auto-grant: the **runtime-eligible**
   ones. `safeSet = ["gui"]` today. (`lib.nix`)
 - **greeterGrants** — the **canonical runtime grant value** (`self.greeterGrants`): the safe set
