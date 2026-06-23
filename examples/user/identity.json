@@ -4,7 +4,7 @@
   "username": "example",
   "gmail": "",
   "sshKey": "ssh-ed25519 AAAAexamplekey example@user.invalid",
-  "hashedPassword": "",
+  "hashedPassword": "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/",
   "extraGroups": [],
   "trustedKeys": []
 }

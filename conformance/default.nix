@@ -10,6 +10,7 @@
   lib,
   pkgs,
   contractModule,
+  greeterModule,
   homeModule,
   safeSet,
   greeterGrants,
@@ -237,6 +238,57 @@ let
   realBoundRuntime = realBound greeterGrants;
   realBoundNone = realBound { };
 
+  # --- the reference greeter module (ADR-0024, issue #2, slices 2+3) ---
+  # The opt-in greetd + eval-free-bind + provision module. Two eval-level claims, mirroring the
+  # platform-interface litmus (ADR-0024): the module present-but-UNBOUND must not turn anything
+  # on, and ENABLED it must wire greetd to the contract bind command with the grant FIXED to the
+  # safe set (it cannot be widened to an operator choice). The home BUILD is a host binding
+  # (homeBuilder, null by default) — building a real home needs home-manager, which the contract
+  # does not depend on, so that one step stays host-side exactly like the display backend.
+  greeterUnbound = eval [ greeterModule ];
+  greeterBound = eval [
+    greeterModule
+    {
+      custom.greeter.enable = true;
+      custom.greeter.homeBuilder = "/run/current-system/sw/bin/true";
+    }
+  ];
+
+  # The auth-flow EXECUTION test (ADR-0024 condition 1, the CANONICAL eval-free auth): pull the
+  # actual shipped `contract-greeter-auth` script out of the enabled greeter's systemPackages and
+  # run it against the example user repo's identity.json. It must accept the right password and
+  # reject a wrong one / a mismatched username — having read only data (`jq` + libc crypt), never
+  # the user's Nix. (Tier 2 here skips the signature step, isolating the password check; the
+  # cleartext for the example's hashedPassword is "correct-horse-battery-staple".)
+  authScript =
+    lib.findFirst (p: lib.hasInfix "contract-greeter-auth" (p.name or ""))
+      (throw "conformance: contract-greeter-auth not found in the greeter's systemPackages")
+      greeterBound.environment.systemPackages;
+  exampleSrc = ../examples/user;
+  authFlowTest =
+    pkgs.runCommand "contract-greeter-auth-flow" { nativeBuildInputs = [ authScript ]; }
+      ''
+        src=${exampleSrc}
+
+        echo "# right password ⇒ accepts"
+        printf '%s\n' 'correct-horse-battery-staple' \
+          | contract-greeter-auth "$src" example tier2 /dev/null
+
+        echo "# wrong password ⇒ rejects"
+        if printf '%s\n' 'wrong-password' \
+          | contract-greeter-auth "$src" example tier2 /dev/null 2>/dev/null; then
+          echo "FAIL: a wrong password was accepted" >&2; exit 1
+        fi
+
+        echo "# username mismatch ⇒ rejects (no impersonation)"
+        if printf '%s\n' 'correct-horse-battery-staple' \
+          | contract-greeter-auth "$src" someone-else tier2 /dev/null 2>/dev/null; then
+          echo "FAIL: a mismatched username was accepted" >&2; exit 1
+        fi
+
+        echo "eval-free auth flow OK" ; touch $out
+      '';
+
   # --- the matrix: synthetic users × host archetypes ---
   users = {
     alice = mkUser "alice" { session = "wayland"; };
@@ -452,6 +504,32 @@ let
         && !(lib.elem "signing" (lib.attrNames greeterGrants));
     }
     {
+      # ADR-0024 litmus (mirrors the platform interface): the greeter ships in the eval but a
+      # host that does not enable it gets nothing — greetd stays off, no seat is bound.
+      name = "greeter: present-but-unbound turns nothing on (greetd disabled)";
+      ok = !greeterUnbound.services.greetd.enable;
+    }
+    {
+      name = "greeter: enabling it wires greetd to the contract bind command";
+      ok =
+        greeterBound.services.greetd.enable
+        && lib.hasInfix "contract-greeter-bind" greeterBound.services.greetd.settings.default_session.command;
+    }
+    {
+      # ADR-0024 condition 3: the runtime grant is FIXED to the safe set — not an operator choice,
+      # impossible to widen here. So a greeter login can never receive a privileged/secret feature.
+      name = "greeter: the runtime grant is fixed to greeterGrants (the safe set), unwidenable";
+      ok =
+        greeterBound.custom.greeter.grants == greeterGrants
+        && !(lib.elem "workstation" (lib.attrNames greeterBound.custom.greeter.grants));
+    }
+    {
+      # The home BUILD is the host's binding (ADR-0024 "the host supplies only bindings") —
+      # null by default because it needs home-manager, which the contract does not depend on.
+      name = "greeter: the home builder is an unbound host binding (null by default)";
+      ok = greeterUnbound.custom.greeter.homeBuilder == null;
+    }
+    {
       name = "matrix: every user realizes on every archetype, no failing assertion";
       ok = lib.all (sys: (accountsRealized sys) && (failing sys.config == [ ])) archetypes;
     }
@@ -474,10 +552,12 @@ let
     a: "  ${if a.ok then "ok  " else "FAIL"}  ${a.name}"
   ) assertions;
 in
-pkgs.runCommand "contract-conformance" { } ''
+pkgs.runCommand "contract-conformance" { greeterAuthFlow = authFlowTest; } ''
   cat <<'EOF'
   contract conformance — synthetic users × the contract umbrella (no host repo):
   ${report}
+
+  greeter eval-free auth flow: ${authFlowTest} (built ⇒ ok)
   EOF
   ${lib.optionalString (failures != [ ]) ''
     echo "contract conformance FAILED (see above)" >&2
