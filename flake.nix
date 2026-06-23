@@ -63,13 +63,18 @@
         };
       });
 
+      # `nix fmt` canonical formatter: nixfmt (RFC 166), the official successor to the
+      # now-deprecated nixpkgs-fmt. Unlike nixpkgs-fmt it enforces a single function-arg
+      # comma style, so the whole tree stays consistent (`nix fmt`, or `nixfmt --check` in CI).
+      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt);
+
       # Dev shell for working on the contract: gh for the GitHub issue tracker
-      # (see docs/agents/issue-tracker.md), nixpkgs-fmt for the Nix sources.
+      # (see docs/agents/issue-tracker.md), nixfmt for the Nix sources (`nix fmt`).
       devShells = forAllSystems (system: {
         default = nixpkgs.legacyPackages.${system}.mkShellNoCC {
           packages = with nixpkgs.legacyPackages.${system}; [
             gh
-            nixpkgs-fmt
+            nixfmt
           ];
         };
       });
