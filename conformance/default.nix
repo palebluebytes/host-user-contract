@@ -258,16 +258,25 @@ let
   # actual shipped `contract-greeter-auth` script out of the enabled greeter's systemPackages and
   # run it against the example user repo's identity.json. It must accept the right password and
   # reject a wrong one / a mismatched username — having read only data (`jq` + libc crypt), never
-  # the user's Nix. (Tier 2 here skips the signature step, isolating the password check; the
-  # cleartext for the example's hashedPassword is "correct-horse-battery-staple".)
+  # the user's Nix. Tier 2 isolates the password check (no signature); the Tier-1 block then
+  # exercises the signature branch with a real SSH key (good signature accepts, untrusted-key and
+  # absent signatures reject). The cleartext for the example's hashedPassword is
+  # "correct-horse-battery-staple".
   authScript =
     lib.findFirst (p: lib.hasInfix "contract-greeter-auth" (p.name or ""))
       (throw "conformance: contract-greeter-auth not found in the greeter's systemPackages")
       greeterBound.environment.systemPackages;
   exampleSrc = ../examples/user;
   authFlowTest =
-    pkgs.runCommand "contract-greeter-auth-flow" { nativeBuildInputs = [ authScript ]; }
+    pkgs.runCommand "contract-greeter-auth-flow"
+      {
+        nativeBuildInputs = [
+          authScript
+          pkgs.openssh
+        ];
+      }
       ''
+        export HOME=$PWD
         src=${exampleSrc}
 
         echo "# right password ⇒ accepts"
@@ -284,6 +293,37 @@ let
         if printf '%s\n' 'correct-horse-battery-staple' \
           | contract-greeter-auth "$src" someone-else tier2 /dev/null 2>/dev/null; then
           echo "FAIL: a mismatched username was accepted" >&2; exit 1
+        fi
+
+        # --- Tier 1: the repo must be SIGNED by a host-trusted key (ADR-0022) ---
+        # Build a signed source: the example identity.json + an SSH signature over the tree
+        # manifest (exactly what the auth script recomputes and verifies), plus the allowed-signers
+        # file a host would derive from custom.greeter.trustedSigners.
+        ssh-keygen -q -t ed25519 -N "" -C trusted -f trusted
+        ssh-keygen -q -t ed25519 -N "" -C attacker -f attacker
+        mkdir signed
+        cp "$src/identity.json" signed/identity.json
+        manifest=$(cd signed && find . -type f ! -name contract.sig -print0 | sort -z | xargs -0 sha256sum)
+        printf '%s' "$manifest" > manifest.txt
+        ssh-keygen -Y sign -f trusted -n contract manifest.txt
+        cp manifest.txt.sig signed/contract.sig
+        printf '* %s\n' "$(cat trusted.pub)" > trusted-signers
+        printf '* %s\n' "$(cat attacker.pub)" > attacker-signers
+
+        echo "# tier1: a host-trusted signature over the repo ⇒ accepts"
+        printf '%s\n' 'correct-horse-battery-staple' \
+          | contract-greeter-auth signed example tier1 trusted-signers
+
+        echo "# tier1: a signature by an UNTRUSTED key ⇒ rejects"
+        if printf '%s\n' 'correct-horse-battery-staple' \
+          | contract-greeter-auth signed example tier1 attacker-signers 2>/dev/null; then
+          echo "FAIL: a signature by an untrusted key was accepted" >&2; exit 1
+        fi
+
+        echo "# tier1: no signature at all ⇒ rejects"
+        if printf '%s\n' 'correct-horse-battery-staple' \
+          | contract-greeter-auth "$src" example tier1 trusted-signers 2>/dev/null; then
+          echo "FAIL: an unsigned repo was accepted at tier1" >&2; exit 1
         fi
 
         echo "eval-free auth flow OK" ; touch $out
