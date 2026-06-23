@@ -69,7 +69,7 @@ in
     featureGroups
     privilegedGroups
     ;
-  inherit (contractLib) safeSet;
+  inherit (contractLib) safeSet greeterGrants;
 
   # The identity.json schema, exposed so a host/greeter can introspect the jq-readable
   # shape it authenticates against before any eval (ADR-0023, issue #5).

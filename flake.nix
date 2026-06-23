@@ -31,6 +31,7 @@
         featureGroups
         privilegedGroups
         safeSet
+        greeterGrants
         identityFile
         identitySchema
         ;
@@ -47,7 +48,12 @@
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           homeModule = self.homeModules.default;
-          inherit (self) safeSet featureGroups privilegedGroups;
+          inherit (self)
+            safeSet
+            greeterGrants
+            featureGroups
+            privilegedGroups
+            ;
           inherit (self.lib) loadIdentity bindUser bindUserModule;
           nixosSystem = nixpkgs.lib.nixosSystem;
         };

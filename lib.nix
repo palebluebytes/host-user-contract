@@ -21,6 +21,9 @@ let
     && (lib.intersectLists (f.groups or [ ]) privilegedGroups == [ ])
     && !(f.execPayload or false);
 
+  # The runtime-eligible feature names — the safe set (ADR-0018, slice 15).
+  safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
+
   # The request→feature-configuration bridge, shared by BOTH binding shapes (the headless
   # tracer below and the real `bindUserModule`). Given a user's harvested `contract.requests`
   # and the set of features the host GRANTED, copy each granted feature's request params into
@@ -56,9 +59,19 @@ let
     // bridgeRequests requests (grantedNamesOf grants);
 in
 {
-  inherit runtimeEligibleFeature;
+  inherit runtimeEligibleFeature safeSet;
 
-  safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
+  # The runtime/greeter grant (ADR-0022, ADR-0024): "default-open over the safe set". The
+  # greeter does not let an operator choose features — it auto-grants every runtime-eligible
+  # one, and privilege is impossible because the safe set EXCLUDES secret-bearing and
+  # privileged-group features by construction. This is the canonical, conformance-checked grant
+  # value the greeter binds with (`bindUserModule { grants = greeterGrants; … }`); single-sourcing
+  # it here is exactly ADR-0024's conformance condition (3): a greeter grants AT MOST the safe
+  # set. `grants` is shaped `{ <feature>.enable = bool; }` (the registry's grantedOptions), so
+  # this lifts the safe-set NAME LIST into that grant attrset.
+  greeterGrants = lib.genAttrs safeSet (_: {
+    enable = true;
+  });
 
   # Recipients-from-grants (ADR-0015, slice 06): for each secret-bearing feature's sops
   # file, the set of hosts that GRANT it — the single source of truth for .sops.yaml
