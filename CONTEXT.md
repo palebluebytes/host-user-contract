@@ -167,9 +167,22 @@ the term is stable, the code is pending (see the cited issue).
   greetd orchestrator tying the ordering together. (`greeter.nix`; ADR-0022, ADR-0028)
 - **homeBuilder** — the greeter's one **host binding** (`custom.greeter.homeBuilder`, null by
   default): the command that evaluates + builds a user's home *through the contract* under the
-  tier's restricted eval and prints the activation package. It is host-side because building a real
+  [[tier1-eval-posture]] and prints the activation package. It is host-side because building a real
   home needs home-manager, which the contract does not depend on — exactly as the platform/display
-  bindings are host-side. Everything else in the greeter is package-free at the flake level.
+  bindings are host-side. The greeter hands it the posture as `NIX_CONFIG`, so a naive `nix build`
+  binding inherits the floor for free. Everything else in the greeter is package-free at the flake level.
+- **tier1-eval-posture** — the **contract-pinned** Nix settings a host-signed home is evaluated +
+  built under (`tier1EvalConfig`, a projection beside [[safe-set]]/[[greeterGrants]]; ADR-0030):
+  `accept-flake-config = false` (**the un-widenable linchpin** — the repo's own `nixConfig` is
+  ignored, so it cannot relax its own eval; ADR-0027 applied to eval), `restrict-eval`, no IFD, and
+  a sandboxed build. The greeter renders it (contract's own `renderNixConfig`) and exports it as
+  `NIX_CONFIG` to [[homeBuilder]]; it augments the seat's `nix.conf` (experimental-features survive)
+  and a host may **add** restrictions, never remove these. `restrict-eval` is coherent because the
+  fetch step is `nix flake archive` (source **+ input closure**), so the restricted build needs no
+  eval-time network. Exposed read-only as `custom.greeter.tier1EvalConfig` for audit. Proven in
+  conformance both by eval assertions and by an **executable** proof (the rendered posture actually
+  blocks a hostile `readFile`; the same eval succeeds without it). Tier 2 will pin a stricter
+  posture; deferred. (ADR-0027, ADR-0030; `lib.nix`, `greeter.nix`)
 - **greeter-seat baseline** — the **standing, build-time** system-side effects a greeter seat
   pre-realizes once, so a runtime login needs **no per-login rebuild**. Because every greeter login
   gets *exactly* `greeterGrants` and the safe set is statically known, the grant's system effects
@@ -204,7 +217,7 @@ the term is stable, the code is pending (see the cited issue).
   the safe set iff it bears no secret, confers no privileged group, **and** carries no exec
   payload. Deriving it keeps "what a stranger may have" tied to "what confers no privilege."
 - **tier (Tier 1 / Tier 2)** — the greeter's trust classification of a flake URL. Tier 1 =
-  semi-trusted (own, *signed* repo; persisted home; restricted eval guarding accidents) —
+  semi-trusted (own, *signed* repo; persisted home; the [[tier1-eval-posture]] guarding accidents) —
   built first. Tier 2 = untrusted (anyone; hardened eval; ephemeral home) — designed-for,
   deferred. A tier is a *parameter* over one mechanism, not a separate code path. (ADR-0022)
 - **trustedSigners vs trustedKeys** — two different key sets, kept distinct (ADR-0027).

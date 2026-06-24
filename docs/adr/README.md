@@ -22,6 +22,7 @@ contract ships).
 | [0027](0027-host-is-sole-tier1-signing-authority.md) | The host is the sole authority for Tier-1 signing trust; a repo cannot vouch for itself |
 | [0028](0028-runtime-provisioning-is-shell-side-realization.md) | Runtime provisioning is the shell-side realization: fully realize the account before the session |
 | [0029](0029-per-user-desktop-choice-host-offered.md) | A greeter login is a per-user desktop choice; the seat offers desktops, the contract carries the name |
+| [0030](0030-tier1-restricted-eval-posture.md) | The contract pins the Tier-1 restricted-eval posture; the greeter applies it, the repo cannot widen it |
 
 ## Numbering
 
