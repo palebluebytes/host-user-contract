@@ -85,6 +85,12 @@ pkgs.testers.runNixOSTest {
     machine.succeed("grep -q greeter-activated /home/${username}/.contract-home-active")
     machine.succeed("stat -c %U /home/${username}/.contract-home-active | grep -qx ${username}")
 
+    # The desktop-choice helper (ADR-0029) auto-surfaced the home's contract.requests.gui.desktop to
+    # ~/.contract-desktop, where the greeter's launcher reads it — no manual step. The example home
+    # requests "plasma".
+    machine.succeed("test -f /home/${username}/.contract-desktop")
+    machine.succeed("grep -qx plasma /home/${username}/.contract-desktop")
+
     print(machine.succeed("ls -la /home/${username}"))
   '';
 }

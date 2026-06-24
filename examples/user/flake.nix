@@ -66,6 +66,9 @@
       homeConfigurations.example-greeter = mkHome {
         granted = contract.greeterGrants;
         extra = [
+          # The desktop-choice helper (ADR-0029): a real home imports it ALONGSIDE the umbrella so the
+          # home's contract.requests.gui.desktop is auto-surfaced to ~/.contract-desktop for the greeter.
+          contract.homeModules.greeterDesktop
           { home.file.".contract-home-active".text = "greeter-activated for ${identity.name}"; }
         ];
       };

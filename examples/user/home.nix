@@ -24,4 +24,10 @@
   # GRANTS gui — then bindUser harvests it and the gui-session union offers X11 (ADR-0019).
   # The user only asks; the host decides and writes.
   contract.requests.gui.session = "x11";
+
+  # The user's DESKTOP choice (ADR-0029): a free-form, DE-agnostic name that travels with the home.
+  # Still just a request here (contract-pure, so the tracer harvests it); the contract's
+  # homeModules.greeterDesktop helper materialises it to ~/.contract-desktop in a real home build,
+  # where the greeter's launcher reads it and maps it to a desktop the seat offers (else its default).
+  contract.requests.gui.desktop = "plasma";
 }
