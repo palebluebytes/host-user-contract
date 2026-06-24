@@ -187,20 +187,52 @@
         };
       });
 
-      # `nix fmt` canonical formatter: nixfmt (RFC 166), the official successor to the
-      # now-deprecated nixpkgs-fmt. Unlike nixpkgs-fmt it enforces a single function-arg
-      # comma style, so the whole tree stays consistent (`nix fmt`, or `nixfmt --check` in CI).
-      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt);
-
-      # Dev shell for working on the contract: gh for the GitHub issue tracker
-      # (see docs/agents/issue-tracker.md), nixfmt for the Nix sources (`nix fmt`).
-      devShells = forAllSystems (system: {
-        default = nixpkgs.legacyPackages.${system}.mkShellNoCC {
-          packages = with nixpkgs.legacyPackages.${system}; [
-            gh
-            nixfmt
+      # `nix fmt`: treefmt over the whole tree — nixfmt (RFC 166) for Nix, ruff for Python, shfmt for
+      # shell. All formatters come from nixpkgs, so the contract flake still inputs only nixpkgs (no
+      # treefmt-nix/git-hooks.nix inputs, ADR-0020). Config: ./treefmt.toml.
+      formatter = forAllSystems (
+        system:
+        let
+          p = nixpkgs.legacyPackages.${system};
+        in
+        p.writeShellApplication {
+          name = "treefmt";
+          runtimeInputs = [
+            p.treefmt
+            p.nixfmt
+            p.ruff
+            p.shfmt
           ];
-        };
-      });
+          text = ''exec treefmt "$@"'';
+        }
+      );
+
+      # Dev shell: the project's tools (`nix develop`). Formatting (treefmt + the per-language
+      # formatters) and linting (statix/deadnix for Nix, ruff for Python, shellcheck for shell), plus
+      # gh for the issue tracker. The shellHook points git at the committed pre-commit hook.
+      devShells = forAllSystems (
+        system:
+        let
+          p = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = p.mkShellNoCC {
+            packages = [
+              p.gh
+              p.treefmt
+              p.nixfmt
+              p.ruff
+              p.shfmt
+              p.statix
+              p.deadnix
+              p.shellcheck
+            ];
+            shellHook = ''
+              git config --local core.hooksPath .githooks 2>/dev/null || true
+              echo "contract dev shell · nix fmt (treefmt) · lint: statix/deadnix/ruff/shellcheck · hooks: .githooks"
+            '';
+          };
+        }
+      );
     };
 }

@@ -1,0 +1,14 @@
+# statix (Nix lint) config. Ignore vendored flake inputs, and disable the lints that disagree with this
+# project's deliberate idioms, so the linter flags genuinely new issues rather than re-litigating style:
+#   - repeated_keys       — the flat `custom.greeter.x = …` style is intentional and reads well, esp. in
+#                           the conformance VMs.
+#   - manual_inherit_from — explicit `x = y.x;` is sometimes clearer than `inherit (y) x;`.
+#   - empty_pattern       — `{ ... }:` is the conventional module signature.
+#   - useless_parens      — grouping parens around a `(f x).attr` selection are clarity, not noise.
+ignore = [".direnv"]
+disabled = [
+  "repeated_keys",
+  "manual_inherit_from",
+  "empty_pattern",
+  "useless_parens",
+]

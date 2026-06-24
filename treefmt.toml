@@ -1,0 +1,17 @@
+# Multi-language formatting for the contract, run via `nix fmt` (treefmt over nixpkgs tools — no extra
+# flake inputs, ADR-0020). Nix is the deliverable; Python (the reference escrow server) and shell (the
+# reference keyFetcher) are example/host-side code.
+
+[formatter.nix]
+command = "nixfmt"
+includes = ["*.nix"]
+
+[formatter.python]
+command = "ruff"
+options = ["format"]
+includes = ["*.py"]
+
+[formatter.shell]
+command = "shfmt"
+options = ["--write", "--indent", "2", "--case-indent", "--simplify"]
+includes = ["*.sh", "*.bash", "examples/escrow-keyserver/key-fetcher"]

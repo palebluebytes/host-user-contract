@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Pre-commit: formatting + lint. Tools come from `nix develop` (ADR-0020 keeps them out of the flake's
+# inputs), so commit from inside the dev shell (or use direnv). Enable with `nix develop` once, which
+# sets core.hooksPath to .githooks.
+set -euo pipefail
+
+if ! command -v treefmt >/dev/null 2>&1; then
+  echo "pre-commit: dev tools not on PATH — run commits inside 'nix develop' (or set up direnv)." >&2
+  exit 1
+fi
+
+echo "• treefmt — formatting"
+treefmt --fail-on-change
+
+echo "• statix — Nix lint"
+statix check .
+
+echo "• deadnix — dead Nix"
+deadnix --fail .
+
+echo "• ruff — Python lint"
+ruff check .
+
+echo "• shellcheck — example shell"
+shellcheck examples/escrow-keyserver/key-fetcher
+
+echo "pre-commit OK"

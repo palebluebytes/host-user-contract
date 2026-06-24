@@ -1,0 +1,11 @@
+# direnv / nix-shell cache (vendored flake inputs live here — never lint or commit them)
+/.direnv/
+.envrc.local
+
+# nix build outputs
+/result
+/result-*
+
+# tool caches
+__pycache__/
+*.pyc
