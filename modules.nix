@@ -92,10 +92,9 @@
   # references the `home.file` option path (home-manager declares it), never imports home-manager.
   homeGreeterDesktopModule =
     { config, ... }:
-    let
-      desktop = config.contract.requests.gui.desktop or "";
-    in
-    lib.mkIf (desktop != "") {
-      home.file.".contract-desktop".text = desktop;
+    # gui.desktop is a declared request option (always present, defaulting to ""), so read it
+    # directly — no fallback. The empty default is the "no choice ⇒ seat default" case below.
+    lib.mkIf (config.contract.requests.gui.desktop != "") {
+      home.file.".contract-desktop".text = config.contract.requests.gui.desktop;
     };
 }
