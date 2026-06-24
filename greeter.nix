@@ -62,6 +62,7 @@ let
   # The four shipped programs, one per file (the canonical mechanism + the replaceable UI). Each is
   # a writeShellApplication closed over only what it needs; bind orchestrates the other three.
   authScript = import ./greeter/auth.nix { inherit pkgs identityFile; };
+  unlockScript = import ./greeter/unlock.nix { inherit pkgs; };
   provisionScript = import ./greeter/provision.nix {
     inherit
       pkgs
@@ -83,8 +84,15 @@ let
       authScript
       provisionScript
       sessionScript
+      unlockScript
       ;
-    inherit (cfg) tier trustedSigners homeBuilder;
+    inherit (cfg)
+      tier
+      trustedSigners
+      homeBuilder
+      secretProvisioning
+      ;
+    exposed = config.custom.host.exposed;
   };
 in
 {
@@ -196,6 +204,41 @@ in
       description = "The `desktops` name to launch when the user requests none, or requests one this seat does not offer (ADR-0029).";
     };
 
+    secretProvisioning = lib.mkOption {
+      description = ''
+        Greeter secret provisioning (ADR-0031, issue #10): on a TRUSTED Tier-1 seat, unlock the user's
+        OWN age key from their repo with a passphrase so their home sops decrypt at a roaming login.
+        Off by default and a host BINDING (the seat asserts it is trusted to hold the user's plaintext
+        for the session). REFUSED on an exposed host (ADR-0015) and at tier2 (secret-free). Distinct
+        from contract secret-features (`signing`), which stay build-time via the safe set.
+      '';
+      default = { };
+      type = lib.types.submodule {
+        options = {
+          enable = lib.mkEnableOption "unlocking the user's age key at a greeter login (trusted Tier-1 seats only)";
+          separatePassphrase = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Prompt a SEPARATE unlock passphrase (recommended) rather than reusing the login password.
+              The login password also backs `hashedPassword` and the wrapped key is public/offline-
+              brute-forceable, so decoupling lets the key be stronger than the login secret.
+            '';
+          };
+          wrappedKeyName = lib.mkOption {
+            type = lib.types.str;
+            default = "contract-key.enc";
+            description = "Filename in the user repo of the passphrase-wrapped age identity (see contract-greeter-unlock for the wrapping).";
+          };
+          keyFile = lib.mkOption {
+            type = lib.types.str;
+            default = ".config/sops/age/keys.txt";
+            description = "Home-relative path the unlocked age identity is installed to (sops-nix's default age key path).";
+          };
+        };
+      };
+    };
+
     grants = lib.mkOption {
       type = lib.types.attrsOf (lib.types.attrsOf lib.types.bool);
       readOnly = true;
@@ -209,6 +252,16 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # Secret provisioning is indefensible on an exposed host — the seat sees the user's decrypted
+    # secrets while it activates the home (ADR-0031, gated on the ADR-0015 exposed-host ban). bind
+    # also refuses at runtime; this makes a misconfigured seat a clear eval error, not a login surprise.
+    assertions = [
+      {
+        assertion = cfg.secretProvisioning.enable -> !config.custom.host.exposed;
+        message = "custom.greeter.secretProvisioning is enabled on exposed host '${config.networking.hostName}' — an exposed/agent host must never hold the user's key material (ADR-0015, ADR-0031)";
+      }
+    ];
+
     # greetd runs the bind orchestrator as the seat's login program. The default_session command
     # is mkDefault so a host can substitute regreet/its own UI (the replaceable half) while the
     # binding scripts below stay canonical.
@@ -230,6 +283,7 @@ in
       authScript
       provisionScript
       sessionScript
+      unlockScript
     ];
   };
 }

@@ -137,11 +137,65 @@ let
         echo "tier1 restricted-eval posture OK (restrict-eval enforced via NIX_CONFIG)"
         touch $out
       '';
+
+  # Secret provisioning (ADR-0031, issue #10): enabling it on an EXPOSED host must fail an assertion —
+  # the seat sees the user's plaintext while activating the home, indefensible on an agent box (ADR-0015).
+  greeterSecretExposed = eval [
+    greeterModule
+    {
+      custom.greeter.enable = true;
+      custom.greeter.homeBuilder = "/run/current-system/sw/bin/true";
+      custom.greeter.secretProvisioning.enable = true;
+      custom.host.exposed = true;
+      networking.hostName = "agent";
+    }
+  ];
+
+  # The unlock EXECUTION test (ADR-0031): pull the shipped `contract-greeter-unlock` and prove it turns
+  # the user's PASSPHRASE into their KEY — wrap a real age identity with the contract's convention (magic
+  # header + openssl pbkdf2), then the right passphrase recovers exactly that identity, a wrong one is
+  # cleanly rejected, and the magic header never leaks into the placed key.
+  unlockScript =
+    lib.findFirst (p: lib.hasInfix "contract-greeter-unlock" (p.name or ""))
+      (throw "conformance: contract-greeter-unlock not found in the greeter's systemPackages")
+      greeterBound.environment.systemPackages;
+  unlockFlowTest =
+    pkgs.runCommand "contract-greeter-unlock-flow"
+      {
+        nativeBuildInputs = [
+          unlockScript
+          pkgs.openssl
+          pkgs.age
+        ];
+      }
+      ''
+        export HOME=$PWD
+
+        # A user age identity, wrapped with the contract convention (magic header line + the age key,
+        # encrypted AES-256-CBC + PBKDF2 — exactly what the user runs).
+        age-keygen -o id.txt 2>/dev/null
+        { printf 'contract-age-key-v1\n'; cat id.txt; } > plain.txt
+        printf 'unlock-pass' \
+          | openssl enc -e -aes-256-cbc -salt -pbkdf2 -iter 600000 -pass stdin -in plain.txt -out contract-key.enc
+
+        echo "# right passphrase ⇒ recovers the user's age identity, header stripped"
+        printf 'unlock-pass' | contract-greeter-unlock contract-key.enc > out.txt
+        grep -qF "$(grep '^AGE-SECRET-KEY' id.txt)" out.txt || { echo "FAIL: did not recover the identity" >&2; exit 1; }
+        grep -q 'contract-age-key-v1' out.txt && { echo "FAIL: magic header leaked into the key" >&2; exit 1; }
+
+        echo "# wrong passphrase ⇒ rejects (no garbage key)"
+        if printf 'WRONG-pass' | contract-greeter-unlock contract-key.enc >/dev/null 2>&1; then
+          echo "FAIL: a wrong passphrase was accepted" >&2; exit 1
+        fi
+
+        echo "unlock flow OK"; touch $out
+      '';
 in
 {
   drvs = {
     greeterAuthFlow = authFlowTest;
     tier1RestrictedEval = restrictedEvalTest;
+    greeterUnlockFlow = unlockFlowTest;
   };
 
   assertions = [
@@ -188,6 +242,19 @@ in
       # null by default because it needs home-manager, which the contract does not depend on.
       name = "greeter: the home builder is an unbound host binding (null by default)";
       ok = greeterUnbound.custom.greeter.homeBuilder == null;
+    }
+    {
+      # ADR-0031: secret provisioning is off by default (a host opts in on a trusted seat).
+      name = "secret provisioning: off by default";
+      ok = !greeterUnbound.custom.greeter.secretProvisioning.enable;
+    }
+    {
+      # ADR-0031 / ADR-0015: enabling it on an exposed host is a hard eval error (the seat sees the
+      # user's plaintext while activating the home — an agent box must never hold the user's key).
+      name = "secret provisioning: enabling it on an exposed host fails an assertion";
+      ok = lib.any (
+        a: !a.assertion && lib.hasInfix "secretProvisioning" a.message
+      ) greeterSecretExposed.assertions;
     }
     {
       # ADR-0030: the contract PINS the Tier-1 eval posture. accept-flake-config=false is the

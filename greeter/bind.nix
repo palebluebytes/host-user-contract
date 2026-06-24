@@ -10,9 +10,12 @@
   trustedSigners,
   homeBuilder,
   tier1NixConfig,
+  exposed,
+  secretProvisioning,
   authScript,
   provisionScript,
   sessionScript,
+  unlockScript,
 }:
 pkgs.writeShellApplication {
   name = "contract-greeter-bind";
@@ -23,6 +26,7 @@ pkgs.writeShellApplication {
     authScript
     provisionScript
     sessionScript
+    unlockScript
   ];
   text = ''
     tier=${lib.escapeShellArg tier}
@@ -35,6 +39,13 @@ pkgs.writeShellApplication {
         )
     }
     homeBuilder=${lib.escapeShellArg (toString homeBuilder)}
+
+    # Secret-provisioning settings (ADR-0031, issue #10), baked from the seat's binding.
+    secretProv=${lib.boolToString secretProvisioning.enable}
+    separatePass=${lib.boolToString secretProvisioning.separatePassphrase}
+    keyRel=${lib.escapeShellArg secretProvisioning.keyFile}
+    wrappedName=${lib.escapeShellArg secretProvisioning.wrappedKeyName}
+    exposed=${lib.boolToString exposed}
 
     # The restricted-eval posture the home is built under, DISPATCHED BY TIER (ADR-0030): a
     # host-signed repo is still built under a restricted eval it cannot widen. Selected by tier so
@@ -67,13 +78,37 @@ pkgs.writeShellApplication {
     # 3. authenticate EVAL-FREE (jq + crypt + Tier-1 signature) before any user Nix.
     printf '%s\n' "$password" | contract-greeter-auth "$src" "$username" "$tier" "$signers"
 
+    # 4b. SECRET PROVISIONING (ADR-0031, issue #10): on a TRUSTED Tier-1 seat, turn the user's
+    # passphrase into their KEY so their OWN home sops decrypt at this roaming login. REFUSED on an
+    # exposed host (ADR-0015 — the seat sees the plaintext) and skipped at tier2 (secret-free). The
+    # decrypted identity goes to a private temp file passed to provision; it never hits argv.
+    sessionKey=""
+    if [ "$secretProv" = true ] && [ "$tier" = tier1 ]; then
+      if [ "$exposed" = true ]; then
+        echo "greeter: secret provisioning refused on an exposed host (ADR-0015)" >&2; exit 1
+      fi
+      if [ -f "$src/$wrappedName" ]; then
+        if [ "$separatePass" = true ]; then
+          printf 'unlock passphrase: ' >&2; stty -echo 2>/dev/null || true; read -r unlockpass; stty echo 2>/dev/null || true; printf '\n' >&2
+        else
+          unlockpass=$password
+        fi
+        sessionKey=$(mktemp)
+        chmod 600 "$sessionKey"
+        printf '%s\n' "$unlockpass" | contract-greeter-unlock "$src/$wrappedName" > "$sessionKey"
+      else
+        echo "greeter: secret provisioning enabled but no wrapped key ($wrappedName) in repo; continuing secret-free" >&2
+      fi
+    fi
+
     # 5/6. evaluate + build the home THROUGH the contract, under the contract-pinned restricted-eval
     # posture (ADR-0030) — handed to the host's homeBuilder as NIX_CONFIG so a naive `nix build`
     # binding inherits the floor; it augments the seat's nix.conf (experimental-features survive).
     activation=$(env NIX_CONFIG="$evalConfig" "$homeBuilder" "$src" "$username")
 
-    # 7. FULLY realize the account (shell-side realization.nix) + activate the home.
-    contract-greeter-provision "$username" "$src/${identityFile}" "$activation" "$tier"
+    # 7. FULLY realize the account (shell-side realization.nix), place the unlocked key, activate.
+    contract-greeter-provision "$username" "$src/${identityFile}" "$activation" "$tier" "$sessionKey" "$keyRel"
+    [ -n "$sessionKey" ] && rm -f "$sessionKey"
 
     # 8. launch the session (the desktop is selected here; the host-bound backend renders it).
     exec contract-greeter-session "$username" "/home/$username"

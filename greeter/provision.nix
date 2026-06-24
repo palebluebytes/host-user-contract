@@ -27,6 +27,10 @@ pkgs.writeShellApplication {
     identity=$2
     activation=$3
     tier=$4
+    # Optional (ADR-0031, issue #10): a decrypted session age identity to install for the user, and the
+    # home-relative path home activation reads it from. Empty ⇒ no secret provisioning (the default).
+    sessionKey=''${5:-}
+    keyRel=''${6:-}
 
     [ "$(id -u)" = 0 ] || { echo "provision: must run as root" >&2; exit 1; }
     [ -f "$identity" ] || { echo "provision: no identity.json at '$identity'" >&2; exit 1; }
@@ -81,9 +85,19 @@ pkgs.writeShellApplication {
     chown "$username:$username" "$ssh_dir/authorized_keys"
     chmod 600 "$ssh_dir/authorized_keys"
 
+    # Secret provisioning (ADR-0031): if the greeter unlocked a session age identity, install it at the
+    # user's sops key path BEFORE activation, so the user's OWN home sops decrypt for this session. The
+    # key is the user's (unlocked from their repo by their passphrase); the seat only places it.
+    install -d -o "$username" -g "$username" "$home"
+    if [ -n "$sessionKey" ] && [ -f "$sessionKey" ]; then
+      dest="$home/$keyRel"
+      install -d -o "$username" -g "$username" -m 700 "$(dirname "$dest")"
+      install -o "$username" -g "$username" -m 600 "$sessionKey" "$dest"
+      echo "provision: session age identity placed at $dest" >&2
+    fi
+
     # Activate the built home AS the user — the runtime equivalent of the declarative
     # home-manager activation a build-time user gets, run now instead of at switch time.
-    install -d -o "$username" -g "$username" "$home"
     runuser -u "$username" -- env HOME="$home" "$activation/activate"
     echo "provision: $username realized (tier=$tier) + home activated" >&2
   '';
