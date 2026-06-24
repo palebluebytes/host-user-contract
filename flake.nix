@@ -84,6 +84,32 @@
           greeterModule = self.nixosModules.greeter;
           inherit system;
         };
+
+        # Session RENDER (ADR-0029 step 8): the bound desktop brings up a LIVE session on real
+        # virtio-gpu DRM, via greetd-as-user. Wayland (cage) and X11 as separate boots, plus two
+        # different desktops one-after-another on one seat. Heavy (a real graphical boot) — the
+        # render counterpart to greeter-vm's selection. A real GNOME/Plasma is the same shape with a
+        # heavier command (the consumer-renders boundary, like the gui-union VM's SDDM/Plasma).
+        greeter-session-wayland = import ./conformance/greeter-session-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          greeterModule = self.nixosModules.greeter;
+          sessionType = "wayland";
+          inherit system;
+        };
+        greeter-session-x11 = import ./conformance/greeter-session-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          greeterModule = self.nixosModules.greeter;
+          sessionType = "x11";
+          inherit system;
+        };
+        greeter-session-sequence = import ./conformance/greeter-session-sequence-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          greeterModule = self.nixosModules.greeter;
+          inherit system;
+        };
       });
 
       # `nix fmt` canonical formatter: nixfmt (RFC 166), the official successor to the
