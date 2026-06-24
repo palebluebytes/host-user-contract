@@ -183,16 +183,20 @@ the term is stable, the code is pending (see the cited issue).
   fresh sandboxed `nix build`, so the reference homeBuilder there resolves to a home built at test-build
   time; its real-seat form is the `nix build "$src#…activationPackage"` one-liner. (issue #2; ADR-0022)
 - **greeter-secret-provisioning** — how a roaming Tier-1 user gets their **own home secrets** back at a
-  greeter, which holds a **password, not a key** (issue #4, ADR-0031). Designed, not yet built. It is
-  ONE seam — "make the user's age identity available to home activation for the session," behind the
-  [[homeBuilder|platform]] binding — so every strength is just a different binding for that step:
-  **(a) password-wrapped age key** in the repo (argon2id, the v1 default — portable, no infra), a
-  **phone-gated escrow** upgrade (key off the repo, released after a phone passkey/push — kills offline
-  brute-force), and a **FIDO2/YubiKey** binding recorded **on-demand only** (strongest, but you must
-  carry a token). Hard gates, regardless of mechanism: **Tier-1 only**, **trusted (non-[[exposed]]) seat
-  only** (the seat sees the plaintext while it activates the home — ADR-0015), never Tier-2. Distinct
-  from contract secret-features (`signing`), which stay build-time via the [[safe-set]] — unchanged.
-  (issue #4; ADR-0031, ADR-0015, ADR-0021)
+  greeter, which holds a **password, not a key** (issue #4, ADR-0031). It is ONE seam — "make the user's
+  age identity available to home activation for the session" — so every strength is a different SOURCE
+  feeding the same unlock + placement path (`contract-greeter-unlock` → `provision` writes the key to
+  `~/.config/sops/age/keys.txt` before activation, so the user's sops decrypt). Sources:
+  **(a) passphrase** (issue #10, BUILT): a passphrase-wrapped age key in the repo (openssl AES-256-CBC +
+  PBKDF2 + a magic header; a SEPARATE unlock passphrase by default). **(b) escrow** (issue #11, fetch +
+  gate BUILT): `contract-greeter-fetch-key` requests + polls the user's server, which releases the wrapped
+  key only after a **phone** approval — removing the public brute-forceable blob; the phone↔server approval
+  is a host binding. **FIDO2/YubiKey** stays recorded **on-demand only** (issue #12). Hard gates, any
+  source: **Tier-1 only**, **trusted (non-[[exposed]]) seat only** (the seat sees the plaintext while it
+  activates the home — ADR-0015), never Tier-2 — refused in `bind` and as eval assertions. Distinct from
+  contract secret-features (`signing`), which stay build-time via the [[safe-set]]. Tested without a real
+  phone: the [[bind-loop]] VM proves passphrase end-to-end (secret decrypts at login), and a stub release
+  server + a keypair-controlled challenge-signer proves the escrow gate. (issues #4/#10/#11; ADR-0031)
 - **tier1-eval-posture** — the **contract-pinned** Nix settings a host-signed home is evaluated +
   built under (`tier1EvalConfig`, a projection beside [[safe-set]]/[[greeterGrants]]; ADR-0030):
   `accept-flake-config = false` (**the un-widenable linchpin** — the repo's own `nixConfig` is
