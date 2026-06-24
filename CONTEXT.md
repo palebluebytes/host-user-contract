@@ -183,6 +183,15 @@ the term is stable, the code is pending (see the cited issue).
   pre-realizable** as a seat capability — anything needing per-login system mutation is build-time
   only, like privilege. Scoped to **single-seat personal machines** (laptop / single-monitor
   desktop), where greetd serializes `seat0` so logins never overlap. (ADR-0022, ADR-0024)
+- **desktop choice** — which DESKTOP (GNOME, Plasma, a WM…) a greeter user logs into, chosen
+  **per user** (ADR-0029). The user carries a **free-form** name in their home
+  (`contract.requests.gui.desktop`) so it travels with the identity — same desktop on any seat that
+  offers it (the [[portable-user]] north star); the **seat offers** desktops as a host binding
+  (`custom.greeter.desktops.<name> = { type; command; }`, reusing each DE's session-entry Exec, like
+  a display manager). The greeter resolves the user's name against the offered set and launches it
+  via greetd-as-user (a full DE needs that seat session); an un-offered name degrades to
+  `defaultDesktop`. DE-agnostic: the contract carries an opaque name, the seat maps it.
+  (ADR-0029; `features.nix`, `greeter.nix`)
 - **safe set** — the features a runtime/greeter login may auto-grant: the **runtime-eligible**
   ones. `safeSet = ["gui"]` today. (`lib.nix`)
 - **greeterGrants** — the **canonical runtime grant value** (`self.greeterGrants`): the safe set
