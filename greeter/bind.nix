@@ -16,6 +16,7 @@
   provisionScript,
   sessionScript,
   unlockScript,
+  fetchKeyScript,
 }:
 pkgs.writeShellApplication {
   name = "contract-greeter-bind";
@@ -27,6 +28,7 @@ pkgs.writeShellApplication {
     provisionScript
     sessionScript
     unlockScript
+    fetchKeyScript
   ];
   text = ''
     tier=${lib.escapeShellArg tier}
@@ -40,8 +42,10 @@ pkgs.writeShellApplication {
     }
     homeBuilder=${lib.escapeShellArg (toString homeBuilder)}
 
-    # Secret-provisioning settings (ADR-0031, issue #10), baked from the seat's binding.
+    # Secret-provisioning settings (ADR-0031, issues #10/#11), baked from the seat's binding.
     secretProv=${lib.boolToString secretProvisioning.enable}
+    method=${lib.escapeShellArg secretProvisioning.method}
+    releaseUrl=${lib.escapeShellArg secretProvisioning.releaseUrl}
     separatePass=${lib.boolToString secretProvisioning.separatePassphrase}
     keyRel=${lib.escapeShellArg secretProvisioning.keyFile}
     wrappedName=${lib.escapeShellArg secretProvisioning.wrappedKeyName}
@@ -87,7 +91,22 @@ pkgs.writeShellApplication {
       if [ "$exposed" = true ]; then
         echo "greeter: secret provisioning refused on an exposed host (ADR-0015)" >&2; exit 1
       fi
-      if [ -f "$src/$wrappedName" ]; then
+
+      # Where the wrapped key comes from (ADR-0031): the user's repo (passphrase, issue #10) or their
+      # own server after a phone approval (escrow, issue #11). Both yield a wrapped key that the SAME
+      # passphrase-unlock + placement path consumes.
+      wrappedKey=""
+      cleanupWrapped=""
+      case "$method" in
+        passphrase) [ -f "$src/$wrappedName" ] && wrappedKey="$src/$wrappedName" ;;
+        escrow)
+          wrappedKey=$(mktemp); cleanupWrapped=$wrappedKey
+          contract-greeter-fetch-key "$releaseUrl" "$username" > "$wrappedKey" \
+            || { echo "greeter: escrow key release failed; continuing secret-free" >&2; rm -f "$wrappedKey"; wrappedKey=""; }
+          ;;
+      esac
+
+      if [ -n "$wrappedKey" ] && [ -s "$wrappedKey" ]; then
         if [ "$separatePass" = true ]; then
           printf 'unlock passphrase: ' >&2; stty -echo 2>/dev/null || true; read -r unlockpass; stty echo 2>/dev/null || true; printf '\n' >&2
         else
@@ -95,10 +114,11 @@ pkgs.writeShellApplication {
         fi
         sessionKey=$(mktemp)
         chmod 600 "$sessionKey"
-        printf '%s\n' "$unlockpass" | contract-greeter-unlock "$src/$wrappedName" > "$sessionKey"
+        printf '%s\n' "$unlockpass" | contract-greeter-unlock "$wrappedKey" > "$sessionKey"
       else
-        echo "greeter: secret provisioning enabled but no wrapped key ($wrappedName) in repo; continuing secret-free" >&2
+        echo "greeter: secret provisioning enabled but no wrapped key available ($method); continuing secret-free" >&2
       fi
+      [ -n "$cleanupWrapped" ] && rm -f "$cleanupWrapped"
     fi
 
     # 5/6. evaluate + build the home THROUGH the contract, under the contract-pinned restricted-eval

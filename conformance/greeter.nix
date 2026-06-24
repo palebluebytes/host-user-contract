@@ -190,12 +190,133 @@ let
 
         echo "unlock flow OK"; touch $out
       '';
+
+  # --- phone-gated escrow (ADR-0031, issue #11) ---
+  # escrow without a releaseUrl is a hard eval error (the fetch has nowhere to go).
+  greeterEscrowNoUrl = eval [
+    greeterModule
+    {
+      custom.greeter.enable = true;
+      custom.greeter.homeBuilder = "/run/current-system/sw/bin/true";
+      custom.greeter.secretProvisioning.enable = true;
+      custom.greeter.secretProvisioning.method = "escrow";
+    }
+  ];
+
+  # The "how do we test the phone?" answer: we DON'T need a real phone. The phone is an authorization
+  # GATE on the user's release server; the contract's side is only request + poll (contract-greeter-
+  # fetch-key). So a stub release server stands in for the user's server, and a keypair we control
+  # stands in for the phone (a challenge-response signer). The server releases the key ONLY after a
+  # VALID signed challenge — proving the gate — with zero real-phone/WebAuthn dependency (that stack is
+  # the host's binding, the same consumer-renders boundary as homeBuilder / SDDM).
+  fetchKeyScript =
+    lib.findFirst (p: lib.hasInfix "contract-greeter-fetch-key" (p.name or ""))
+      (throw "conformance: contract-greeter-fetch-key not found in the greeter's systemPackages")
+      greeterBound.environment.systemPackages;
+  releaseServer = pkgs.writeText "release-server.py" ''
+    import http.server, socketserver, subprocess, os, secrets, base64, sys, tempfile
+    PORT = int(sys.argv[1]); PUBKEY = sys.argv[2]; KEYBYTES = open(sys.argv[3], "rb").read()
+    state = {}
+    def verify(challenge, sig):
+        cf = tempfile.NamedTemporaryFile(delete=False); cf.write(challenge); cf.close()
+        sf = tempfile.NamedTemporaryFile(delete=False); sf.write(sig); sf.close()
+        r = subprocess.run(["openssl","pkeyutl","-verify","-pubin","-inkey",PUBKEY,"-rawin","-in",cf.name,"-sigfile",sf.name], capture_output=True)
+        os.unlink(cf.name); os.unlink(sf.name)
+        return r.returncode == 0
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a): return
+        def reply(self, code, body=b""):
+            self.send_response(code); self.send_header("Content-Length", str(len(body))); self.end_headers()
+            if body: self.wfile.write(body)
+        def do_POST(self):
+            p = self.path.strip("/").split("/"); n = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(n) if n else b""
+            if len(p)==2 and p[0]=="request":
+                state[p[1]] = {"c": secrets.token_bytes(32), "released": False}; return self.reply(200, b"ok")
+            if len(p)==2 and p[0]=="approve":
+                st = state.get(p[1])
+                if not st: return self.reply(404)
+                try: sig = base64.b64decode(body)
+                except Exception: return self.reply(400)
+                if verify(st["c"], sig): st["released"] = True; return self.reply(200, b"approved")
+                return self.reply(403, b"bad")
+            return self.reply(404)
+        def do_GET(self):
+            p = self.path.strip("/").split("/")
+            if len(p)==2 and p[0]=="challenge":
+                st = state.get(p[1])
+                if not st: return self.reply(404)
+                return self.reply(200, base64.b64encode(st["c"]))
+            if len(p)==2 and p[0]=="key":
+                st = state.get(p[1])
+                if st and st["released"]: return self.reply(200, KEYBYTES)
+                return self.reply(404)
+            return self.reply(404)
+    socketserver.TCPServer.allow_reuse_address = True
+    socketserver.TCPServer(("127.0.0.1", PORT), H).serve_forever()
+  '';
+  fetchKeyGateTest =
+    pkgs.runCommand "contract-greeter-fetch-key-gate"
+      {
+        nativeBuildInputs = [
+          fetchKeyScript
+          pkgs.python3
+          pkgs.openssl
+          pkgs.curl
+          pkgs.coreutils
+        ];
+      }
+      ''
+        export HOME=$PWD
+
+        # The "phone": an ed25519 keypair. The server registers its PUBLIC key; the phone signs the
+        # server's challenge to authorize a release. An attacker key stands for an unauthorized device.
+        openssl genpkey -algorithm ed25519 -out phone.key 2>/dev/null
+        openssl pkey -in phone.key -pubout -out phone.pub 2>/dev/null
+        openssl genpkey -algorithm ed25519 -out attacker.key 2>/dev/null
+        printf 'WRAPPED-AGE-KEY-BYTES' > wrapped.key
+        port=8731
+        url="http://127.0.0.1:$port"
+
+        python3 ${releaseServer} "$port" phone.pub wrapped.key &
+        server=$!
+        trap 'kill $server 2>/dev/null || true' EXIT
+        for _ in $(seq 1 50); do curl -fsS -X POST "$url/request/ping" >/dev/null 2>&1 && break; sleep 0.1; done
+
+        # play the phone: sign the server's challenge for user $1 with private key $2, POST the approval
+        approve() {
+          curl -fsS "$url/challenge/$1" | base64 -d > chal
+          openssl pkeyutl -sign -inkey "$2" -rawin -in chal -out sig 2>/dev/null
+          base64 -w0 sig | curl -fsS -X POST --data-binary @- "$url/approve/$1"
+        }
+
+        echo "# POSITIVE: a valid phone approval releases the key; fetch-key retrieves it"
+        CONTRACT_FETCH_KEY_POLL=30 contract-greeter-fetch-key "$url" alice > got.key &
+        fetch=$!
+        sleep 1
+        approve alice phone.key >/dev/null
+        wait "$fetch" || { echo "FAIL: fetch-key did not return after a valid approval" >&2; exit 1; }
+        diff wrapped.key got.key || { echo "FAIL: released key mismatch" >&2; exit 1; }
+
+        echo "# NEGATIVE: an ATTACKER signature is rejected — no release"
+        curl -fsS -X POST "$url/request/bob" >/dev/null
+        if approve bob attacker.key 2>/dev/null | grep -q approved; then echo "FAIL: attacker approval accepted" >&2; exit 1; fi
+        if curl -fsS "$url/key/bob" >/dev/null 2>&1; then echo "FAIL: key released without a valid approval" >&2; exit 1; fi
+
+        echo "# NEGATIVE: no approval ⇒ fetch-key times out cleanly (no key)"
+        if CONTRACT_FETCH_KEY_POLL=2 contract-greeter-fetch-key "$url" carol >/dev/null 2>&1; then
+          echo "FAIL: fetch-key returned a key with no approval" >&2; exit 1
+        fi
+
+        echo "phone-gated escrow fetch OK"; touch $out
+      '';
 in
 {
   drvs = {
     greeterAuthFlow = authFlowTest;
     tier1RestrictedEval = restrictedEvalTest;
     greeterUnlockFlow = unlockFlowTest;
+    greeterFetchKeyGate = fetchKeyGateTest;
   };
 
   assertions = [
@@ -255,6 +376,11 @@ in
       ok = lib.any (
         a: !a.assertion && lib.hasInfix "secretProvisioning" a.message
       ) greeterSecretExposed.assertions;
+    }
+    {
+      # ADR-0031 issue #11: escrow needs somewhere to fetch from.
+      name = "secret provisioning: escrow method without a releaseUrl fails an assertion";
+      ok = lib.any (a: !a.assertion && lib.hasInfix "releaseUrl" a.message) greeterEscrowNoUrl.assertions;
     }
     {
       # ADR-0030: the contract PINS the Tier-1 eval posture. accept-flake-config=false is the

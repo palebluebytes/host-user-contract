@@ -63,6 +63,7 @@ let
   # a writeShellApplication closed over only what it needs; bind orchestrates the other three.
   authScript = import ./greeter/auth.nix { inherit pkgs identityFile; };
   unlockScript = import ./greeter/unlock.nix { inherit pkgs; };
+  fetchKeyScript = import ./greeter/fetch-key.nix { inherit pkgs; };
   provisionScript = import ./greeter/provision.nix {
     inherit
       pkgs
@@ -85,6 +86,7 @@ let
       provisionScript
       sessionScript
       unlockScript
+      fetchKeyScript
       ;
     inherit (cfg)
       tier
@@ -216,6 +218,25 @@ in
       type = lib.types.submodule {
         options = {
           enable = lib.mkEnableOption "unlocking the user's age key at a greeter login (trusted Tier-1 seats only)";
+          method = lib.mkOption {
+            type = lib.types.enum [
+              "passphrase"
+              "escrow"
+            ];
+            default = "passphrase";
+            description = ''
+              Where the wrapped age key comes from (ADR-0031). `passphrase` (v1, issue #10): a key
+              wrapped in the user's repo, unlocked by a passphrase — portable, no infra. `escrow` (issue
+              #11): the wrapped key lives on the user's own server and is fetched after a PHONE approval
+              (`releaseUrl`), removing the public offline-brute-forceable blob; the fetched key is still
+              passphrase-unlocked (two factors: phone + passphrase).
+            '';
+          };
+          releaseUrl = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            description = "For method = \"escrow\": the user's key-release server (contract-greeter-fetch-key requests + polls it; the phone↔server approval is the server's concern).";
+          };
           separatePassphrase = lib.mkOption {
             type = lib.types.bool;
             default = true;
@@ -260,6 +281,12 @@ in
         assertion = cfg.secretProvisioning.enable -> !config.custom.host.exposed;
         message = "custom.greeter.secretProvisioning is enabled on exposed host '${config.networking.hostName}' — an exposed/agent host must never hold the user's key material (ADR-0015, ADR-0031)";
       }
+      {
+        assertion =
+          (cfg.secretProvisioning.enable && cfg.secretProvisioning.method == "escrow")
+          -> cfg.secretProvisioning.releaseUrl != "";
+        message = "custom.greeter.secretProvisioning.method = \"escrow\" needs a releaseUrl (the user's key-release server, ADR-0031 issue #11)";
+      }
     ];
 
     # greetd runs the bind orchestrator as the seat's login program. The default_session command
@@ -284,6 +311,7 @@ in
       provisionScript
       sessionScript
       unlockScript
+      fetchKeyScript
     ];
   };
 }
