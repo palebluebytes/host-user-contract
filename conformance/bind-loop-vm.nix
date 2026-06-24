@@ -2,8 +2,10 @@
 # greeter test stops short of. greeter-vm/integration-vm drive `provision`/`session` directly with a
 # pre-built home; this drives the actual `contract-greeter-bind` ORCHESTRATOR end-to-end, exactly as a
 # greetd login does: flake URL + username + password on stdin →
-#   archive (real fetch of a local flake) → eval-free Tier-1 signature auth → homeBuilder (a REAL
-#   runtime `nix build`) → provision (account realization) → session launch.
+#   archive (real fetch of a local flake) → eval-free Tier-1 signature auth → SECRET UNLOCK (ADR-0031,
+#   the user's age key from a passphrase) → homeBuilder (a REAL runtime `nix build`) → provision
+#   (account realization + key placement) → session launch — and the activated home decrypts the
+#   user's OWN secret with the placed key (the roaming user has their secrets back at this seat).
 #
 # Two things it needs that the contract leaves to the host (ADR-0024): a `homeBuilder` binding (here a
 # reference one) and a desktop binding. The fixture user flake's home is a MINIMAL real derivation — an
@@ -52,11 +54,41 @@ let
   '';
   signerPub = lib.removeSuffix "\n" (builtins.readFile "${signer}/key.pub");
 
-  # The home's activation script — what `provision` runs as the user. Minimal: it drops a marker so the
-  # test can observe the BUILT home was activated for the freshly-provisioned account.
+  # --- secret provisioning (ADR-0031, issue #10) ---
+  # The roaming user's OWN secret + the key to read it. Generated at build time: an age identity, the
+  # identity WRAPPED with a passphrase (the contract convention — magic header + openssl pbkdf2, what
+  # the greeter's contract-greeter-unlock reverses), and a secret encrypted to the identity's recipient.
+  # The wrapped key goes in the repo; the (ciphertext) secret is embedded in the home, which decrypts it
+  # at activation using the key the greeter unlocked + placed. (Throwaway test key — its private half
+  # rides the closure, fine for a test.)
+  unlockPass = "bind-loop-unlock-pass";
+  secretPlaintext = "the-roaming-users-secret";
+  keyRel = ".config/sops/age/keys.txt";
+  secrets =
+    pkgs.runCommand "bind-loop-secrets"
+      {
+        nativeBuildInputs = [
+          pkgs.age
+          pkgs.openssl
+        ];
+      }
+      ''
+        mkdir -p "$out"
+        age-keygen -o identity.txt 2>/dev/null
+        recipient=$(age-keygen -y identity.txt)
+        { printf 'contract-age-key-v1\n'; cat identity.txt; } > plain.txt
+        printf '%s' '${unlockPass}' \
+          | openssl enc -e -aes-256-cbc -salt -pbkdf2 -iter 600000 -pass stdin -in plain.txt -out "$out/contract-key.enc"
+        printf '%s' '${secretPlaintext}' | age -r "$recipient" -o "$out/secret.age"
+      '';
+
+  # The home's activation script — what `provision` runs as the user. It drops a marker AND decrypts the
+  # user's own secret with the age key the greeter unlocked from the passphrase and placed before
+  # activation — proving the roaming user has their secrets back at this seat.
   activateScript = pkgs.writeScript "bind-loop-activate" ''
     #!${pkgs.runtimeShell}
     ${pkgs.coreutils}/bin/touch "$HOME/.bind-loop-home"
+    ${pkgs.age}/bin/age -d -i "$HOME/${keyRel}" ${secrets}/secret.age > "$HOME/.bind-loop-secret"
   '';
 
   # The home as a no-input raw derivation, expressed ONCE (`homeDrv`) and reproduced byte-for-byte in
@@ -111,6 +143,8 @@ let
         mkdir -p "$out"
         cp ${fixtureFlake} "$out/flake.nix"
         printf '%s' '{"nodes":{"root":{}},"root":"root","version":7}' > "$out/flake.lock"
+        # The passphrase-wrapped age key the greeter unlocks (ADR-0031); part of the signed tree.
+        cp ${secrets}/contract-key.enc "$out/contract-key.enc"
 
         hash=$(perl -e 'print crypt($ARGV[0], $ARGV[1])' '${password}' '$6$bindloopsalt$')
         printf '{"username":"%s","name":"Bind Loop User","email":"alice@example.invalid","hashedPassword":"%s"}\n' \
@@ -166,6 +200,10 @@ pkgs.testers.runNixOSTest {
       custom.greeter.desktops.marker.command =
         "${pkgs.coreutils}/bin/touch /home/${username}/.bind-loop-session";
       custom.greeter.defaultDesktop = "marker";
+      # Secret provisioning (ADR-0031): a trusted seat unlocks the user's age key from a SEPARATE
+      # passphrase and places it for activation. (Exposed-host refusal is proven in conformance.)
+      custom.greeter.secretProvisioning.enable = true;
+      custom.greeter.secretProvisioning.separatePassphrase = true;
       systemd.services.greetd.wantedBy = lib.mkForce [ ];
 
       # Make the runtime `nix build` a cache hit by copying the needed paths into the VM store: homeDrv's
@@ -177,6 +215,8 @@ pkgs.testers.runNixOSTest {
         homeDrv
         userRepo
         signer
+        secrets
+        pkgs.age
       ];
     };
 
@@ -187,19 +227,24 @@ pkgs.testers.runNixOSTest {
     # The external user does not exist at build time — NixOS users are declarative.
     machine.fail("getent passwd ${username}")
 
-    # Drive the REAL orchestrator exactly as a greetd login: flake URL + username + password on stdin.
-    # It archives the flake, authenticates eval-free against the Tier-1 signature, builds the home via
-    # the reference homeBuilder (a real `nix build`), provisions the account, and launches the session.
+    # Drive the REAL orchestrator exactly as a greetd login: flake URL + username + login password +
+    # the SEPARATE unlock passphrase on stdin. It archives the flake, authenticates eval-free against
+    # the Tier-1 signature, UNLOCKS the user's age key from the passphrase, builds the home via the
+    # reference homeBuilder, provisions the account (placing the key), and launches the session.
     machine.succeed(
-        "printf '%s\\n%s\\n%s\\n' 'path:${userRepo}' '${username}' '${password}' "
+        "printf '%s\\n%s\\n%s\\n%s\\n' "
+        "'path:${userRepo}' '${username}' '${password}' '${unlockPass}' "
         "| contract-greeter-bind"
     )
 
-    # The full loop landed: the account is realized, the BUILT home was activated (its marker), and the
-    # session launched the seat's desktop (its marker) — all from one bind invocation.
+    # The full loop landed: account realized, the BUILT home activated (its marker), the session
+    # launched (its marker), AND — the new part — the user's OWN secret decrypted at activation with the
+    # key the greeter unlocked from the passphrase and placed: the roaming user has their secrets back.
     machine.succeed("getent passwd ${username}")
     machine.succeed("test -f /home/${username}/.bind-loop-home")
     machine.succeed("test -f /home/${username}/.bind-loop-session")
+    machine.succeed("test -f /home/${username}/.config/sops/age/keys.txt")
+    machine.succeed("grep -qx ${secretPlaintext} /home/${username}/.bind-loop-secret")
     print(machine.succeed("ls -la /home/${username}"))
   '';
 }
