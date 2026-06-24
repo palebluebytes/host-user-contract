@@ -12,6 +12,7 @@
   contractModule,
   greeterModule,
   homeModule,
+  homeGreeterDesktopModule,
   safeSet,
   greeterGrants,
   tier1EvalConfig,
@@ -161,6 +162,34 @@ let
   malformedRequest = builtins.tryEval (
     (evalHome [ { contract.requests.gui.session = "macos"; } ]).contract.requests.gui.session
   );
+
+  # --- the desktop-choice home helper (ADR-0029): auto-surface ~/.contract-desktop ---
+  # The helper sets `home.file`, a home-manager option the tracer-pure umbrella does not declare, so
+  # — exactly as `hmStub` stands in for `home-manager.users` — a tiny stub declares `home.file` here
+  # so the helper's logic is provable with no home-manager: a requested desktop materialises the
+  # dotfile with that name; no request leaves it absent (⇒ the greeter falls back to the seat default).
+  homeFileStub =
+    { lib, ... }:
+    {
+      options.home.file = lib.mkOption {
+        default = { };
+        type = lib.types.attrsOf (
+          lib.types.submodule { options.text = lib.mkOption { type = lib.types.str; }; }
+        );
+      };
+    };
+  surfaceDesktop =
+    mods:
+    (lib.evalModules {
+      modules = [
+        homeModule
+        homeFileStub
+        homeGreeterDesktopModule
+      ]
+      ++ mods;
+    }).config;
+  desktopChosen = surfaceDesktop [ { contract.requests.gui.desktop = "plasma"; } ];
+  desktopUnset = surfaceDesktop [ ];
 
   # --- the headless bindUser tracer (ADR-0023/0024, issue #5) ---
   # The first tracer bullet (ADR-0022): bind the example user against the contract with no
@@ -515,6 +544,17 @@ let
     {
       name = "requests: a malformed known request (bad gui.session enum) errors";
       ok = !malformedRequest.success;
+    }
+    {
+      # ADR-0029 helper: a requested desktop is auto-surfaced to ~/.contract-desktop verbatim, so the
+      # greeter's launcher (which runs before the home Nix) reads the user's choice with no manual step.
+      name = "desktop helper: contract.requests.gui.desktop materialises ~/.contract-desktop";
+      ok = desktopChosen.home.file.".contract-desktop".text == "plasma";
+    }
+    {
+      # No desktop requested ⇒ no dotfile, so the greeter degrades to the seat default (ADR-0029).
+      name = "desktop helper: no desktop request leaves ~/.contract-desktop absent (seat default)";
+      ok = !(desktopUnset.home.file ? ".contract-desktop");
     }
     {
       name = "bindUser: the home evaluates and its gui.session request is harvested";
