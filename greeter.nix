@@ -12,14 +12,15 @@
 #   (2) bind via the contract (bindUserModule { grants = greeterGrants; }),
 #   (3) grant AT MOST the safeSet.
 #
-# The flow (ADR-0022 "data before code" — authenticate on inert data before running any Nix):
-#   1. prompt (flake URL, username, password)              — replaceable UI
-#   2. fetch SOURCE + input closure (nix flake archive)   — no outputs evaluated, no user Nix yet
-#   3. authenticate EVAL-FREE (jq identity.json: password + Tier-1 signature, ADR-0027) — CANONICAL
+# The flow (ADR-0022 "data before code" — authenticate on inert data before running any Nix) is one
+# program per step, each in ./greeter/ so this module stays a thin schema + wiring layer:
+#   1. prompt (flake URL, username, password)              — replaceable UI    } ./greeter/bind.nix
+#   2. fetch SOURCE + input closure (nix flake archive)   — no user Nix yet    } (the orchestrator)
+#   3. authenticate EVAL-FREE (jq identity.json: password + Tier-1 sig, ADR-0027) — ./greeter/auth.nix
 #   4. classify the tier                                   — host policy (custom.greeter.tier)
 #   5/6. build the home under the PINNED restricted-eval posture (ADR-0030) — host BINDING (homeBuilder)
-#   7. provision: FULLY realize the account (shell-side realization.nix) + activate the home — CRUX
-#   8. launch the session — the user's chosen DESKTOP (the seat offers desktops, host binds) — ADR-0029
+#   7. provision: FULLY realize the account + activate the home — CRUX        — ./greeter/provision.nix
+#   8. launch the session — the user's chosen DESKTOP (ADR-0029)             — ./greeter/session.nix
 #
 # Runtime grant effects are a STANDING greeter-seat baseline, not a per-login rebuild (ADR-0026):
 # this module declares the safe set's group memberships + a `greeter-users` marker group, and
@@ -57,270 +58,33 @@ in
 }:
 let
   cfg = config.custom.greeter;
-  # The desktops this seat offers, baked into a shell `case` the launcher resolves the user's
-  # requested desktop against (ADR-0029). Each arm sets the session type + the launch command.
-  desktopArms = lib.concatStringsSep "\n" (
-    lib.mapAttrsToList (
-      name: d:
-      "        ${lib.escapeShellArg name}) dtype=${lib.escapeShellArg d.type}; dcmd=${lib.escapeShellArg d.command} ;;"
-    ) cfg.desktops
-  );
 
-  # --- (3) the eval-free auth: jq over the inert identity.json, zero lines of user Nix ---
-  # Usage: contract-greeter-auth <src> <username> <tier> <allowed-signers-file>  (password on stdin)
-  # The CANONICAL, mandatory mechanism (ADR-0024 condition 1). It reads only data (`jq`) and
-  # re-hashes the password with libc crypt (via perl, which covers yescrypt/sha512crypt exactly
-  # as /etc/shadow does) — it never evaluates the user's flake.
-  authScript = pkgs.writeShellApplication {
-    name = "contract-greeter-auth";
-    runtimeInputs = [
-      pkgs.jq
-      pkgs.perl
-      pkgs.openssh
-    ];
-    text = ''
-      src=$1
-      username=$2
-      tier=$3
-      signers=$4
-      identity="$src/${identityFile}"
-
-      [ -f "$identity" ] || { echo "auth: no ${identityFile} in repo source" >&2; exit 1; }
-
-      # The username the caller logs in as must be the one the repo claims (no impersonation).
-      claimed=$(jq -r '.username // empty' "$identity")
-      [ "$claimed" = "$username" ] || { echo "auth: username mismatch (repo claims '$claimed')" >&2; exit 1; }
-
-      # Password: verify against identity.json.hashedPassword with libc crypt — eval-free.
-      stored=$(jq -r '.hashedPassword // empty' "$identity")
-      [ -n "$stored" ] || { echo "auth: identity.json has no hashedPassword" >&2; exit 1; }
-      read -r password
-      computed=$(perl -e 'print crypt($ARGV[0], $ARGV[1])' "$password" "$stored")
-      [ "$computed" = "$stored" ] || { echo "auth: password mismatch" >&2; exit 1; }
-
-      # Tier 1 (semi-trusted): the repo must be SIGNED by a HOST-pinned key (ADR-0022, ADR-0027).
-      # We verify an SSH signature over a manifest of the tree (the whole config is signed, not
-      # just identity.json) against the host's operator-pinned trustedSigners ALONE. The host is
-      # the SOLE Tier-1 trust anchor — a repo cannot vouch for its own tier (a repo naming and
-      # signing with its own key would self-certify, i.e. Tier 2's threat model). Note
-      # identity.json.trustedKeys is SSH LOGIN keys (realization → authorizedKeys), never consulted here.
-      if [ "$tier" = tier1 ]; then
-        [ -s "$signers" ] || { echo "auth: tier1 requires host-pinned trusted signers" >&2; exit 1; }
-        [ -f "$src/contract.sig" ] || { echo "auth: tier1 requires a repo signature (contract.sig)" >&2; exit 1; }
-        manifest=$(cd "$src" && find . -type f ! -name contract.sig -print0 | sort -z \
-          | xargs -0 sha256sum)
-        printf '%s' "$manifest" \
-          | ssh-keygen -Y verify -f "$signers" -I "$username" -n contract -s "$src/contract.sig" \
-          || { echo "auth: tier1 signature verification failed" >&2; exit 1; }
-      fi
-
-      echo "auth: $username authenticated (tier=$tier), zero user Nix evaluated" >&2
-    '';
+  # The four shipped programs, one per file (the canonical mechanism + the replaceable UI). Each is
+  # a writeShellApplication closed over only what it needs; bind orchestrates the other three.
+  authScript = import ./greeter/auth.nix { inherit pkgs identityFile; };
+  provisionScript = import ./greeter/provision.nix {
+    inherit
+      pkgs
+      lib
+      privilegedGroups
+      enrolledGroups
+      ;
   };
-
-  # --- (7) the privileged runtime-provisioning helper: the shell-side realization.nix (ADR-0028) ---
-  # Usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier>
-  # NixOS users are declarative, and a greeter user is never built into the system (ADR-0026), so
-  # realization.nix never runs for them — this IS their realization, run at login. It materializes
-  # the (Tier-1 persisted) account and FULLY realizes it from identity.json + the safe-set grant:
-  # password (the same hash auth verified ⇒ PAM works), authorizedKeys, GECOS, and the user's safe
-  # declared groups — reproducing realization.nix's privileged-group CLAMP so a hostile identity.json
-  # still cannot smuggle a privileged group at runtime — plus enrollment in the greeter-seat
-  # baseline. Then it activates the built home AS the user. Tier-2 (ephemeral) is deferred. Runs as
-  # root (greetd's pre-session context); it drops to the user for activation.
-  provisionScript = pkgs.writeShellApplication {
-    name = "contract-greeter-provision";
-    runtimeInputs = [
-      pkgs.jq
-      pkgs.shadow
-      pkgs.coreutils
-      pkgs.util-linux
-    ];
-    text = ''
-      username=$1
-      identity=$2
-      activation=$3
-      tier=$4
-
-      [ "$(id -u)" = 0 ] || { echo "provision: must run as root" >&2; exit 1; }
-      [ -f "$identity" ] || { echo "provision: no identity.json at '$identity'" >&2; exit 1; }
-      [ -x "$activation/activate" ] || { echo "provision: '$activation' is not a home-activation package" >&2; exit 1; }
-
-      case "$tier" in
-        tier1) : ;; # persisted (a normal account with a real home, ADR-0022)
-        tier2) echo "provision: tier2 (ephemeral) provisioning is deferred (ADR-0022)" >&2; exit 1 ;;
-        *) echo "provision: unknown tier '$tier'" >&2; exit 1 ;;
-      esac
-
-      home="/home/$username"
-      if ! id -u "$username" >/dev/null 2>&1; then
-        useradd --create-home --home-dir "$home" --shell /run/current-system/sw/bin/bash \
-          --user-group "$username"
-      fi
-
-      # --- shell-side realization.nix (ADR-0028): identity + safe-set grant ⇒ the account ---
-      # GECOS = name.
-      name=$(jq -r '.name // empty' "$identity")
-      [ -n "$name" ] && usermod -c "$name" "$username"
-
-      # Password = identity.hashedPassword (the same value auth verified) ⇒ PAM works.
-      hash=$(jq -r '.hashedPassword // empty' "$identity")
-      [ -n "$hash" ] && printf '%s:%s\n' "$username" "$hash" | chpasswd -e
-
-      # Groups: clamp privileged groups out of the user's self-declared extraGroups (untrusted
-      # input — reproduce realization.nix's safeDeclared), then enroll into the safe declared
-      # groups + the greeter-seat baseline (the safe-set grant groups + the greeter-users marker),
-      # restricted to groups that exist on the seat.
-      privileged=(${lib.concatStringsSep " " privilegedGroups})
-      baseline=(${lib.concatStringsSep " " enrolledGroups})
-      readarray -t declared < <(jq -r '.extraGroups[]? // empty' "$identity")
-      want=()
-      for g in "''${declared[@]}"; do
-        clamp=0
-        for p in "''${privileged[@]}"; do [ "$g" = "$p" ] && clamp=1; done
-        [ "$clamp" = 0 ] && want+=("$g")
-      done
-      want+=("''${baseline[@]}")
-      add=()
-      for g in "''${want[@]}"; do getent group "$g" >/dev/null 2>&1 && add+=("$g"); done
-      [ "''${#add[@]}" -gt 0 ] && usermod -aG "$(IFS=,; echo "''${add[*]}")" "$username"
-
-      # authorizedKeys = sshKey + trustedKeys (the user's SSH LOGIN keys).
-      ssh_dir="$home/.ssh"
-      install -d -o "$username" -g "$username" -m 700 "$ssh_dir"
-      {
-        sshKey=$(jq -r '.sshKey // empty' "$identity"); [ -n "$sshKey" ] && printf '%s\n' "$sshKey"
-        jq -r '.trustedKeys[]? // empty' "$identity"
-      } > "$ssh_dir/authorized_keys"
-      chown "$username:$username" "$ssh_dir/authorized_keys"
-      chmod 600 "$ssh_dir/authorized_keys"
-
-      # Activate the built home AS the user — the runtime equivalent of the declarative
-      # home-manager activation a build-time user gets, run now instead of at switch time.
-      install -d -o "$username" -g "$username" "$home"
-      runuser -u "$username" -- env HOME="$home" "$activation/activate"
-      echo "provision: $username realized (tier=$tier) + home activated" >&2
-    '';
+  sessionScript = import ./greeter/session.nix {
+    inherit pkgs lib;
+    inherit (cfg) desktops defaultDesktop;
   };
-
-  # --- (8) the session launcher: the greeter SELECTS the type, the HOST binds the backend ---
-  # Usage: contract-greeter-session <username> <home-dir>
-  # ADR-0026: the contract decides the session TYPE (from the bound home's gui.session, surfaced
-  # here as an optional `$home/.contract-session` the home may write, else the seat's default);
-  # the host BINDS the actual compositor/Xorg per type (custom.greeter.session.{wayland,x11}),
-  # exactly as the display backend is host-bound. The contract ships no compositor (ADR-0020).
-  sessionScript = pkgs.writeShellApplication {
-    name = "contract-greeter-session";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.util-linux
-      pkgs.bash
-    ];
-    text = ''
-            username=$1
-            home=$2
-            defaultDesktop=${lib.escapeShellArg cfg.defaultDesktop}
-
-            # Resolve a desktop NAME to its session type + launch command (the seat's offered desktops).
-            resolve() {
-              case "$1" in
-      ${desktopArms}
-                *) return 1 ;;
-              esac
-            }
-
-            # The user's chosen desktop is surfaced from their home (~/.contract-desktop, materialised from
-            # contract.requests.gui.desktop); absent ⇒ the seat default.
-            if [ -f "$home/.contract-desktop" ]; then
-              want=$(cat "$home/.contract-desktop")
-            else
-              want=$defaultDesktop
-            fi
-
-            # An un-offered/unknown desktop degrades to the seat default — never breaks the login (ADR-0029).
-            dtype=""; dcmd=""
-            if ! resolve "$want"; then
-              echo "session: desktop '$want' not offered by this seat; using default '$defaultDesktop'" >&2
-              resolve "$defaultDesktop" || { echo "session: no default desktop offered (custom.greeter.desktops/defaultDesktop)" >&2; exit 1; }
-            fi
-            [ -n "$dcmd" ] || { echo "session: resolved desktop has no command" >&2; exit 1; }
-
-            # The session must run AS the user, in a SEAT session, for the compositor/DE/Xorg to get DRM
-            # and a systemd-user instance — which is greetd's job (it creates the logind seat session and
-            # runs this command as the user). So when already the user (greetd's model) exec in place; only
-            # drop privs with runuser when invoked by the root orchestrator (which is NOT a seat session —
-            # that path suits headless/marker backends, not a real GPU session). ADR-0026/0029 step 8.
-            if [ "$(id -un)" = "$username" ]; then
-              exec env HOME="$home" XDG_SESSION_TYPE="$dtype" bash -c "$dcmd"
-            else
-              exec runuser -u "$username" -- env HOME="$home" XDG_SESSION_TYPE="$dtype" bash -c "$dcmd"
-            fi
-    '';
-  };
-
-  # --- the orchestrator greetd runs: ties the eval-free ordering together (replaceable UI) ---
-  # The prompt loop here is the reference UI; a host may swap regreet/its own front end as long
-  # as it preserves the ordering. The home BUILD (step 5/6) is delegated to the host's
-  # `homeBuilder` binding — it needs home-manager, which the contract does not ship (ADR-0020).
-  bindScript = pkgs.writeShellApplication {
-    name = "contract-greeter-bind";
-    runtimeInputs = [
-      pkgs.nix
-      pkgs.jq
-      pkgs.coreutils
+  bindScript = import ./greeter/bind.nix {
+    inherit
+      pkgs
+      lib
+      identityFile
+      tier1NixConfig
       authScript
       provisionScript
       sessionScript
-    ];
-    text = ''
-      tier=${lib.escapeShellArg cfg.tier}
-      signers=${
-        if cfg.trustedSigners == [ ] then
-          "/var/empty/contract-greeter-signers"
-        else
-          pkgs.writeText "contract-greeter-allowed-signers" (
-            lib.concatMapStringsSep "\n" (k: "* ${k}") cfg.trustedSigners
-          )
-      }
-      homeBuilder=${lib.escapeShellArg (toString cfg.homeBuilder)}
-
-      # The Tier-1 restricted-eval posture the contract PINS (ADR-0030): a host-signed repo is still
-      # built under a restricted eval it cannot widen. Rendered from the contract's canonical
-      # tier1EvalConfig — single-sourced, conformance-checked. accept-flake-config=false is applied
-      # to the fetch too, so the repo's own nixConfig is ignored even while locking.
-      tier1EvalConfig=${lib.escapeShellArg tier1NixConfig}
-
-      [ -n "$homeBuilder" ] || {
-        echo "greeter: no homeBuilder bound — a seat host must set custom.greeter.homeBuilder" >&2
-        echo "         (building a real home needs home-manager, which the host supplies)" >&2
-        exit 1
-      }
-
-      # 1. prompt — the replaceable UI half.
-      printf 'flake URL: ' >&2; read -r flake
-      printf 'username: ' >&2; read -r username
-      printf 'password: ' >&2; stty -echo 2>/dev/null || true; read -r password; stty echo 2>/dev/null || true; printf '\n' >&2
-
-      # 2. fetch the SOURCE + its whole INPUT CLOSURE — no flake OUTPUT is evaluated, so no user Nix
-      # has run yet — and the closure is warmed so the step-5/6 restricted-eval build needs no
-      # eval-time network (restrict-eval would otherwise block it). The repo's nixConfig is ignored
-      # even here (accept-flake-config=false), so it cannot influence the fetch/lock.
-      src=$(nix --option accept-flake-config false flake archive --json --refresh "$flake" | jq -r .path)
-
-      # 3. authenticate EVAL-FREE (jq + crypt + Tier-1 signature) before any user Nix.
-      printf '%s\n' "$password" | contract-greeter-auth "$src" "$username" "$tier" "$signers"
-
-      # 5/6. evaluate + build the home THROUGH the contract, under the contract-pinned restricted-eval
-      # posture (ADR-0030) — handed to the host's homeBuilder as NIX_CONFIG so a naive `nix build`
-      # binding inherits the floor; it augments the seat's nix.conf (experimental-features survive).
-      activation=$(env NIX_CONFIG="$tier1EvalConfig" "$homeBuilder" "$src" "$username")
-
-      # 7. FULLY realize the account (shell-side realization.nix) + activate the home.
-      contract-greeter-provision "$username" "$src/${identityFile}" "$activation" "$tier"
-
-      # 8. launch the session (the type is selected here; the host-bound backend renders it).
-      exec contract-greeter-session "$username" "/home/$username"
-    '';
+      ;
+    inherit (cfg) tier trustedSigners homeBuilder;
   };
 in
 {
