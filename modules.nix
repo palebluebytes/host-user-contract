@@ -80,4 +80,22 @@
       description = "Host-affecting requests this user emits; the host applies the granted ones (mkIf granted). The user populates it; the host reads it.";
     };
   };
+
+  # Home helper (ADR-0029): auto-surface the user's DESKTOP CHOICE so the greeter's session
+  # launcher can read it. The greeter runs the session BEFORE evaluating the home's Nix, so it
+  # reads the choice from a dotfile (`~/.contract-desktop`, see contract-greeter-session); this
+  # materialises that file from the home's `contract.requests.gui.desktop`, so the portable-user
+  # choice travels with the home and needs NO manual step. It is SEPARATE from `homeModule` (which
+  # is pure schema the headless tracer evaluates with NO home-manager): this sets `home.file`, a
+  # home-manager option, so a real home imports it ALONGSIDE the umbrella inside home-manager. Inert
+  # when no desktop is requested ⇒ the greeter falls back to the seat default. Package-free: it only
+  # references the `home.file` option path (home-manager declares it), never imports home-manager.
+  homeGreeterDesktopModule =
+    { config, ... }:
+    let
+      desktop = config.contract.requests.gui.desktop or "";
+    in
+    lib.mkIf (desktop != "") {
+      home.file.".contract-desktop".text = desktop;
+    };
 }

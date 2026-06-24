@@ -110,7 +110,8 @@ in
     bindUserModule = args: contractLib.bindUserModule (args // { homeModule = modules.homeModule; });
   };
 
-  # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0024).
-  inherit (modules) nixosModule homeModule;
+  # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0024) + the
+  # home-manager-aware desktop-choice helper (ADR-0029, separate from the tracer-pure homeModule).
+  inherit (modules) nixosModule homeModule homeGreeterDesktopModule;
   inherit greeterModule;
 }

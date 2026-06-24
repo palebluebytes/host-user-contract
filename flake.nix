@@ -24,6 +24,11 @@
       nixosModules.default = kit.nixosModule;
       nixosModules.greeter = kit.greeterModule;
       homeModules.default = kit.homeModule;
+      # Opt-in home helper (ADR-0029): materialises ~/.contract-desktop from the home's
+      # contract.requests.gui.desktop, so the greeter's launcher reads the user's desktop choice.
+      # Separate from default because it touches home-manager's `home.file` (default stays
+      # tracer-pure — evaluable with no home-manager, ADR-0024).
+      homeModules.greeterDesktop = kit.homeGreeterDesktopModule;
 
       # The contract derivation functions (ADR-0020 Q4). The host applies the
       # fleet-bound ones (e.g. mkFeatureRecipients self.nixosConfigurations) itself.
@@ -56,6 +61,7 @@
           contractModule = self.nixosModules.default;
           greeterModule = self.nixosModules.greeter;
           homeModule = self.homeModules.default;
+          homeGreeterDesktopModule = self.homeModules.greeterDesktop;
           inherit (self)
             safeSet
             greeterGrants
