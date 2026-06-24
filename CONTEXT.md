@@ -138,6 +138,12 @@ the term is stable, the code is pending (see the cited issue).
 
   The greeter program that drives `bindUserModule` at runtime is issue #2. (ADR-0023, ADR-0024,
   ADR-0025)
+- **portable user** — the runtime north star: the *same* identity logs into *any* contract
+  seat and gets the **exact same experience** — home config **and** allowed system-side options —
+  with host and user mediated only by the contract. This is *why* the greeter must **fully
+  realize** both the home and the allowed system options **before** login, identically on every
+  seat (ADR-0028); the safe set being contract-defined and the greeter-seat baseline being uniform
+  are what make "same experience everywhere" hold. (ADR-0018, ADR-0022, ADR-0026, ADR-0028)
 - **greeter** — the runtime path: a seat host's greetd flow that fetches a user flake,
   authenticates **eval-free** on `identity.json`, classifies the tier, binds with
   `grants = greeterGrants`, builds, and provisions the account. Ships as the opt-in, replaceable
@@ -154,9 +160,11 @@ the term is stable, the code is pending (see the cited issue).
 - **contract-greeter-{bind,auth,provision}** — the reference greeter's three scripts. `auth` is
   the **canonical eval-free** step (`jq` over `identity.json` + libc-crypt password + Tier-1 SSH
   signature, running zero user Nix); `provision` is the **runtime-provisioning helper** — the
-  privileged crux that materializes the (Tier-1 persisted) account and **activates the built home
-  AS the user** outside NixOS's declarative build-time model; `bind` is the greetd orchestrator
-  tying the ordering together. (`greeter.nix`; ADR-0022 "genuinely novel work")
+  privileged crux that is the **shell-side `realization.nix`** for one user: it fully realizes the
+  account from `identity.json` + the safe-set grant (password, `authorizedKeys`, GECOS, the
+  **clamped** safe groups + the greeter-seat baseline) **and** activates the built home AS the
+  user, all before the session starts, outside NixOS's declarative build-time model; `bind` is the
+  greetd orchestrator tying the ordering together. (`greeter.nix`; ADR-0022, ADR-0028)
 - **homeBuilder** — the greeter's one **host binding** (`custom.greeter.homeBuilder`, null by
   default): the command that evaluates + builds a user's home *through the contract* under the
   tier's restricted eval and prints the activation package. It is host-side because building a real
