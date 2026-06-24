@@ -67,7 +67,12 @@ let
   # over the fixed runtime grant + the identity.json filename it authenticates on.
   greeterModule = import ./greeter.nix {
     inherit lib privilegedGroups featureGroups;
-    inherit (contractLib) greeterGrants safeSet;
+    inherit (contractLib)
+      greeterGrants
+      safeSet
+      tier1EvalConfig
+      renderNixConfig
+      ;
     inherit (identityJson) identityFile;
   };
 in
@@ -80,7 +85,7 @@ in
     featureGroups
     privilegedGroups
     ;
-  inherit (contractLib) safeSet greeterGrants;
+  inherit (contractLib) safeSet greeterGrants tier1EvalConfig;
 
   # The identity.json schema, exposed so a host/greeter can introspect the jq-readable
   # shape it authenticates against before any eval (ADR-0023, issue #5).
@@ -89,7 +94,7 @@ in
   # Public derivation functions hosts consume (ADR-0020 Q4). The internal predicates
   # (runtimeEligibleFeature, exposedHostOffenders) stay internal to ./lib.nix.
   lib = {
-    inherit (contractLib) mkFeatureRecipients mkHostFacts;
+    inherit (contractLib) mkFeatureRecipients mkHostFacts renderNixConfig;
     # The identity.json loader (ADR-0023): lossless over identity.nix, used by both the
     # user's home module and host-side bindUser.
     inherit (identityJson) loadIdentity;

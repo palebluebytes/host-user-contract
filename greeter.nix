@@ -14,10 +14,10 @@
 #
 # The flow (ADR-0022 "data before code" — authenticate on inert data before running any Nix):
 #   1. prompt (flake URL, username, password)              — replaceable UI
-#   2. fetch SOURCE ONLY (nix flake prefetch, no outputs)  — no user Nix evaluated yet
+#   2. fetch SOURCE + input closure (nix flake archive)   — no outputs evaluated, no user Nix yet
 #   3. authenticate EVAL-FREE (jq identity.json: password + Tier-1 signature, ADR-0027) — CANONICAL
 #   4. classify the tier                                   — host policy (custom.greeter.tier)
-#   5/6. evaluate + build the home under restricted eval   — host BINDING (homeBuilder)
+#   5/6. build the home under the PINNED restricted-eval posture (ADR-0030) — host BINDING (homeBuilder)
 #   7. provision: FULLY realize the account (shell-side realization.nix) + activate the home — CRUX
 #   8. launch the session — the user's chosen DESKTOP (the seat offers desktops, host binds) — ADR-0029
 #
@@ -34,6 +34,8 @@
   featureGroups,
   safeSet,
   greeterGrants,
+  tier1EvalConfig,
+  renderNixConfig,
   identityFile,
 }:
 let
@@ -42,6 +44,11 @@ let
   # baseline this module declares + `provision` enrolls each account into.
   baselineGroups = lib.unique (lib.concatMap (f: featureGroups.${f} or [ ]) safeSet);
   enrolledGroups = baselineGroups ++ [ "greeter-users" ];
+
+  # The Tier-1 restricted-eval posture (ADR-0030), rendered to a NIX_CONFIG body the greeter
+  # exports to the host's homeBuilder. Single-sourced from the contract's canonical tier1EvalConfig
+  # via the contract's own renderer, so what the greeter applies is exactly what conformance proves.
+  tier1NixConfig = renderNixConfig tier1EvalConfig;
 in
 {
   config,
@@ -277,6 +284,12 @@ let
       }
       homeBuilder=${lib.escapeShellArg (toString cfg.homeBuilder)}
 
+      # The Tier-1 restricted-eval posture the contract PINS (ADR-0030): a host-signed repo is still
+      # built under a restricted eval it cannot widen. Rendered from the contract's canonical
+      # tier1EvalConfig — single-sourced, conformance-checked. accept-flake-config=false is applied
+      # to the fetch too, so the repo's own nixConfig is ignored even while locking.
+      tier1EvalConfig=${lib.escapeShellArg tier1NixConfig}
+
       [ -n "$homeBuilder" ] || {
         echo "greeter: no homeBuilder bound — a seat host must set custom.greeter.homeBuilder" >&2
         echo "         (building a real home needs home-manager, which the host supplies)" >&2
@@ -288,14 +301,19 @@ let
       printf 'username: ' >&2; read -r username
       printf 'password: ' >&2; stty -echo 2>/dev/null || true; read -r password; stty echo 2>/dev/null || true; printf '\n' >&2
 
-      # 2. fetch SOURCE ONLY — no flake OUTPUT is evaluated, so no user Nix has run yet.
-      src=$(nix flake prefetch --json --refresh "$flake" | jq -r .storePath)
+      # 2. fetch the SOURCE + its whole INPUT CLOSURE — no flake OUTPUT is evaluated, so no user Nix
+      # has run yet — and the closure is warmed so the step-5/6 restricted-eval build needs no
+      # eval-time network (restrict-eval would otherwise block it). The repo's nixConfig is ignored
+      # even here (accept-flake-config=false), so it cannot influence the fetch/lock.
+      src=$(nix --option accept-flake-config false flake archive --json --refresh "$flake" | jq -r .path)
 
       # 3. authenticate EVAL-FREE (jq + crypt + Tier-1 signature) before any user Nix.
       printf '%s\n' "$password" | contract-greeter-auth "$src" "$username" "$tier" "$signers"
 
-      # 5/6. evaluate + build the home THROUGH the contract under restricted eval — host binding.
-      activation=$("$homeBuilder" "$src" "$username")
+      # 5/6. evaluate + build the home THROUGH the contract, under the contract-pinned restricted-eval
+      # posture (ADR-0030) — handed to the host's homeBuilder as NIX_CONFIG so a naive `nix build`
+      # binding inherits the floor; it augments the seat's nix.conf (experimental-features survive).
+      activation=$(env NIX_CONFIG="$tier1EvalConfig" "$homeBuilder" "$src" "$username")
 
       # 7. FULLY realize the account (shell-side realization.nix) + activate the home.
       contract-greeter-provision "$username" "$src/${identityFile}" "$activation" "$tier"
@@ -322,8 +340,23 @@ in
       description = ''
         The trust tier this seat binds at (host POLICY, ADR-0022). `tier1` (semi-trusted, own
         identities): the repo must be signed by a host-trusted key, the home is persisted, and
-        eval is restricted to guard accidents — built now. `tier2` (untrusted, anyone): ephemeral
-        home, hardened eval — designed-for but DEFERRED, so the provisioning helper refuses it today.
+        eval runs under the contract-pinned restricted-eval posture (ADR-0030, `tier1EvalConfig`) to
+        guard accidents and stop the repo widening its own eval — built now. `tier2` (untrusted,
+        anyone): ephemeral home, hardened eval — designed-for but DEFERRED, so the provisioning
+        helper refuses it today.
+      '';
+    };
+
+    tier1EvalConfig = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.either lib.types.bool lib.types.str);
+      readOnly = true;
+      default = tier1EvalConfig;
+      description = ''
+        Read-only introspection of the Tier-1 restricted-eval posture (ADR-0030): the canonical Nix
+        settings the greeter hands the `homeBuilder` as NIX_CONFIG when it builds a host-signed home.
+        Fixed to the contract's `tier1EvalConfig` — `accept-flake-config = false` (the repo cannot
+        widen its own eval, ADR-0027), `restrict-eval`, no IFD, and a sandboxed build. A host may add
+        restrictions in its homeBuilder, never remove these.
       '';
     };
 

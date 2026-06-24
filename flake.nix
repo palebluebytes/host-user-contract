@@ -38,6 +38,7 @@
         privilegedGroups
         safeSet
         greeterGrants
+        tier1EvalConfig
         identityFile
         identitySchema
         ;
@@ -58,10 +59,16 @@
           inherit (self)
             safeSet
             greeterGrants
+            tier1EvalConfig
             featureGroups
             privilegedGroups
             ;
-          inherit (self.lib) loadIdentity bindUser bindUserModule;
+          inherit (self.lib)
+            loadIdentity
+            bindUser
+            bindUserModule
+            renderNixConfig
+            ;
           nixosSystem = nixpkgs.lib.nixosSystem;
         };
 

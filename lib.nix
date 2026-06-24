@@ -73,6 +73,41 @@ in
     enable = true;
   });
 
+  # The Tier-1 restricted-eval posture (ADR-0030): the canonical Nix settings under which the
+  # greeter EVALUATES and BUILDS a host-signed (semi-trusted) user home (step 5/6). Tier 1 is
+  # vouched-for by the host's signature (ADR-0027), not blindly trusted — the build still runs
+  # under a restricted eval to contain accidents and, crucially, to keep the repo from WIDENING
+  # its own eval posture (ADR-0027 applied to eval: a repo cannot self-certify). As nix.conf:
+  #   - accept-flake-config = false           the repo's own `nixConfig` is IGNORED — the
+  #                                           un-widenable linchpin; without it a Tier-1 flake could
+  #                                           relax every setting below by self-declaration.
+  #   - restrict-eval = true                  eval may only touch the store + allowed paths/URIs:
+  #                                           no `builtins.readFile "/etc/shadow"`, no arbitrary
+  #                                           eval-time fetch. Safe because the greeter warms the
+  #                                           full input closure (nix flake archive) BEFORE building,
+  #                                           so the restricted build needs no eval-time network.
+  #   - allow-import-from-derivation = false  no IFD — eval cannot force a build and import its output.
+  #   - sandbox = true                        the build itself runs isolated (no network, no host fs).
+  # The greeter hands this to the host's `homeBuilder` as NIX_CONFIG (augmenting the seat's
+  # /etc/nix/nix.conf, so experimental-features etc. survive), so a naive `nix build` binding gets
+  # the floor for free; the host may only ADD restrictions, never remove them.
+  tier1EvalConfig = {
+    accept-flake-config = false;
+    restrict-eval = true;
+    allow-import-from-derivation = false;
+    sandbox = true;
+  };
+
+  # Render a settings attrset to a NIX_CONFIG / nix.conf body (newline-separated `key = value`).
+  # Single-sourced so the greeter and the conformance proof apply byte-for-byte the SAME posture.
+  renderNixConfig =
+    settings:
+    lib.concatStringsSep "\n" (
+      lib.mapAttrsToList (
+        n: v: "${n} = ${if lib.isBool v then lib.boolToString v else toString v}"
+      ) settings
+    );
+
   # Recipients-from-grants (ADR-0015, slice 06): for each secret-bearing feature's sops
   # file, the set of hosts that GRANT it — the single source of truth for .sops.yaml
   # recipients. Applied to a fleet's nixosConfigurations by the host (it reads the fleet).
