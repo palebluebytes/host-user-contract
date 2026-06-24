@@ -162,6 +162,19 @@ the term is stable, the code is pending (see the cited issue).
   tier's restricted eval and prints the activation package. It is host-side because building a real
   home needs home-manager, which the contract does not depend on — exactly as the platform/display
   bindings are host-side. Everything else in the greeter is package-free at the flake level.
+- **greeter-seat baseline** — the **standing, build-time** system-side effects a greeter seat
+  pre-realizes once, so a runtime login needs **no per-login rebuild**. Because every greeter login
+  gets *exactly* `greeterGrants` and the safe set is statically known, the grant's system effects
+  are uniform across all greeter users — so the seat declares them as a property of "this host runs
+  a greeter" (the safe-set group memberships as a `greeter-users` group; both session stacks
+  installed; the session/display backend bound), and `provision` just **enrolls** the new account
+  into it. Applying grant effects per-login via `nixos-rebuild` is privilege-safe (the safe set
+  bounds it) but rejected: it mutates the *global* generation (shared blast radius), and the
+  runtime user isn't in the operator's flake so the next operator switch deletes it (drift). The
+  invariant that keeps this rebuild-free: safe-set membership requires the effect be **uniformly
+  pre-realizable** as a seat capability — anything needing per-login system mutation is build-time
+  only, like privilege. Scoped to **single-seat personal machines** (laptop / single-monitor
+  desktop), where greetd serializes `seat0` so logins never overlap. (ADR-0022, ADR-0024)
 - **safe set** — the features a runtime/greeter login may auto-grant: the **runtime-eligible**
   ones. `safeSet = ["gui"]` today. (`lib.nix`)
 - **greeterGrants** — the **canonical runtime grant value** (`self.greeterGrants`): the safe set
