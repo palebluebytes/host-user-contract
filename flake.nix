@@ -133,6 +133,33 @@
             ];
           };
         };
+        greeter-desktop-gnome = import ./conformance/greeter-desktop-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          greeterModule = self.nixosModules.greeter;
+          inherit system;
+          de = {
+            name = "gnome";
+            module = {
+              services.desktopManager.gnome.enable = true;
+            };
+            # GNOME 50's gnome-session starts gnome-shell as a systemd USER service, detached from
+            # greetd's login session, so mutter can't find its seat ("no matching session"). Launch
+            # gnome-shell as a DIRECT CHILD of the greetd session (as kwin/cage/sway run) so it is in
+            # the session and takes the seat — the seat's GNOME binding (a host concern, ADR-0029).
+            command =
+              let
+                p = nixpkgs.legacyPackages.${system};
+              in
+              "${p.writeShellScript "gnome-wayland" ''
+                export XDG_SESSION_TYPE=wayland
+                export XDG_CURRENT_DESKTOP=GNOME
+                export XDG_DATA_DIRS=/run/current-system/sw/share
+                exec ${p.gnome-shell}/bin/gnome-shell --wayland --display-server
+              ''}";
+            procs = [ "gnome-shell" ];
+          };
+        };
       });
 
       # `nix fmt` canonical formatter: nixfmt (RFC 166), the official successor to the
