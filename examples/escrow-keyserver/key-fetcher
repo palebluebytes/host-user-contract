@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Reference escrow keyFetcher (issue #13, ADR-0031) — an EXAMPLE the seat binds to
+# `custom.greeter.secretProvisioning.keyFetcher`. The contract calls it as `keyFetcher <username>`
+# and captures STDOUT to a file; this prints the user's wrapped age key (opaque bytes) to stdout.
+#
+# It speaks the reference release server's protocol: POST /request -> show the match NUMBER to the user
+# -> poll the one-time GET /key/<token> until the phone approves. Binary-safe by construction: the key
+# streams through a FILE (curl -o), never a shell variable (which would drop NUL bytes).
+#
+# Config (a real binding bakes these): CONTRACT_KEYFETCHER_URL must be HTTPS in production (the wrapped
+# key crosses the network). CONTRACT_KEYFETCHER_POLL = seconds to wait for the approval.
+set -euo pipefail
+
+username=${1:?usage: key-fetcher <username>}
+url=${CONTRACT_KEYFETCHER_URL:?set CONTRACT_KEYFETCHER_URL (https://your-release-server)}
+url=${url%/}
+poll=${CONTRACT_KEYFETCHER_POLL:-60}
+
+case "$url" in
+  https://*) : ;;
+  http://127.0.0.1* | http://localhost*) : ;; # loopback allowed for the demo/test
+  *)
+    echo "key-fetcher: refusing a non-HTTPS release URL ('$url') — the wrapped key crosses the network" >&2
+    exit 1
+    ;;
+esac
+
+# 1. request a release; the server pushes an approval to the phone and returns a one-time token + the
+#    match number to show the user (number-matching binds the approval to THIS seat).
+req=$(curl -fsS -X POST "$url/request/$username") || {
+  echo "key-fetcher: release request failed" >&2
+  exit 1
+}
+token=$(printf '%s' "$req" | jq -r .token)
+number=$(printf '%s' "$req" | jq -r .number)
+[ -n "$token" ] && [ "$token" != null ] || {
+  echo "key-fetcher: no release token" >&2
+  exit 1
+}
+printf 'Approve the key release on your phone — match number: %s\n' "$number" >&2
+
+# 2. poll the ONE-TIME, requester-bound key endpoint until released; stream bytes to a FILE (binary-safe).
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+for _ in $(seq 1 "$poll"); do
+  if curl -fsS -o "$tmp" "$url/key/$token" 2>/dev/null; then
+    cat "$tmp"
+    exit 0
+  fi
+  sleep 1
+done
+echo "key-fetcher: timed out waiting for phone approval" >&2
+exit 1

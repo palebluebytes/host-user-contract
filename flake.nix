@@ -124,6 +124,14 @@
           inherit system;
         };
 
+        # The reference escrow keyserver (issue #13, ADR-0031): proves the EXAMPLE release server +
+        # reference keyFetcher enforce the release gate — number-matching, a one-time requester-bound
+        # token, binary-safe transport, signature verification — with a keypair-controlled "phone".
+        # An example, not contract code (ADR-0020); tested here so it stays honest.
+        escrow-keyserver = import ./examples/escrow-keyserver/gate-test.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+        };
+
         # The FULL real bind loop (issue #2): drive the actual contract-greeter-bind orchestrator
         # end-to-end — archive → eval-free Tier-1 auth → a reference homeBuilder's real runtime
         # `nix build` → provision → session — the one truly-runtime step the other greeter tests
