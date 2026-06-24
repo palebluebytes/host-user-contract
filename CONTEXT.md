@@ -188,15 +188,19 @@ the term is stable, the code is pending (see the cited issue).
   feeding the same unlock + placement path (`contract-greeter-unlock` → `provision` writes the key to
   `~/.config/sops/age/keys.txt` before activation, so the user's sops decrypt). Sources:
   **(a) passphrase** (issue #10, BUILT): a passphrase-wrapped age key in the repo (openssl AES-256-CBC +
-  PBKDF2 + a magic header; a SEPARATE unlock passphrase by default). **(b) escrow** (issue #11, fetch +
-  gate BUILT): `contract-greeter-fetch-key` requests + polls the user's server, which releases the wrapped
-  key only after a **phone** approval — removing the public brute-forceable blob; the phone↔server approval
-  is a host binding. **FIDO2/YubiKey** stays recorded **on-demand only** (issue #12). Hard gates, any
-  source: **Tier-1 only**, **trusted (non-[[exposed]]) seat only** (the seat sees the plaintext while it
-  activates the home — ADR-0015), never Tier-2 — refused in `bind` and as eval assertions. Distinct from
-  contract secret-features (`signing`), which stay build-time via the [[safe-set]]. Tested without a real
-  phone: the [[bind-loop]] VM proves passphrase end-to-end (secret decrypts at login), and a stub release
-  server + a keypair-controlled challenge-signer proves the escrow gate. (issues #4/#10/#11; ADR-0031)
+  PBKDF2 + a magic header; a SEPARATE unlock passphrase by default). **(b) escrow** (issue #11): the
+  wrapped key lives on the user's server, fetched after a **phone** approval — the fetch is a **host-bound
+  `keyFetcher` command** (the contract ships the seam, not the wire protocol, exactly like [[homeBuilder]];
+  the request/poll HTTP loop is the **reference example**, #13, which composes **OpenBao** one-time
+  wrapping + **ntfy** push, approval = number-match (default) / tap / passkey). **FIDO2/YubiKey** stays
+  **on-demand only** (issue #12). Hard gates, any source: **Tier-1 only**, **trusted (non-[[exposed]]) seat
+  only** (the seat sees the plaintext while it activates the home — ADR-0015), never Tier-2 — refused in
+  `bind` and as eval assertions. Escrow **fails closed on secrets**: server unreachable ⇒ degrade to a
+  secret-free session (never blocks the login; can't leak), **no in-repo passphrase fallback** (that would
+  be a downgrade attack), optional `requireSecrets` to hard-fail for workloads that must not run
+  secret-free. Distinct from contract secret-features (`signing`), which stay build-time via the
+  [[safe-set]]. Tested without a real phone: the [[bind-loop]] VM proves passphrase end-to-end, and a stub
+  release server + a keypair-controlled challenge-signer proves the escrow gate. (issues #4/#10/#11/#13; ADR-0031)
 - **tier1-eval-posture** — the **contract-pinned** Nix settings a host-signed home is evaluated +
   built under (`tier1EvalConfig`, a projection beside [[safe-set]]/[[greeterGrants]]; ADR-0030):
   `accept-flake-config = false` (**the un-widenable linchpin** — the repo's own `nixConfig` is
