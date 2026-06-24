@@ -191,9 +191,9 @@ let
         echo "unlock flow OK"; touch $out
       '';
 
-  # --- phone-gated escrow (ADR-0031, issue #11) ---
-  # escrow without a releaseUrl is a hard eval error (the fetch has nowhere to go).
-  greeterEscrowNoUrl = eval [
+  # --- phone-gated escrow (ADR-0031 update, issue #11) ---
+  # escrow without a keyFetcher host binding is a hard eval error (nowhere to get the key).
+  greeterEscrowNoFetcher = eval [
     greeterModule
     {
       custom.greeter.enable = true;
@@ -203,16 +203,33 @@ let
     }
   ];
 
+  # The escrow fetch is a host-bound `keyFetcher` command (the contract ships the seam, not the wire
+  # protocol — ADR-0031 update). This is a REFERENCE keyFetcher the test binds, standing in for a host's
+  # real one (#13 composes OpenBao + ntfy): `keyFetcher <username>` requests a release and polls, writing
+  # the wrapped key to STDOUT. It streams via a FILE (curl -o), never a shell var — a wrapped key is
+  # binary and `$(curl)` would silently drop NUL bytes. The release URL is configured out-of-band
+  # (env), exactly as a real binding bakes it.
+  referenceKeyFetcher = pkgs.writeShellScript "reference-key-fetcher" ''
+    set -euo pipefail
+    username=$1
+    url=''${CONTRACT_KEYFETCHER_URL%/}
+    poll=''${CONTRACT_KEYFETCHER_POLL:-60}
+    ${pkgs.curl}/bin/curl -fsS -X POST "$url/request/$username" >/dev/null
+    tmp=$(${pkgs.coreutils}/bin/mktemp)
+    for _ in $(${pkgs.coreutils}/bin/seq 1 "$poll"); do
+      if ${pkgs.curl}/bin/curl -fsS -o "$tmp" "$url/key/$username" 2>/dev/null; then
+        ${pkgs.coreutils}/bin/cat "$tmp"; ${pkgs.coreutils}/bin/rm -f "$tmp"; exit 0
+      fi
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+    ${pkgs.coreutils}/bin/rm -f "$tmp"; echo "key-fetcher: timed out waiting for approval" >&2; exit 1
+  '';
+
   # The "how do we test the phone?" answer: we DON'T need a real phone. The phone is an authorization
-  # GATE on the user's release server; the contract's side is only request + poll (contract-greeter-
-  # fetch-key). So a stub release server stands in for the user's server, and a keypair we control
-  # stands in for the phone (a challenge-response signer). The server releases the key ONLY after a
-  # VALID signed challenge — proving the gate — with zero real-phone/WebAuthn dependency (that stack is
-  # the host's binding, the same consumer-renders boundary as homeBuilder / SDDM).
-  fetchKeyScript =
-    lib.findFirst (p: lib.hasInfix "contract-greeter-fetch-key" (p.name or ""))
-      (throw "conformance: contract-greeter-fetch-key not found in the greeter's systemPackages")
-      greeterBound.environment.systemPackages;
+  # GATE on the user's release server. So a stub release server stands in for the user's server, and a
+  # keypair we control stands in for the phone (a challenge-response signer). The server releases the key
+  # ONLY after a VALID signed challenge — proving the gate — with zero real-phone/WebAuthn dependency
+  # (that stack is the host's binding, the same consumer-renders boundary as homeBuilder / SDDM).
   releaseServer = pkgs.writeText "release-server.py" ''
     import http.server, socketserver, subprocess, os, secrets, base64, sys, tempfile
     PORT = int(sys.argv[1]); PUBKEY = sys.argv[2]; KEYBYTES = open(sys.argv[3], "rb").read()
@@ -255,11 +272,10 @@ let
     socketserver.TCPServer.allow_reuse_address = True
     socketserver.TCPServer(("127.0.0.1", PORT), H).serve_forever()
   '';
-  fetchKeyGateTest =
-    pkgs.runCommand "contract-greeter-fetch-key-gate"
+  keyFetcherGateTest =
+    pkgs.runCommand "contract-escrow-keyfetcher-gate"
       {
         nativeBuildInputs = [
-          fetchKeyScript
           pkgs.python3
           pkgs.openssl
           pkgs.curl
@@ -274,7 +290,9 @@ let
         openssl genpkey -algorithm ed25519 -out phone.key 2>/dev/null
         openssl pkey -in phone.key -pubout -out phone.pub 2>/dev/null
         openssl genpkey -algorithm ed25519 -out attacker.key 2>/dev/null
-        printf 'WRAPPED-AGE-KEY-BYTES' > wrapped.key
+        # A BINARY wrapped key, with NUL + high bytes — a real wrapped key is openssl ciphertext, not
+        # ASCII. This is what catches a non-binary-safe fetcher (a `$(curl)` would corrupt it).
+        printf 'wrapped\x00age\x00key\xff\xfe\x01bytes' > wrapped.key
         port=8731
         url="http://127.0.0.1:$port"
 
@@ -290,25 +308,27 @@ let
           base64 -w0 sig | curl -fsS -X POST --data-binary @- "$url/approve/$1"
         }
 
-        echo "# POSITIVE: a valid phone approval releases the key; fetch-key retrieves it"
-        CONTRACT_FETCH_KEY_POLL=30 contract-greeter-fetch-key "$url" alice > got.key &
+        export CONTRACT_KEYFETCHER_URL="$url"
+
+        echo "# POSITIVE: a valid phone approval releases the key; the keyFetcher retrieves it BYTE-EXACT"
+        CONTRACT_KEYFETCHER_POLL=30 ${referenceKeyFetcher} alice > got.key &
         fetch=$!
         sleep 1
         approve alice phone.key >/dev/null
-        wait "$fetch" || { echo "FAIL: fetch-key did not return after a valid approval" >&2; exit 1; }
-        diff wrapped.key got.key || { echo "FAIL: released key mismatch" >&2; exit 1; }
+        wait "$fetch" || { echo "FAIL: keyFetcher did not return after a valid approval" >&2; exit 1; }
+        cmp -s wrapped.key got.key || { echo "FAIL: released key corrupted/mismatched (binary-unsafe?)" >&2; exit 1; }
 
         echo "# NEGATIVE: an ATTACKER signature is rejected — no release"
         curl -fsS -X POST "$url/request/bob" >/dev/null
         if approve bob attacker.key 2>/dev/null | grep -q approved; then echo "FAIL: attacker approval accepted" >&2; exit 1; fi
         if curl -fsS "$url/key/bob" >/dev/null 2>&1; then echo "FAIL: key released without a valid approval" >&2; exit 1; fi
 
-        echo "# NEGATIVE: no approval ⇒ fetch-key times out cleanly (no key)"
-        if CONTRACT_FETCH_KEY_POLL=2 contract-greeter-fetch-key "$url" carol >/dev/null 2>&1; then
-          echo "FAIL: fetch-key returned a key with no approval" >&2; exit 1
+        echo "# NEGATIVE: no approval ⇒ the keyFetcher times out cleanly (no key)"
+        if CONTRACT_KEYFETCHER_POLL=2 ${referenceKeyFetcher} carol >/dev/null 2>&1; then
+          echo "FAIL: keyFetcher returned a key with no approval" >&2; exit 1
         fi
 
-        echo "phone-gated escrow fetch OK"; touch $out
+        echo "phone-gated escrow keyFetcher OK"; touch $out
       '';
 in
 {
@@ -316,7 +336,7 @@ in
     greeterAuthFlow = authFlowTest;
     tier1RestrictedEval = restrictedEvalTest;
     greeterUnlockFlow = unlockFlowTest;
-    greeterFetchKeyGate = fetchKeyGateTest;
+    greeterEscrowKeyFetcherGate = keyFetcherGateTest;
   };
 
   assertions = [
@@ -378,9 +398,11 @@ in
       ) greeterSecretExposed.assertions;
     }
     {
-      # ADR-0031 issue #11: escrow needs somewhere to fetch from.
-      name = "secret provisioning: escrow method without a releaseUrl fails an assertion";
-      ok = lib.any (a: !a.assertion && lib.hasInfix "releaseUrl" a.message) greeterEscrowNoUrl.assertions;
+      # ADR-0031 issue #11: escrow needs a host keyFetcher binding.
+      name = "secret provisioning: escrow method without a keyFetcher fails an assertion";
+      ok = lib.any (
+        a: !a.assertion && lib.hasInfix "keyFetcher" a.message
+      ) greeterEscrowNoFetcher.assertions;
     }
     {
       # ADR-0030: the contract PINS the Tier-1 eval posture. accept-flake-config=false is the

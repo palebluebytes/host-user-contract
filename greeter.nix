@@ -63,7 +63,6 @@ let
   # a writeShellApplication closed over only what it needs; bind orchestrates the other three.
   authScript = import ./greeter/auth.nix { inherit pkgs identityFile; };
   unlockScript = import ./greeter/unlock.nix { inherit pkgs; };
-  fetchKeyScript = import ./greeter/fetch-key.nix { inherit pkgs; };
   provisionScript = import ./greeter/provision.nix {
     inherit
       pkgs
@@ -86,7 +85,6 @@ let
       provisionScript
       sessionScript
       unlockScript
-      fetchKeyScript
       ;
     inherit (cfg)
       tier
@@ -225,17 +223,41 @@ in
             ];
             default = "passphrase";
             description = ''
-              Where the wrapped age key comes from (ADR-0031). `passphrase` (v1, issue #10): a key
-              wrapped in the user's repo, unlocked by a passphrase — portable, no infra. `escrow` (issue
-              #11): the wrapped key lives on the user's own server and is fetched after a PHONE approval
-              (`releaseUrl`), removing the public offline-brute-forceable blob; the fetched key is still
-              passphrase-unlocked (two factors: phone + passphrase).
+              Where the wrapped age key comes from (ADR-0031). `passphrase` (issue #10): a key wrapped in
+              the user's repo, unlocked by a passphrase — portable, no infra. `escrow` (issue #11): the
+              wrapped key lives off-repo and is obtained via the host's `keyFetcher` binding (e.g. fetched
+              from the user's server after a PHONE approval), removing the public offline-brute-forceable
+              blob; the fetched key is still passphrase-unlocked (two factors: gate + passphrase).
             '';
           };
-          releaseUrl = lib.mkOption {
-            type = lib.types.str;
-            default = "";
-            description = "For method = \"escrow\": the user's key-release server (contract-greeter-fetch-key requests + polls it; the phone↔server approval is the server's concern).";
+          keyFetcher = lib.mkOption {
+            type = lib.types.nullOr (
+              lib.types.oneOf [
+                lib.types.str
+                lib.types.path
+                lib.types.package
+              ]
+            );
+            default = null;
+            description = ''
+              Host BINDING for method = "escrow" (ADR-0031 update, issue #11): a command invoked as
+              `keyFetcher <username>` that obtains the user's wrapped age key and prints it to STDOUT
+              (bind captures it to a private file — binary-safe). The contract ships the SEAM, never a
+              wire protocol — exactly like `homeBuilder` — so the host binds whatever release mechanism it
+              runs (the reference example composes OpenBao one-time wrapping + an ntfy phone approval, #13;
+              it must use a confidential channel and stream bytes, not a shell var). Null ⇒ no fetcher.
+            '';
+          };
+          requireSecrets = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              If true, FAIL the login when secret provisioning is enabled but no key could be obtained
+              (escrow server unreachable, no wrapped key, …) — for workloads that must not run secret-free.
+              Default false: fail CLOSED on secrets but never on the login (ADR-0031 update) — a missing
+              key degrades to a secret-free session, which cannot leak. There is deliberately NO in-repo
+              passphrase fallback for escrow (that would be a downgrade attack).
+            '';
           };
           separatePassphrase = lib.mkOption {
             type = lib.types.bool;
@@ -284,8 +306,8 @@ in
       {
         assertion =
           (cfg.secretProvisioning.enable && cfg.secretProvisioning.method == "escrow")
-          -> cfg.secretProvisioning.releaseUrl != "";
-        message = "custom.greeter.secretProvisioning.method = \"escrow\" needs a releaseUrl (the user's key-release server, ADR-0031 issue #11)";
+          -> cfg.secretProvisioning.keyFetcher != null;
+        message = "custom.greeter.secretProvisioning.method = \"escrow\" needs a keyFetcher host binding (ADR-0031 issue #11)";
       }
     ];
 
@@ -311,7 +333,6 @@ in
       provisionScript
       sessionScript
       unlockScript
-      fetchKeyScript
     ];
   };
 }

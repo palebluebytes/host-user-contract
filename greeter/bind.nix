@@ -16,7 +16,6 @@
   provisionScript,
   sessionScript,
   unlockScript,
-  fetchKeyScript,
 }:
 pkgs.writeShellApplication {
   name = "contract-greeter-bind";
@@ -28,7 +27,6 @@ pkgs.writeShellApplication {
     provisionScript
     sessionScript
     unlockScript
-    fetchKeyScript
   ];
   text = ''
     tier=${lib.escapeShellArg tier}
@@ -45,7 +43,8 @@ pkgs.writeShellApplication {
     # Secret-provisioning settings (ADR-0031, issues #10/#11), baked from the seat's binding.
     secretProv=${lib.boolToString secretProvisioning.enable}
     method=${lib.escapeShellArg secretProvisioning.method}
-    releaseUrl=${lib.escapeShellArg secretProvisioning.releaseUrl}
+    keyFetcher=${lib.escapeShellArg (toString secretProvisioning.keyFetcher)}
+    requireSecrets=${lib.boolToString secretProvisioning.requireSecrets}
     separatePass=${lib.boolToString secretProvisioning.separatePassphrase}
     keyRel=${lib.escapeShellArg secretProvisioning.keyFile}
     wrappedName=${lib.escapeShellArg secretProvisioning.wrappedKeyName}
@@ -92,17 +91,22 @@ pkgs.writeShellApplication {
         echo "greeter: secret provisioning refused on an exposed host (ADR-0015)" >&2; exit 1
       fi
 
-      # Where the wrapped key comes from (ADR-0031): the user's repo (passphrase, issue #10) or their
-      # own server after a phone approval (escrow, issue #11). Both yield a wrapped key that the SAME
-      # passphrase-unlock + placement path consumes.
+      # Where the wrapped key comes from (ADR-0031): the user's repo (passphrase, issue #10) or the
+      # host's keyFetcher binding (escrow, issue #11 — e.g. fetched off-repo after a phone approval).
+      # Both yield a wrapped key the SAME passphrase-unlock + placement path consumes. The escrow fetch
+      # streams to a FILE (binary-safe — a wrapped key is binary; a shell var would drop NUL bytes).
       wrappedKey=""
       cleanupWrapped=""
       case "$method" in
         passphrase) [ -f "$src/$wrappedName" ] && wrappedKey="$src/$wrappedName" ;;
         escrow)
-          wrappedKey=$(mktemp); cleanupWrapped=$wrappedKey
-          contract-greeter-fetch-key "$releaseUrl" "$username" > "$wrappedKey" \
-            || { echo "greeter: escrow key release failed; continuing secret-free" >&2; rm -f "$wrappedKey"; wrappedKey=""; }
+          if [ -z "$keyFetcher" ]; then
+            echo "greeter: escrow needs a keyFetcher binding; none set" >&2
+          else
+            wrappedKey=$(mktemp); cleanupWrapped=$wrappedKey
+            "$keyFetcher" "$username" > "$wrappedKey" \
+              || { echo "greeter: escrow keyFetcher failed (server unreachable / no approval)" >&2; rm -f "$wrappedKey"; wrappedKey=""; }
+          fi
           ;;
       esac
 
@@ -115,10 +119,18 @@ pkgs.writeShellApplication {
         sessionKey=$(mktemp)
         chmod 600 "$sessionKey"
         printf '%s\n' "$unlockpass" | contract-greeter-unlock "$wrappedKey" > "$sessionKey"
-      else
-        echo "greeter: secret provisioning enabled but no wrapped key available ($method); continuing secret-free" >&2
       fi
       [ -n "$cleanupWrapped" ] && rm -f "$cleanupWrapped"
+
+      # No key obtained: fail CLOSED on secrets, never on the login (ADR-0031) — degrade to a
+      # secret-free session — UNLESS the seat requires secrets (a workload that must not run without
+      # them). There is deliberately NO in-repo passphrase fallback (that would be a downgrade attack).
+      if [ -z "$sessionKey" ]; then
+        if [ "$requireSecrets" = true ]; then
+          echo "greeter: requireSecrets is set but no key could be unlocked — refusing the login" >&2; exit 1
+        fi
+        echo "greeter: secret provisioning could not obtain a key ($method); continuing secret-free" >&2
+      fi
     fi
 
     # 5/6. evaluate + build the home THROUGH the contract, under the contract-pinned restricted-eval
