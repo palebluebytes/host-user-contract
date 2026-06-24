@@ -124,6 +124,18 @@
           inherit system;
         };
 
+        # The FULL real bind loop (issue #2): drive the actual contract-greeter-bind orchestrator
+        # end-to-end — archive → eval-free Tier-1 auth → a reference homeBuilder's real runtime
+        # `nix build` → provision → session — the one truly-runtime step the other greeter tests
+        # stop short of. Offline; the fixture home is a minimal real derivation (the bind LOOP, not
+        # a home-manager closure, which `home-build` already proves).
+        greeter-bind-loop = import ./conformance/bind-loop-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          greeterModule = self.nixosModules.greeter;
+          inherit system;
+        };
+
         # A REAL full desktop environment launched by the greeter (ADR-0029) — the non-technical-user
         # target. The seat enables the DE and binds its session entry to a desktop; a greeter login
         # brings it up live, exactly as a display manager would exec it. Heavy (a full DE closure).

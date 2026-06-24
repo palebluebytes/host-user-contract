@@ -171,6 +171,17 @@ the term is stable, the code is pending (see the cited issue).
   home needs home-manager, which the contract does not depend on — exactly as the platform/display
   bindings are host-side. The greeter hands it the posture as `NIX_CONFIG`, so a naive `nix build`
   binding inherits the floor for free. Everything else in the greeter is package-free at the flake level.
+  The whole orchestrator is exercised end-to-end by the [[bind-loop]] VM.
+- **bind-loop** — the FULL real runtime path the greeter performs at a login (`greeter-bind-loop` check,
+  `conformance/bind-loop-vm.nix`): drive the actual `contract-greeter-bind` ORCHESTRATOR on a booted
+  seat — flake URL + username + password on stdin → `nix flake archive` (real fetch) → eval-free Tier-1
+  signature auth → [[homeBuilder]] → [[contract-greeter-bind|provision]] → session launch — the one
+  truly-runtime step `greeter-vm`/`greeter-provision` stop short of (they drive provision/session with a
+  pre-built home). The fixture user flake is minimal (its `activationPackage` is a raw derivation that
+  is just an `$out/activate`, all `provision` needs) so the test isolates the LOOP, not a home-manager
+  build (that is `home-build`). One concession, documented in-file: a *nested test VM* cannot realize a
+  fresh sandboxed `nix build`, so the reference homeBuilder there resolves to a home built at test-build
+  time; its real-seat form is the `nix build "$src#…activationPackage"` one-liner. (issue #2; ADR-0022)
 - **tier1-eval-posture** — the **contract-pinned** Nix settings a host-signed home is evaluated +
   built under (`tier1EvalConfig`, a projection beside [[safe-set]]/[[greeterGrants]]; ADR-0030):
   `accept-flake-config = false` (**the un-widenable linchpin** — the repo's own `nixConfig` is
