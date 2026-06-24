@@ -110,6 +110,29 @@
           greeterModule = self.nixosModules.greeter;
           inherit system;
         };
+
+        # A REAL full desktop environment launched by the greeter (ADR-0029) — the non-technical-user
+        # target. The seat enables the DE and binds its session entry to a desktop; a greeter login
+        # brings it up live, exactly as a display manager would exec it. Heavy (a full DE closure).
+        greeter-desktop-plasma = import ./conformance/greeter-desktop-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          greeterModule = self.nixosModules.greeter;
+          inherit system;
+          de = {
+            name = "plasma";
+            module = {
+              services.desktopManager.plasma6.enable = true;
+            };
+            command = "${
+              nixpkgs.legacyPackages.${system}.kdePackages.plasma-workspace
+            }/bin/startplasma-wayland";
+            procs = [
+              "kwin_wayland"
+              "plasmashell"
+            ];
+          };
+        };
       });
 
       # `nix fmt` canonical formatter: nixfmt (RFC 166), the official successor to the
