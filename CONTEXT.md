@@ -203,8 +203,11 @@ the term is stable, the code is pending (see the cited issue).
   (`custom.greeter.desktops.<name> = { type; command; }`, reusing each DE's session-entry Exec, like
   a display manager). The greeter resolves the user's name against the offered set and launches it
   via greetd-as-user (a full DE needs that seat session); an un-offered name degrades to
-  `defaultDesktop`. DE-agnostic: the contract carries an opaque name, the seat maps it.
-  (ADR-0029; `features.nix`, `greeter.nix`)
+  `defaultDesktop`. DE-agnostic: the contract carries an opaque name, the seat maps it. The choice
+  is **auto-surfaced** to `~/.contract-desktop` by `homeModules.greeterDesktop` — a SEPARATE home
+  module from `homeModules.default` (it sets `home.file`, a home-manager option, so the default
+  umbrella stays tracer-pure / home-manager-free; a real home imports both). Inert when no desktop
+  is requested ⇒ the seat default. (ADR-0029; `features.nix`, `greeter.nix`, `modules.nix`)
 - **safe set** — the features a runtime/greeter login may auto-grant: the **runtime-eligible**
   ones. `safeSet = ["gui"]` today. (`lib.nix`)
 - **greeterGrants** — the **canonical runtime grant value** (`self.greeterGrants`): the safe set
