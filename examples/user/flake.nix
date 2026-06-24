@@ -90,6 +90,7 @@
           contractModule = contract.nixosModules.default;
           greeterModule = contract.nixosModules.greeter;
           homeActivation = self.homeConfigurations.example-greeter.activationPackage;
+          identityJson = ./identity.json;
           username = identity.username;
         };
       };

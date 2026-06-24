@@ -19,6 +19,7 @@
   contractModule,
   greeterModule,
   homeActivation,
+  identityJson,
   username,
 }:
 pkgs.testers.runNixOSTest {
@@ -68,10 +69,14 @@ pkgs.testers.runNixOSTest {
     # The external user does not exist at build time — NixOS users are declarative.
     machine.fail("getent passwd ${username}")
 
-    # Runtime provision the REAL greeter-bound home: materialize the (Tier-1, persisted) account
-    # and activate the actual home-manager generation as that user.
-    machine.succeed("contract-greeter-provision ${username} ${homeActivation} tier1")
+    # Runtime provision the REAL greeter-bound home: fully realize the account from identity.json
+    # (shell-side realization.nix, ADR-0028) and activate the actual home-manager generation as
+    # that user.
+    machine.succeed("contract-greeter-provision ${username} ${identityJson} ${homeActivation} tier1")
     machine.succeed("getent passwd ${username}")
+
+    # The account is realized from the real identity (GECOS), not a stub.
+    machine.succeed("getent passwd ${username} | cut -d: -f5 | grep -qi example")
 
     # The real home-manager home actually activated: its profile is installed and the marker
     # dotfile the greeter-bound home carries is present in the new account's home.
