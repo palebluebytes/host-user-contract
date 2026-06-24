@@ -68,10 +68,12 @@ let
       computed=$(perl -e 'print crypt($ARGV[0], $ARGV[1])' "$password" "$stored")
       [ "$computed" = "$stored" ] || { echo "auth: password mismatch" >&2; exit 1; }
 
-      # Tier 1 (semi-trusted): the repo must be SIGNED by a host-trusted key (ADR-0022). We
-      # verify an SSH signature over a manifest of the tree (the whole config is what is signed,
-      # not just identity.json), against the intersection of the host's pinned signers and the
-      # keys the repo lists in identity.json.trustedKeys (both must vouch for the key).
+      # Tier 1 (semi-trusted): the repo must be SIGNED by a HOST-pinned key (ADR-0022, ADR-0027).
+      # We verify an SSH signature over a manifest of the tree (the whole config is signed, not
+      # just identity.json) against the host's operator-pinned trustedSigners ALONE. The host is
+      # the SOLE Tier-1 trust anchor — a repo cannot vouch for its own tier (a repo naming and
+      # signing with its own key would self-certify, i.e. Tier 2's threat model). Note
+      # identity.json.trustedKeys is SSH LOGIN keys (realization → authorizedKeys), never consulted here.
       if [ "$tier" = tier1 ]; then
         [ -s "$signers" ] || { echo "auth: tier1 requires host-pinned trusted signers" >&2; exit 1; }
         [ -f "$src/contract.sig" ] || { echo "auth: tier1 requires a repo signature (contract.sig)" >&2; exit 1; }

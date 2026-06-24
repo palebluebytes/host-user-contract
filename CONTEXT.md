@@ -190,6 +190,13 @@ the term is stable, the code is pending (see the cited issue).
   semi-trusted (own, *signed* repo; persisted home; restricted eval guarding accidents) —
   built first. Tier 2 = untrusted (anyone; hardened eval; ephemeral home) — designed-for,
   deferred. A tier is a *parameter* over one mechanism, not a separate code path. (ADR-0022)
+- **trustedSigners vs trustedKeys** — two different key sets, kept distinct (ADR-0027).
+  **`trustedSigners`** (`custom.greeter.trustedSigners`, host-pinned) is the **sole Tier-1
+  signing authority**: a repo is Tier 1 iff its `contract.sig` verifies against an
+  *operator-pinned* key. **`trustedKeys`** (in the user's `identity.json`) is the user's SSH
+  **login** keys (→ `authorizedKeys`, `realization.nix`). A repo signing with a key it lists in
+  its own `identity.json` proves nothing about *host* trust — so tier classification consults the
+  host set only; a repo cannot self-certify its tier. (ADR-0027; `greeter.nix`, `realization.nix`)
 - **identity.json** — the contract-conventional **data** file (not Nix) carrying a user's
   public identity. The greeter authenticates against it with `jq` **before** evaluating any
   user Nix (**data before code** — eval is not a sandbox). The contract owns the schema and

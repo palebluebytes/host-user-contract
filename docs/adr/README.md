@@ -19,6 +19,7 @@ contract ships).
 | [0024](0024-greeter-is-a-contract-deliverable.md) | The greeter is a contract deliverable: `bindUser` in `lib` + a reusable greeter module |
 | [0025](0025-binduser-single-identity-loader.md) | `bindUser` is the single identity loader; the home holds its identity, it does not load it |
 | [0026](0026-greeter-seat-baseline-not-per-login-rebuild.md) | Runtime grant effects are a standing greeter-seat baseline, not a per-login rebuild |
+| [0027](0027-host-is-sole-tier1-signing-authority.md) | The host is the sole authority for Tier-1 signing trust; a repo cannot vouch for itself |
 
 ## Numbering
 
