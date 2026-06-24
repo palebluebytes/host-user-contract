@@ -80,13 +80,19 @@ pkgs.testers.runNixOSTest {
         secretPath = _: builtins.toFile "stub-secret" "";
       };
 
-      # Enable the reference greeter. Bind both session backends to marker commands so SELECTION is
-      # observable, with x11 as the seat default. Drive the helpers directly, so keep boot lean by
-      # not pulling the interactive greetd login in (the same move gui-union makes for its DM).
+      # Enable the reference greeter. Offer two desktops as marker commands so per-user desktop
+      # SELECTION is observable, with `plasma` the seat default. Drive the helpers directly, so keep
+      # boot lean by not pulling the interactive greetd login in (as gui-union does for its DM).
       custom.greeter.enable = true;
-      custom.greeter.session.x11 = "echo x11 > /tmp/session-launched";
-      custom.greeter.session.wayland = "echo wayland > /tmp/session-launched";
-      custom.greeter.session.default = "x11";
+      custom.greeter.desktops.gnome = {
+        type = "wayland";
+        command = "echo gnome > /tmp/desktop-launched";
+      };
+      custom.greeter.desktops.plasma = {
+        type = "wayland";
+        command = "echo plasma > /tmp/desktop-launched";
+      };
+      custom.greeter.defaultDesktop = "plasma";
       systemd.services.greetd.wantedBy = lib.mkForce [ ];
 
       # `docker` must EXIST for the clamp test to be meaningful (so "not in docker" proves the
@@ -125,13 +131,17 @@ pkgs.testers.runNixOSTest {
     # - the home activated AS the user
     machine.succeed("test -f /home/example/.contract-home-activated")
 
-    # Session SELECTION (ADR-0026 step 8): no home override ⇒ the seat default (x11) backend runs.
+    # Per-user desktop SELECTION (ADR-0029): no home choice ⇒ the seat default (plasma) launches.
     machine.succeed("contract-greeter-session example /home/example")
-    machine.succeed("grep -qx x11 /tmp/session-launched")
-    # A home override flips the type ⇒ the wayland backend runs instead.
-    machine.succeed("echo wayland > /home/example/.contract-session")
+    machine.succeed("grep -qx plasma /tmp/desktop-launched")
+    # The user's home chooses gnome ⇒ gnome launches instead.
+    machine.succeed("echo gnome > /home/example/.contract-desktop")
     machine.succeed("contract-greeter-session example /home/example")
-    machine.succeed("grep -qx wayland /tmp/session-launched")
+    machine.succeed("grep -qx gnome /tmp/desktop-launched")
+    # A desktop the seat does NOT offer degrades to the default, never breaks the login (ADR-0029).
+    machine.succeed("echo hyprland > /home/example/.contract-desktop")
+    machine.succeed("contract-greeter-session example /home/example")
+    machine.succeed("grep -qx plasma /tmp/desktop-launched")
 
     # Tier 2 (ephemeral) provisioning is designed-for but DEFERRED — the helper refuses it.
     machine.fail("contract-greeter-provision someone-else ${identityJson} ${activationStub} tier2")
