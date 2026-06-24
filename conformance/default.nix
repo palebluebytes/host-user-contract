@@ -14,6 +14,8 @@
   homeModule,
   safeSet,
   greeterGrants,
+  tier1EvalConfig,
+  renderNixConfig,
   featureGroups,
   privilegedGroups,
   loadIdentity,
@@ -329,6 +331,43 @@ let
         echo "eval-free auth flow OK" ; touch $out
       '';
 
+  # The restricted-eval EXECUTION test (ADR-0030): prove the contract's PINNED Tier-1 posture, when
+  # rendered to NIX_CONFIG exactly as the greeter hands it to the homeBuilder, actually RESTRICTS a
+  # real Nix eval — not just that the attrset spells the right words. We run the very renderer the
+  # greeter uses (renderNixConfig tier1EvalConfig) into NIX_CONFIG, then evaluate a hostile
+  # expression that reads a host file. Under the posture restrict-eval=true MUST block it; without
+  # the posture the same eval succeeds (the control), proving the posture is what restricts.
+  tier1NixConfigFile = builtins.toFile "tier1-nix.conf" (renderNixConfig tier1EvalConfig);
+  restrictedEvalTest =
+    pkgs.runCommand "contract-tier1-restricted-eval"
+      {
+        nativeBuildInputs = [ pkgs.nix ];
+      }
+      ''
+        export HOME=$PWD NIX_STATE_DIR=$PWD/nix/var NIX_STORE_DIR=/nix/store
+
+        # A host file OUTSIDE the store the hostile expression tries to read by absolute path.
+        secret=$PWD/host-secret
+        echo "a host file no user repo should reach" > "$secret"
+        expr="builtins.readFile \"$secret\""
+
+        echo "# control: a hostile readFile evaluates WITHOUT the posture"
+        nix-instantiate --eval --expr "$expr" >/dev/null \
+          || { echo "FAIL: the control eval did not even run" >&2; exit 1; }
+
+        echo "# the contract's pinned posture (via NIX_CONFIG) BLOCKS the same hostile readFile"
+        export NIX_CONFIG=$(cat ${tier1NixConfigFile})
+        if nix-instantiate --eval --expr "$expr" >/dev/null 2>err; then
+          echo "FAIL: restrict-eval did NOT block a host-file read under the pinned posture" >&2
+          exit 1
+        fi
+        grep -q "access to absolute path" err || grep -qi "restricted" err \
+          || { echo "FAIL: blocked, but not by the restricted-eval policy:" >&2; cat err >&2; exit 1; }
+
+        echo "tier1 restricted-eval posture OK (restrict-eval enforced via NIX_CONFIG)"
+        touch $out
+      '';
+
   # --- the matrix: synthetic users × host archetypes ---
   users = {
     alice = mkUser "alice" { session = "wayland"; };
@@ -570,6 +609,36 @@ let
       ok = greeterUnbound.custom.greeter.homeBuilder == null;
     }
     {
+      # ADR-0030: the contract PINS the Tier-1 eval posture. accept-flake-config=false is the
+      # un-widenable linchpin (ADR-0027 applied to eval: a repo cannot self-certify its eval by
+      # declaring its own nixConfig); the rest are restrict-eval, no IFD, and a sandboxed build.
+      name = "tier1 eval: the posture forbids the repo widening its own eval (accept-flake-config=false)";
+      ok = tier1EvalConfig.accept-flake-config == false;
+    }
+    {
+      name = "tier1 eval: the posture restricts eval, bans IFD, and sandboxes the build";
+      ok =
+        tier1EvalConfig.restrict-eval == true
+        && tier1EvalConfig.allow-import-from-derivation == false
+        && tier1EvalConfig.sandbox == true;
+    }
+    {
+      # The renderer the greeter uses produces a valid nix.conf body (newline-separated key = value)
+      # carrying the un-widenable linchpin — this is the exact string handed to homeBuilder as NIX_CONFIG.
+      name = "tier1 eval: the rendered NIX_CONFIG carries the posture verbatim";
+      ok =
+        let
+          rendered = renderNixConfig tier1EvalConfig;
+        in
+        lib.hasInfix "accept-flake-config = false" rendered && lib.hasInfix "restrict-eval = true" rendered;
+    }
+    {
+      # The greeter EXPOSES the posture it will apply (read-only introspection, like `grants`) — fixed
+      # to the contract's tier1EvalConfig, so an operator can audit the eval floor a login builds under.
+      name = "greeter: it exposes the pinned tier1 eval posture, unwidenable (== tier1EvalConfig)";
+      ok = greeterBound.custom.greeter.tier1EvalConfig == tier1EvalConfig;
+    }
+    {
       name = "matrix: every user realizes on every archetype, no failing assertion";
       ok = lib.all (sys: (accountsRealized sys) && (failing sys.config == [ ])) archetypes;
     }
@@ -592,16 +661,22 @@ let
     a: "  ${if a.ok then "ok  " else "FAIL"}  ${a.name}"
   ) assertions;
 in
-pkgs.runCommand "contract-conformance" { greeterAuthFlow = authFlowTest; } ''
-  cat <<'EOF'
-  contract conformance — synthetic users × the contract umbrella (no host repo):
-  ${report}
+pkgs.runCommand "contract-conformance"
+  {
+    greeterAuthFlow = authFlowTest;
+    tier1RestrictedEval = restrictedEvalTest;
+  }
+  ''
+    cat <<'EOF'
+    contract conformance — synthetic users × the contract umbrella (no host repo):
+    ${report}
 
-  greeter eval-free auth flow: ${authFlowTest} (built ⇒ ok)
-  EOF
-  ${lib.optionalString (failures != [ ]) ''
-    echo "contract conformance FAILED (see above)" >&2
-    exit 1
-  ''}
-  touch $out
-''
+    greeter eval-free auth flow:     ${authFlowTest} (built ⇒ ok)
+    tier1 restricted-eval posture:   ${restrictedEvalTest} (built ⇒ ok)
+    EOF
+    ${lib.optionalString (failures != [ ]) ''
+      echo "contract conformance FAILED (see above)" >&2
+      exit 1
+    ''}
+    touch $out
+  ''
