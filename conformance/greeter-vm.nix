@@ -1,21 +1,18 @@
-# Runtime VM smoke for the greeter's PROVISIONING crux (ADR-0022, issue #2, slice 3) — the one
-# part of the runtime path that genuinely needs a booted machine rather than a pure eval. The
-# eval-free auth ordering and the safe-set bind are proven headless in ./default.nix (the auth
-# script is even EXECUTED there); what only a real host can show is the genuinely-novel step:
-# materializing a user account and ACTIVATING a built home at RUNTIME, outside NixOS's
-# declarative build-time user model.
+# Runtime VM for the greeter's provisioning CRUX + session selection (ADR-0026/0028, issue #2).
+# The one part of the runtime path that needs a booted machine rather than a pure eval: the
+# eval-free auth ordering and the safe-set bind are proven headless in ./default.nix; what only a
+# real host can show is RUNTIME provisioning — materializing an account and realizing it OUTSIDE
+# NixOS's declarative build-time model.
 #
-# It boots ONE seat host with `nixosModules.greeter` enabled, then drives the privileged
-# `contract-greeter-provision` helper directly — binding the EXAMPLE user repo (its username
-# read from examples/user/identity.json, so this replicates the external user the greeter would
-# fetch). Like the gui-union VM supplies its own SDDM/Plasma to render the gui DECISION, this
-# test supplies its own stand-in home-ACTIVATION package (what the host's `homeBuilder` binding
-# would produce) — building a real home-manager activation package needs home-manager, which the
-# contract does not depend on (ADR-0020), the same boundary bindUserModule draws against hmStub.
-#
-# What the VM proves that eval cannot: the helper creates a (Tier-1, persisted) account that did
-# NOT exist at build time, runs the home activation AS that user, and refuses Tier-2 (ephemeral,
-# deferred). That is the declarative-contract → runtime-login bridge ADR-0022 calls the crux.
+# It boots ONE seat host with `nixosModules.greeter` enabled and drives the privileged helpers
+# directly against a synthetic identity.json. It asserts that `provision` is the shell-side
+# `realization.nix` (ADR-0028): the account is fully realized — password (so PAM works), GECOS,
+# authorizedKeys, the user's SAFE declared groups, the greeter-seat baseline groups — with the
+# privileged-group CLAMP reproduced at runtime (a hostile `docker` in identity.json is dropped).
+# It then proves session SELECTION (ADR-0026 step 8): the launcher picks the seat-default type, a
+# home override flips it, and each execs the host-bound backend. Building a real home needs
+# home-manager (the contract has none, ADR-0020), so the home here is a stub activation package —
+# the real-home end-to-end lives in examples/user (the consumer-renders boundary, like gui-union).
 {
   pkgs,
   contractModule,
@@ -23,14 +20,27 @@
   system,
 }:
 let
-  # The external user the greeter binds — its identity read from the example repo, exactly the
-  # data the eval-free auth step reads with jq before any Nix runs.
-  exampleUser = (builtins.fromJSON (builtins.readFile ../examples/user/identity.json)).username;
+  # A synthetic external identity (the inert data the eval-free auth reads). hashedPassword is the
+  # sha512-crypt of "correct-horse-battery-staple"; extraGroups carries one safe group (audio) and
+  # one privileged group (docker) so the runtime clamp is observable.
+  passwordHash = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
+  identityJson = pkgs.writeText "identity.json" (
+    builtins.toJSON {
+      name = "Example User";
+      email = "example@user.invalid";
+      username = "example";
+      hashedPassword = passwordHash;
+      sshKey = "ssh-ed25519 AAAAexamplekey example@user.invalid";
+      trustedKeys = [ "ssh-ed25519 AAAAtrustedkey trusted@elsewhere" ];
+      extraGroups = [
+        "audio"
+        "docker"
+      ];
+    }
+  );
 
-  # The test's stand-in for what `homeBuilder` returns: a home-ACTIVATION package shaped like a
-  # home-manager one ($out/activate), which on activation writes a marker into the user's home.
-  # The contract is home-manager-agnostic (it binds + grants; the host builds the home), so the
-  # suite supplies the rendering — the same role SDDM/Plasma play in the gui-union VM.
+  # The test's stand-in for what `homeBuilder` returns: a home-activation package shaped like a
+  # home-manager one ($out/activate) that writes a marker into the user's home on activation.
   activationStub = pkgs.runCommand "home-activation-stub" { } ''
     mkdir -p $out
     cat > $out/activate <<'SH'
@@ -70,35 +80,62 @@ pkgs.testers.runNixOSTest {
         secretPath = _: builtins.toFile "stub-secret" "";
       };
 
-      # Enable the reference greeter: this puts the bind/auth/provision scripts on PATH and fixes
-      # the runtime grant to the safe set. We drive the provisioning helper directly, so keep the
-      # boot lean by not pulling the interactive greetd login in at boot (it would just wait on a
-      # tty for a flake URL) — the same lean-boot move the gui-union VM makes for its DM.
+      # Enable the reference greeter. Bind both session backends to marker commands so SELECTION is
+      # observable, with x11 as the seat default. Drive the helpers directly, so keep boot lean by
+      # not pulling the interactive greetd login in (the same move gui-union makes for its DM).
       custom.greeter.enable = true;
+      custom.greeter.session.x11 = "echo x11 > /tmp/session-launched";
+      custom.greeter.session.wayland = "echo wayland > /tmp/session-launched";
+      custom.greeter.session.default = "x11";
       systemd.services.greetd.wantedBy = lib.mkForce [ ];
+
+      # `docker` must EXIST for the clamp test to be meaningful (so "not in docker" proves the
+      # clamp dropped it, not that the group was merely absent). audio already exists by default.
+      users.groups.docker = { };
     };
 
   testScript = ''
     machine.start()
     machine.wait_for_unit("multi-user.target")
 
-    # The enabled greeter ships the privileged provisioning helper.
-    machine.succeed("command -v contract-greeter-provision")
+    # The enabled greeter ships the privileged helpers.
+    machine.succeed("command -v contract-greeter-provision contract-greeter-session")
 
     # The external user does NOT exist at build time — NixOS users are declarative.
-    machine.fail("getent passwd ${exampleUser}")
+    machine.fail("getent passwd example")
 
-    # The crux: at RUNTIME the helper materializes the (Tier-1, persisted) account and activates
-    # the built home AS that user — the declarative-contract → runtime-login bridge.
-    machine.succeed("contract-greeter-provision ${exampleUser} ${activationStub} tier1")
-    machine.succeed("getent passwd ${exampleUser}")
-    machine.succeed("test -f /home/${exampleUser}/.contract-home-activated")
-    machine.succeed("stat -c %U /home/${exampleUser}/.contract-home-activated | grep -qx ${exampleUser}")
+    # RUNTIME provision: the shell-side realization (ADR-0028).
+    machine.succeed("contract-greeter-provision example ${identityJson} ${activationStub} tier1")
+    machine.succeed("getent passwd example")
 
-    # Tier 2 (untrusted, ephemeral) provisioning is designed-for but DEFERRED — the helper
-    # refuses it rather than pretending to provide it (ADR-0022).
-    machine.fail("contract-greeter-provision someone-else ${activationStub} tier2")
+    # Account fully realized from identity.json + the safe-set grant:
+    # - GECOS = name
+    machine.succeed("getent passwd example | cut -d: -f5 | grep -qx 'Example User'")
+    # - password = identity.hashedPassword (so PAM works — not a locked '!' entry)
+    machine.succeed("test \"$(getent shadow example | cut -d: -f2)\" = '${passwordHash}'")
+    # - authorizedKeys = sshKey + trustedKeys
+    machine.succeed("grep -q AAAAexamplekey /home/example/.ssh/authorized_keys")
+    machine.succeed("grep -q AAAAtrustedkey /home/example/.ssh/authorized_keys")
+    # - safe declared group conferred; greeter-seat baseline groups enrolled
+    machine.succeed("id -nG example | tr ' ' '\\n' | grep -qx audio")
+    machine.succeed("id -nG example | tr ' ' '\\n' | grep -qx greeter-users")
+    machine.succeed("id -nG example | tr ' ' '\\n' | grep -qx uinput")
+    # - the CLAMP: a privileged group declared in identity.json is dropped at runtime
+    machine.fail("id -nG example | tr ' ' '\\n' | grep -qx docker")
+    # - the home activated AS the user
+    machine.succeed("test -f /home/example/.contract-home-activated")
 
-    print(machine.succeed("getent passwd ${exampleUser}"))
+    # Session SELECTION (ADR-0026 step 8): no home override ⇒ the seat default (x11) backend runs.
+    machine.succeed("contract-greeter-session example /home/example")
+    machine.succeed("grep -qx x11 /tmp/session-launched")
+    # A home override flips the type ⇒ the wayland backend runs instead.
+    machine.succeed("echo wayland > /home/example/.contract-session")
+    machine.succeed("contract-greeter-session example /home/example")
+    machine.succeed("grep -qx wayland /tmp/session-launched")
+
+    # Tier 2 (ephemeral) provisioning is designed-for but DEFERRED — the helper refuses it.
+    machine.fail("contract-greeter-provision someone-else ${identityJson} ${activationStub} tier2")
+
+    print(machine.succeed("id example; getent passwd example"))
   '';
 }
