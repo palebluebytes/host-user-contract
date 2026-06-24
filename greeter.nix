@@ -19,7 +19,7 @@
 #   4. classify the tier                                   — host policy (custom.greeter.tier)
 #   5/6. evaluate + build the home under restricted eval   — host BINDING (homeBuilder)
 #   7. provision: FULLY realize the account (shell-side realization.nix) + activate the home — CRUX
-#   8. launch the session (gui.session selects the type; the host binds the backend)  — ADR-0026
+#   8. launch the session — the user's chosen DESKTOP (the seat offers desktops, host binds) — ADR-0029
 #
 # Runtime grant effects are a STANDING greeter-seat baseline, not a per-login rebuild (ADR-0026):
 # this module declares the safe set's group memberships + a `greeter-users` marker group, and
@@ -50,12 +50,14 @@ in
 }:
 let
   cfg = config.custom.greeter;
-  sessionCmd =
-    t:
-    let
-      v = cfg.session.${t};
-    in
-    if v == null then "" else v;
+  # The desktops this seat offers, baked into a shell `case` the launcher resolves the user's
+  # requested desktop against (ADR-0029). Each arm sets the session type + the launch command.
+  desktopArms = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (
+      name: d:
+      "        ${lib.escapeShellArg name}) dtype=${lib.escapeShellArg d.type}; dcmd=${lib.escapeShellArg d.command} ;;"
+    ) cfg.desktops
+  );
 
   # --- (3) the eval-free auth: jq over the inert identity.json, zero lines of user Nix ---
   # Usage: contract-greeter-auth <src> <username> <tier> <allowed-signers-file>  (password on stdin)
@@ -208,27 +210,44 @@ let
       pkgs.bash
     ];
     text = ''
-      username=$1
-      home=$2
-      waylandCmd=${lib.escapeShellArg (sessionCmd "wayland")}
-      x11Cmd=${lib.escapeShellArg (sessionCmd "x11")}
-      defaultType=${lib.escapeShellArg cfg.session.default}
+            username=$1
+            home=$2
+            defaultDesktop=${lib.escapeShellArg cfg.defaultDesktop}
 
-      # The bound home may override the seat default by dropping its requested type in $home.
-      if [ -f "$home/.contract-session" ]; then
-        type=$(cat "$home/.contract-session")
-      else
-        type=$defaultType
-      fi
+            # Resolve a desktop NAME to its session type + launch command (the seat's offered desktops).
+            resolve() {
+              case "$1" in
+      ${desktopArms}
+                *) return 1 ;;
+              esac
+            }
 
-      case "$type" in
-        wayland) backend=$waylandCmd ;;
-        x11) backend=$x11Cmd ;;
-        *) echo "session: unknown type '$type'" >&2; exit 1 ;;
-      esac
-      [ -n "$backend" ] || { echo "session: no $type session backend bound (custom.greeter.session.$type)" >&2; exit 1; }
+            # The user's chosen desktop is surfaced from their home (~/.contract-desktop, materialised from
+            # contract.requests.gui.desktop); absent ⇒ the seat default.
+            if [ -f "$home/.contract-desktop" ]; then
+              want=$(cat "$home/.contract-desktop")
+            else
+              want=$defaultDesktop
+            fi
 
-      exec runuser -u "$username" -- env HOME="$home" XDG_SESSION_TYPE="$type" bash -c "$backend"
+            # An un-offered/unknown desktop degrades to the seat default — never breaks the login (ADR-0029).
+            dtype=""; dcmd=""
+            if ! resolve "$want"; then
+              echo "session: desktop '$want' not offered by this seat; using default '$defaultDesktop'" >&2
+              resolve "$defaultDesktop" || { echo "session: no default desktop offered (custom.greeter.desktops/defaultDesktop)" >&2; exit 1; }
+            fi
+            [ -n "$dcmd" ] || { echo "session: resolved desktop has no command" >&2; exit 1; }
+
+            # The session must run AS the user, in a SEAT session, for the compositor/DE/Xorg to get DRM
+            # and a systemd-user instance — which is greetd's job (it creates the logind seat session and
+            # runs this command as the user). So when already the user (greetd's model) exec in place; only
+            # drop privs with runuser when invoked by the root orchestrator (which is NOT a seat session —
+            # that path suits headless/marker backends, not a real GPU session). ADR-0026/0029 step 8.
+            if [ "$(id -un)" = "$username" ]; then
+              exec env HOME="$home" XDG_SESSION_TYPE="$dtype" bash -c "$dcmd"
+            else
+              exec runuser -u "$username" -- env HOME="$home" XDG_SESSION_TYPE="$dtype" bash -c "$dcmd"
+            fi
     '';
   };
 
@@ -340,30 +359,44 @@ in
       '';
     };
 
-    session = {
-      wayland = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = ''
-          Host BINDING (ADR-0026 step 8): the command that launches a Wayland session (a compositor)
-          for a provisioned user. null ⇒ this seat offers no Wayland session. The contract ships no
-          compositor (ADR-0020); the seat picks sway/Hyprland/Plasma, just as it binds the display
-          backend for the build-time path. A user's home may override per-login via `~/.contract-session`.
-        '';
-      };
-      x11 = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Host BINDING (ADR-0026 step 8): the command that launches an X11 session. null ⇒ no X11 session on this seat.";
-      };
-      default = lib.mkOption {
-        type = lib.types.enum [
-          "wayland"
-          "x11"
-        ];
-        default = "wayland";
-        description = "The session type to launch when the bound home does not request one (no `~/.contract-session`).";
-      };
+    desktops = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            type = lib.mkOption {
+              type = lib.types.enum [
+                "wayland"
+                "x11"
+              ];
+              default = "wayland";
+              description = "The session type of this desktop (sets XDG_SESSION_TYPE).";
+            };
+            command = lib.mkOption {
+              type = lib.types.str;
+              description = "The command that launches this desktop's session (its `wayland-sessions`/`xsessions` Exec).";
+            };
+          };
+        }
+      );
+      default = { };
+      example = lib.literalExpression ''
+        {
+          gnome.command = "''${pkgs.gnome-session}/bin/gnome-session";
+          plasma = { type = "wayland"; command = "''${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland"; };
+        }
+      '';
+      description = ''
+        Host BINDING (ADR-0029): the desktops this seat offers, keyed by the free-form name a user
+        requests via `contract.requests.gui.desktop`. The contract ships no desktop (ADR-0020); the
+        seat enables its DEs and binds each one's session-entry command here, exactly as a display
+        manager launches them. A user's requested name that is not offered degrades to `defaultDesktop`.
+      '';
+    };
+
+    defaultDesktop = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "The `desktops` name to launch when the user requests none, or requests one this seat does not offer (ADR-0029).";
     };
 
     grants = lib.mkOption {

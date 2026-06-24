@@ -47,6 +47,16 @@
         default = "wayland";
         description = "Display session this user logs into; unioned across granted gui users by the realization.";
       };
+      # gui.desktop: which DESKTOP this user logs into at a greeter (ADR-0029). FREE-FORM and
+      # DE-agnostic by design — the contract carries the user's opaque preference (so it travels
+      # with the home: same desktop on any seat that offers it, the portable-user north star); the
+      # SEAT maps the name to a real DE (custom.greeter.desktops) and an un-offered/empty name
+      # degrades to the seat default. NEVER names a system package.
+      gui.desktop = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Desktop this user logs into at a greeter; a free-form name the seat maps to an offered desktop (ADR-0029). Empty ⇒ the seat default.";
+      };
     };
   };
 
