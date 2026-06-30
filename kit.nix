@@ -18,6 +18,7 @@ let
     "kvm"
     "disk"
     "qemu-libvirtd"
+    "nix-users"
   ];
   grantedOptions = lib.mapAttrs (_: f: { enable = lib.mkEnableOption f.grant; }) registry;
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (
@@ -108,6 +109,12 @@ in
     #     home-manager; the contract stays package-free.
     bindUser = args: contractLib.bindUser (args // { homeModule = modules.homeModule; });
     bindUserModule = args: contractLib.bindUserModule (args // { homeModule = modules.homeModule; });
+    # Pre-built binding mode (ADR-0032):
+    #   - mkContractPackage (issue #14): assembles the contractPackage derivation a user CI
+    #     produces — activate + contract-requests.json — from an already-evaluated home.
+    #   - bindContractPackage (issue #16): the host-side binding for the pre-built path; reads
+    #     contract-requests.json from a pinned store path and registers the activation step.
+    inherit (contractLib) mkContractPackage bindContractPackage;
   };
 
   # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0024) + the

@@ -57,6 +57,92 @@ let
       granted = grants;
     }
     // bridgeRequests requests (grantedNamesOf grants);
+  # mkContractPackage (ADR-0032, issue #14): assemble the pre-built binding artifact from an
+  # already-evaluated home. The user's CI calls this and publishes the result; the host pins it
+  # as a flake input. `activationPackage` is the home-manager activation package (has
+  # `$out/activate`); `requests` is the evaluated `contract.requests` attrset; `packages` is the
+  # list of package derivations from `home.packages` — pname/name is extracted for the manifest
+  # (the host needs names, not store paths); `username` is the account name.
+  #
+  # The manifest is serialized to a store path at EVAL TIME via `builtins.toFile` (pure, no IFD),
+  # then copied into the derivation during the build. The derivation is content-addressed: the
+  # same home eval always produces the same store path, covering both activate and the requests.
+  mkContractPackage =
+    {
+      pkgs,
+      activationPackage,
+      requests,
+      packages,
+      username,
+    }:
+    let
+      packageNames = map (p: p.pname or (builtins.parseDrvName p.name).name) packages;
+      manifestFile = builtins.toFile "contract-requests-${username}.json" (
+        builtins.toJSON {
+          version = 1;
+          inherit username requests;
+          packages = packageNames;
+        }
+      );
+    in
+    pkgs.runCommand "contract-package-${username}" { } ''
+      mkdir -p $out
+      cp ${activationPackage}/activate $out/activate
+      chmod +x $out/activate
+      cp ${manifestFile} $out/contract-requests.json
+    '';
+
+  # bindContractPackage (ADR-0032, issue #16): the HOST-SIDE binding for the pre-built path.
+  # Unlike `bindUserModule` (which evaluates the home inline), this reads the already-built
+  # `contract-requests.json` from a pinned store path and bridges the feature requests exactly
+  # as the inline-eval path does — same `mkUserAccount`, same `bridgeRequests`. No home-manager
+  # dependency. Returns a NixOS module (not a tracer value) that the host imports.
+  #
+  # `contractPackage` must be a realized store path at eval time — in the pre-built workflow it is
+  # a pinned flake input already in the store, so reading its JSON is a plain `builtins.readFile`,
+  # not IFD. The module references `pkgs` (the host's NixOS pkgs) to build the package-policy
+  # profile when `custom.host.packagePolicy.allowedPrograms` is non-empty (ADR-0033, issue #17).
+  # `hostFacts` has no role in the pre-built path (the home is already evaluated) and is omitted.
+  bindContractPackage =
+    {
+      contractPackage,
+      identity,
+      grants ? { },
+    }:
+    { config, pkgs, ... }:
+    let
+      username = identity.username;
+      manifest = lib.importJSON "${contractPackage}/contract-requests.json";
+      requests = manifest.requests;
+      allowedPrograms = config.custom.host.packagePolicy.allowedPrograms;
+      userPackages = manifest.packages or [ ];
+      approvedNames = lib.filter (n: lib.elem n allowedPrograms) userPackages;
+      approvedPkgs = lib.filter (p: p != null) (map (n: pkgs.${n} or null) approvedNames);
+    in
+    {
+      custom.users.${username} = mkUserAccount { inherit identity grants requests; };
+      system.activationScripts."contract-activate-${username}" = {
+        text = ''
+          if [ -e "${contractPackage}/activate" ]; then
+            su -s /bin/sh -c "${contractPackage}/activate" "${username}" || true
+          fi
+        ''
+        + (
+          if allowedPrograms != [ ] then
+            let
+              profileEnv = pkgs.buildEnv {
+                name = "contract-profile-${username}";
+                paths = approvedPkgs;
+                ignoreCollisions = true;
+              };
+            in
+            "ln -sfn ${profileEnv} /home/${username}/.nix-profile\n"
+          else
+            ""
+        );
+        deps = [ "users" ];
+      };
+    };
 in
 {
   inherit runtimeEligibleFeature safeSet;
@@ -254,4 +340,6 @@ in
         _module.args.hostFacts = hostFacts;
       };
     };
+
+  inherit mkContractPackage bindContractPackage;
 }

@@ -179,5 +179,51 @@ in
       name = "identity.json: a non-privileged extraGroup passes, a privileged one is clamped";
       ok = lib.elem "audio" danaGroups && !(lib.elem "docker" danaGroups);
     }
+
+    # --- the nix-daemon feature (ADR-0033, issue #15) ---
+    {
+      name = "nix-daemon: grant confers nix-users group";
+      ok =
+        let
+          grantedDaemon = eval [
+            (mkUser "alice" { })
+            (grant "alice" { nix-daemon.enable = true; })
+          ];
+        in
+        lib.elem "nix-users" grantedDaemon.users.users.alice.extraGroups;
+    }
+    {
+      name = "nix-daemon: deny means no nix-users group";
+      ok =
+        let
+          deniedDaemon = eval [ (mkUser "alice" { }) ];
+        in
+        !(lib.elem "nix-users" deniedDaemon.users.users.alice.extraGroups);
+    }
+    {
+      name = "nix-daemon: nix-users is a privileged group (excluded from safe set)";
+      ok = !(lib.elem "nix-daemon" safeSet);
+    }
+    {
+      name = "clamp: nix-users declared in identity.extraGroups is dropped without the nix-daemon grant";
+      ok =
+        let
+          selfDeclared = eval [
+            (mkUser "alice" { })
+            {
+              custom.users.alice.identity.extraGroups = [
+                "nix-users"
+                "audio"
+              ];
+            }
+          ];
+        in
+        !(lib.elem "nix-users" selfDeclared.users.users.alice.extraGroups)
+        && lib.elem "audio" selfDeclared.users.users.alice.extraGroups;
+    }
+    {
+      name = "nix-users is in privilegedGroups";
+      ok = lib.elem "nix-users" privilegedGroups;
+    }
   ];
 }

@@ -60,6 +60,19 @@
       # the home module + identity.json build against the contract on their own.
       homeConfigurations.example = mkHome { };
 
+      # The pre-built binding artifact (ADR-0032, issue #14): a content-addressed derivation
+      # containing `activate` + `contract-requests.json`. A host pins this as a flake input
+      # and uses `contract.lib.bindContractPackage` to bind it at eval time — the host reads
+      # the JSON (no IFD) and activates the store path at switch time. This replaces the
+      # inline-eval `bindUserModule` path for hosts that want the user to own their packages.
+      packages.${system}.contractPackage = contract.lib.mkContractPackage {
+        inherit pkgs;
+        activationPackage = self.homeConfigurations.example.activationPackage;
+        requests = self.homeConfigurations.example.config.contract.requests;
+        packages = self.homeConfigurations.example.config.home.packages;
+        username = identity.username;
+      };
+
       # The home a GREETER login renders: same module, but granted the safe set (greeterGrants,
       # what the runtime path auto-grants) and carrying a marker dotfile so the integration VM can
       # observe that a REAL home-manager home actually activated for the provisioned user.

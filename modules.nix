@@ -39,6 +39,19 @@
       };
       options.custom.platform = platformOptions;
       options.custom.host.exposed = lib.mkEnableOption "an exposed/agent-facing host that may not be granted secret-bearing features";
+      # Package policy inclusion list (ADR-0033, issue #17): after contractPackage activation,
+      # bindContractPackage replaces ~/.nix-profile with a host-built profile containing the
+      # INTERSECTION of this list and the user's package manifest. Programs the user declared
+      # but the host did not allow are absent; programs not in this list are never imposed. An
+      # empty list (the default) means no package policy — ~/.nix-profile is left as-is after
+      # activation. Each name resolves to `pkgs.<name>` from the host's nixpkgs pin; unknown
+      # names are silently dropped (graceful degradation). Effective only for users bound with
+      # bindContractPackage; ignored for bindUserModule users.
+      options.custom.host.packagePolicy.allowedPrograms = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Programs the host allows in user sessions (ADR-0033). Each entry resolves to pkgs.<name> from the host's nixpkgs pin. Non-empty enables profile replacement after contractPackage activation.";
+      };
 
       config.assertions = lib.optional config.custom.host.exposed (
         let

@@ -27,6 +27,8 @@
   loadIdentity,
   bindUser,
   bindUserModule,
+  mkContractPackage,
+  bindContractPackage,
   nixosSystem,
   system,
 }:
@@ -82,6 +84,16 @@ let
         ;
     })
     (import ./matrix.nix { inherit lib toolkit; })
+    (import ./contract-package.nix {
+      inherit
+        lib
+        pkgs
+        toolkit
+        mkContractPackage
+        bindContractPackage
+        greeterGrants
+        ;
+    })
   ];
 
   assertions = lib.concatMap (d: d.assertions) domains;

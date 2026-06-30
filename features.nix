@@ -100,4 +100,16 @@
     grant = "the commit-signing key for this user (host grant)";
     secretBearing = true;
   };
+
+  # nix-daemon: access to the Nix daemon socket for this user. Confers `nix-users` group
+  # membership — the host wires `nix.settings.allowed-users = ["@nix-users"]` so only
+  # members of this group may talk to the daemon. `nix-users` is in `privilegedGroups`
+  # (so the clamp drops self-declared daemon access), making this build-time-only — the
+  # greeter NEVER auto-grants daemon access (ADR-0033). A user denied this feature is
+  # daemon-restricted: they cannot build derivations, install packages, or add store paths
+  # beyond what the host placed there when activating their contractPackage.
+  nix-daemon = {
+    grant = "access to the Nix daemon for this user (host grant)";
+    groups = [ "nix-users" ];
+  };
 }

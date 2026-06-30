@@ -73,6 +73,8 @@
             loadIdentity
             bindUser
             bindUserModule
+            mkContractPackage
+            bindContractPackage
             renderNixConfig
             ;
           nixosSystem = nixpkgs.lib.nixosSystem;
@@ -192,6 +194,35 @@
               ''}";
             procs = [ "gnome-shell" ];
           };
+        };
+
+        # Runtime proof of the nix-daemon feature (ADR-0033, issue #15): a system with
+        # nix.settings.allowed-users = ["@nix-users"] where one user is granted nix-daemon
+        # (in nix-users → can use the daemon) and one is not (daemon-restricted).
+        nix-daemon-vm = import ./conformance/nix-daemon-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          inherit system;
+        };
+
+        # Runtime proof of the pre-built binding path (ADR-0032, issue #16): a system that
+        # uses bindContractPackage to bind the example user, boots, and verifies the account
+        # materializes and the activation script runs.
+        prebuilt-bind-vm = import ./conformance/prebuilt-bind-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          inherit system;
+          inherit (self.lib) bindContractPackage;
+        };
+
+        # Runtime proof of package policy + daemon restriction (ADR-0033, issue #17): host
+        # denies nix-daemon, sets allowedPrograms = ["hello"]; contractPackage declares hello
+        # and curl; after activation hello works from PATH and curl does not.
+        daemon-restricted-vm = import ./conformance/daemon-restricted-vm.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          contractModule = self.nixosModules.default;
+          inherit system;
+          inherit (self.lib) bindContractPackage;
         };
       });
 

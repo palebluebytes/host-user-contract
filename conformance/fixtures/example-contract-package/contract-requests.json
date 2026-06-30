@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "username": "example",
+  "requests": {
+    "gui": { "session": "x11", "desktop": "plasma" }
+  },
+  "packages": ["hello"]
+}
