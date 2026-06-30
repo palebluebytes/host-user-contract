@@ -10,16 +10,16 @@
   featureMeta,
 }:
 let
-  # A feature is runtime/greeter-eligible iff it bears no secret, confers no privileged
-  # group, and carries no host-executed payload (ADR-0018, slice 15).
+  # A feature is runtime/greeter-eligible iff it bears no secret and confers no
+  # privileged group (ADR-0018, slice 15). The exec-payload clause is deferred —
+  # no feature uses it yet; it will be re-introduced alongside the first feature
+  # that carries a host-executed user payload (ADR-0032).
   runtimeEligibleFeature =
     feature:
     let
       f = registry.${feature} or { };
     in
-    !(f.secretBearing or false)
-    && (lib.intersectLists (f.groups or [ ]) privilegedGroups == [ ])
-    && !(f.execPayload or false);
+    !(f.secretBearing or false) && (lib.intersectLists (f.groups or [ ]) privilegedGroups == [ ]);
 
   # The runtime-eligible feature names — the safe set (ADR-0018, slice 15).
   safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);

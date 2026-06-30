@@ -38,7 +38,7 @@ the term is stable, the code is pending (see the cited issue).
 
 - **feature** — one entry in the registry: the unit of capability a host grants or denies,
   and the shared name "deny" keys on. Per-entry fields: `grant`, `groups`, `secretBearing`,
-  `secretFiles`, `execPayload`, `config`. (`features.nix`)
+  `secretFiles`, `config`. (`features.nix`)
 - **registry** — `features.nix`, the **single source of truth** for the feature vocabulary.
 - **projection** — any surface *derived* from the registry (`featureMeta`, `featureGroups`,
   `grantedOptions`, `featureConfigOptions`, `safeSet`, the sops recipients). Keys can't
@@ -247,8 +247,10 @@ the term is stable, the code is pending (see the cited issue).
   single-sourced value, so escalation is impossible by construction, not by a deny rule.
   (`lib.nix`; ADR-0022, ADR-0024)
 - **runtime-eligible** — *derived*, not declared (`runtimeEligibleFeature`): a feature is in
-  the safe set iff it bears no secret, confers no privileged group, **and** carries no exec
-  payload. Deriving it keeps "what a stranger may have" tied to "what confers no privilege."
+  the safe set iff it bears no secret and confers no privileged group. Deriving it keeps
+  "what a stranger may have" tied to "what confers no privilege." The exec-payload clause
+  (features where the host executes user-supplied code) is deferred — no feature uses it yet;
+  it re-enters the derivation when a concrete feature requires it. (ADR-0018, ADR-0032)
 - **tier (Tier 1 / Tier 2)** — the greeter's trust classification of a flake URL. Tier 1 =
   semi-trusted (own, *signed* repo; persisted home; the [[tier1-eval-posture]] guarding accidents) —
   built first. Tier 2 = untrusted (anyone; hardened eval; ephemeral home) — designed-for,
@@ -267,8 +269,58 @@ the term is stable, the code is pending (see the cited issue).
   (the single identity source). (ADR-0022, ADR-0023; `identity-json.nix`)
 - **inert payload vs exec payload** — a request payload the host merely *reads* (the
   `session` enum) is **inert**; one the host *executes with privilege* (a `kanata-with-cmd`
-  keymap running shell) is an **exec payload** (`execPayload = true`) — a code-exec vector,
-  never safe-set-eligible, build-time-only. No feature sets it yet. (ADR-0018, issue #3)
+  keymap running shell) is an **exec payload** — a code-exec vector, never safe-set-eligible,
+  build-time-only. The registry flag (`execPayload`) and its exclusion from `runtimeEligibleFeature`
+  are **deferred** (ADR-0032): no feature carries an exec payload yet, and the mechanism will
+  be introduced alongside the first feature that does. (ADR-0018, issue #3)
+
+- **contractPackage** *(designed; not yet built)* — the user flake's
+  `packages.${system}.contractPackage` output: a content-addressed store path the host pins
+  as a flake input and activates at switch time. Contains the home activation script and a
+  `contract-requests.json` sidecar (`{ version, username, requests, packages }`). The host
+  reads `contract-requests.json` at eval time (no IFD — it is pre-built and pinned) and
+  bridges granted feature requests exactly as today; at switch time it runs the activation
+  then replaces `~/.nix-profile` with a host-built package profile. Replaces `bindUserModule`'s
+  inline home evaluation for the **pre-built binding mode**; `bindUserModule` is retained for
+  **inline-eval (hard-enforcement)** deployments. (ADR-0032; amends ADR-0023)
+- **`mkContractPackage`** *(designed; not yet built)* — the contract `lib` function that
+  produces a `contractPackage` from an already-evaluated home config:
+  `mkContractPackage { activationPackage; requests; packages; username }`. Serializes
+  `config.contract.requests` and the top-level package manifest into `contract-requests.json`
+  and wraps both into a single derivation. The home is evaluated once by the user's flake;
+  the contract supplies only the wrapper. (ADR-0032)
+
+## Program scope and package policy
+
+- **program scope** — what software a user runs in their home session. Always *advisory*
+  when the user has Nix daemon access: any user with access to the daemon socket can run
+  `nix shell nixpkgs#<anything>` against any nixpkgs revision, regardless of what their home
+  config declares. Package policy at the home-manager or contract layer is therefore soft
+  governance — it describes what a user chose to include in their reproducible home, not a
+  security boundary. Hard program restriction requires removing daemon access at the OS level
+  (see *daemon-restricted user*). This is why the pre-built binding mode is the coherent
+  choice: since packages were never enforceable from the host side anyway, the user should
+  bring exactly the versions they have tested against. The contract governs *system effects*
+  (privilege, secrets, services); program scope is the user's sovereign concern.
+- **nix-daemon feature** *(designed; not yet built)* — the registry entry that grants a user
+  membership in the `nix-users` group and thereby access to the Nix daemon
+  (`nix.settings.allowed-users = ["@nix-users"]`). Denied on hosts requiring program
+  restriction; granted on personal machines. Not an exec-payload feature, but the practical
+  enabler of full package autonomy — a user with daemon access can build and run any
+  derivation. (ADR-0033)
+- **daemon-restricted user** *(designed; not yet built)* — a user for whom the `nix-daemon`
+  feature is denied. Cannot add new store paths. The host builds a **package profile** from
+  the *inclusion list* and installs it as the user's `~/.nix-profile` at activation time,
+  replacing what the activation package set. Unapproved programs are absent from the profile;
+  approved programs are at the host's version (most recent in its nixpkgs). A non-compliant
+  home always deploys — missing programs are simply absent from the session (their home-manager
+  configs may be present but are inert without the binary). (ADR-0033)
+- **package policy / inclusion list** *(designed; not yet built)* — `custom.host.packagePolicy.allowedPrograms`:
+  the set of program names the host will build into a daemon-restricted user's package
+  profile. Each entry resolves to `pkgs.${name}` from the host's nixpkgs pin — one canonical
+  version per program, the most recent the host carries. Programs off the list are not in the
+  profile. The effective profile is the intersection of the inclusion list and the user's
+  package manifest (what the user declared in their home config). (ADR-0033)
 
 ## Testing
 
@@ -297,12 +349,22 @@ the term is stable, the code is pending (see the cited issue).
   (contract) with the **binding** (host).
 - **user secret** is ambiguous on its own — say *public identity*, *hashedPassword*, or
   *feature secret*.
+- **program scope vs system effects** — the contract governs system effects (privilege,
+  secrets, services, groups); program scope (what applications a user runs) is the user's
+  sovereign concern and always advisory when daemon access is present. Do not conflate
+  "host controls feature grants" with "host controls what programs can run."
+- **`contractPackage` vs `activationPackage`** — `contractPackage` is the contract-level
+  content-addressed flake output (activation + `contract-requests.json` sidecar);
+  `activationPackage` is home-manager's internal term for the derivation that activates the
+  home. `contractPackage` wraps `activationPackage`.
 
 ## Load-bearing invariants
 
 - The contract **depends only on nixpkgs `lib`** — no `self`, no `inputs`, no secrets
   backend, no package. (ADR-0020; the extraction litmus test)
-- **One nixpkgs**: a user pins `inputs.nixpkgs.follows` to the host's — no second nixpkgs.
+- **One nixpkgs (inline-eval mode)**: a user pins `inputs.nixpkgs.follows` to the host's —
+  no second nixpkgs. Relaxed in the pre-built binding mode: the user controls their own
+  nixpkgs pin and packages are user-built; see *program scope*. (ADR-0023, ADR-0032)
 - **Privilege is build-time-only**; the runtime greeter confers only the safe set.
 - **A request names a host effect but never performs it** — the host writes, only on grant.
 - **Data before code** — authenticate on `identity.json` before evaluating any user Nix.

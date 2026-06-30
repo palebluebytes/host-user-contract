@@ -24,6 +24,8 @@ contract ships).
 | [0029](0029-per-user-desktop-choice-host-offered.md) | A greeter login is a per-user desktop choice; the seat offers desktops, the contract carries the name |
 | [0030](0030-tier1-restricted-eval-posture.md) | The contract pins the Tier-1 restricted-eval posture; the greeter applies it, the repo cannot widen it |
 | [0031](0031-greeter-secret-provisioning.md) | Greeter secret provisioning is one seam with a staged strength spectrum (password-unlock v1; phone-escrow planned; hardware on-demand) |
+| [0032](0032-prebuilt-binding-mode.md) | Pre-built binding mode: user CI produces `contractPackage`; the host pins, reads, and activates it |
+| [0033](0033-daemon-restricted-user-package-policy.md) | Daemon-restricted users and host-built package profiles: the `nix-daemon` feature, package policy, and graceful degradation |
 
 ## Numbering
 

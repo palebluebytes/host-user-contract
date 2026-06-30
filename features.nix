@@ -14,8 +14,6 @@
 #                   be granted it, and it is excluded from the runtime safe set.
 #   secretFiles   : stash-relative sops files whose recipient set is DERIVED from the
 #                   hosts that grant this feature (self.lib.featureRecipients).
-#   execPayload   : the feature runs host-side user-supplied code ⇒ never safe-set
-#                   eligible (the inert-payload clause; no feature uses it yet).
 #   config        : user-owned option fragment merged into `custom.users.<u>` — the
 #                   feature's *parameters* (host-affecting ones aggregate, ADR-0019).
 { lib }:
@@ -25,7 +23,7 @@
   # input groups below. Everything device/package/layout-specific (uinput, keyboard
   # layout, app permits, the display backend) is a HOST binding (gui-desktop.nix + the
   # user's glue), so the contract has no gui *module*. In the safe set: no secret, no
-  # privileged group, no exec payload.
+  # privileged group.
   gui = {
     grant = "the GUI feature for this user (host grant)";
     groups = [
