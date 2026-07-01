@@ -59,8 +59,8 @@ in
 let
   cfg = config.custom.greeter;
 
-  # The four shipped programs, one per file (the canonical mechanism + the replaceable UI). Each is
-  # a writeShellApplication closed over only what it needs; bind orchestrates the other three.
+  # The shipped programs, one per file (the canonical mechanism + the replaceable UI). Each is
+  # a writeShellApplication closed over only what it needs; bind orchestrates the rest.
   authScript = import ./greeter/auth.nix { inherit pkgs identityFile; };
   unlockScript = import ./greeter/unlock.nix { inherit pkgs; };
   provisionScript = import ./greeter/provision.nix {
@@ -70,10 +70,16 @@ let
       privilegedGroups
       enrolledGroups
       ;
+    keyFile = cfg.secretProvisioning.keyFile;
   };
   sessionScript = import ./greeter/session.nix {
     inherit pkgs lib;
     inherit (cfg) desktops defaultDesktop;
+  };
+  secretKeyScript = import ./greeter/secret-key.nix {
+    inherit pkgs lib unlockScript;
+    inherit (cfg) secretProvisioning tier;
+    exposed = config.custom.host.exposed;
   };
   bindScript = import ./greeter/bind.nix {
     inherit
@@ -84,15 +90,13 @@ let
       authScript
       provisionScript
       sessionScript
-      unlockScript
+      secretKeyScript
       ;
     inherit (cfg)
       tier
       trustedSigners
       homeBuilder
-      secretProvisioning
       ;
-    exposed = config.custom.host.exposed;
   };
 in
 {
@@ -325,14 +329,15 @@ in
     # may set a gid) merges cleanly.
     users.groups = lib.genAttrs enrolledGroups (_: { });
 
-    # The bind/auth/provision/session scripts are on PATH so the helpers (and a host's own greeter
-    # UI) can call them; provision is the privileged crux greetd invokes pre-session.
+    # The bind/auth/provision/session/unlock/secret-key scripts are on PATH so the helpers (and a
+    # host's own greeter UI) can call them; provision is the privileged crux greetd invokes pre-session.
     environment.systemPackages = [
       bindScript
       authScript
       provisionScript
       sessionScript
       unlockScript
+      secretKeyScript
     ];
   };
 }

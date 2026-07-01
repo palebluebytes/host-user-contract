@@ -138,6 +138,97 @@ let
         touch $out
       '';
 
+  # The secret-key EXECUTION test (ADR-0031, issues #10): pull the shipped `contract-greeter-secret-key`
+  # from a seat with secretProvisioning enabled (passphrase method, separatePassphrase=false so the test
+  # can supply the password via CONTRACT_LOGIN_PASS without a TTY). Three cases: right passphrase → key
+  # file containing the age identity; no wrapped key in src → graceful degradation (empty output, exit 0);
+  # requireSecrets + no wrapped key → refused (non-zero exit). Escrow integration is deferred (needs a live
+  # keyFetcher); the passphrase path exercises the full acquisition→unlock→placement chain.
+  greeterBoundSecretKey = eval [
+    greeterModule
+    {
+      custom.greeter.enable = true;
+      custom.greeter.homeBuilder = "/run/current-system/sw/bin/true";
+      custom.greeter.secretProvisioning.enable = true;
+      custom.greeter.secretProvisioning.method = "passphrase";
+      custom.greeter.secretProvisioning.separatePassphrase = false;
+      custom.greeter.secretProvisioning.requireSecrets = false;
+    }
+  ];
+  greeterBoundSecretKeyRequired = eval [
+    greeterModule
+    {
+      custom.greeter.enable = true;
+      custom.greeter.homeBuilder = "/run/current-system/sw/bin/true";
+      custom.greeter.secretProvisioning.enable = true;
+      custom.greeter.secretProvisioning.method = "passphrase";
+      custom.greeter.secretProvisioning.separatePassphrase = false;
+      custom.greeter.secretProvisioning.requireSecrets = true;
+    }
+  ];
+  secretKeyScript =
+    lib.findFirst (p: lib.hasInfix "contract-greeter-secret-key" (p.name or ""))
+      (throw "conformance: contract-greeter-secret-key not found in the greeter's systemPackages")
+      greeterBoundSecretKey.environment.systemPackages;
+  secretKeyRequiredScript =
+    lib.findFirst (p: lib.hasInfix "contract-greeter-secret-key" (p.name or ""))
+      (throw "conformance: contract-greeter-secret-key not found in the greeter's systemPackages (requireSecrets variant)")
+      greeterBoundSecretKeyRequired.environment.systemPackages;
+  secretKeyFlowTest =
+    pkgs.runCommand "contract-greeter-secret-key-flow"
+      {
+        nativeBuildInputs = [
+          secretKeyScript
+          pkgs.openssl
+          pkgs.age
+          pkgs.coreutils
+        ];
+      }
+      ''
+        export HOME=$PWD
+
+        # A user age identity, wrapped with the contract convention (magic header + openssl pbkdf2).
+        age-keygen -o id.txt 2>/dev/null
+        { printf 'contract-age-key-v1\n'; cat id.txt; } > plain.txt
+        printf 'unlock-pass' \
+          | openssl enc -e -aes-256-cbc -salt -pbkdf2 -iter 600000 -pass stdin -in plain.txt -out contract-key.enc
+
+        # src WITH the wrapped key at the default name (contract-key.enc)
+        mkdir -p src
+        cp contract-key.enc src/contract-key.enc
+
+        echo "# right passphrase ⇒ returns a key file containing the age identity"
+        keyfile=$(CONTRACT_LOGIN_PASS=unlock-pass contract-greeter-secret-key example "$PWD/src")
+        [ -n "$keyfile" ] || { echo "FAIL: no key file returned on success" >&2; exit 1; }
+        grep -qF "$(grep '^AGE-SECRET-KEY' id.txt)" "$keyfile" \
+          || { echo "FAIL: recovered key does not match the original" >&2; exit 1; }
+        rm -f "$keyfile"
+
+        echo "# no wrapped key in src ⇒ graceful degradation (empty output, exit 0)"
+        mkdir -p nosrc
+        keyfile=$(CONTRACT_LOGIN_PASS=unlock-pass contract-greeter-secret-key example "$PWD/nosrc" || true)
+        [ -z "$keyfile" ] || { echo "FAIL: expected empty output on graceful degradation" >&2; exit 1; }
+
+        echo "secret-key passphrase flow OK"; touch $out
+      '';
+  secretKeyRequiredFlowTest =
+    pkgs.runCommand "contract-greeter-secret-key-required-flow"
+      {
+        nativeBuildInputs = [
+          secretKeyRequiredScript
+          pkgs.coreutils
+        ];
+      }
+      ''
+        export HOME=$PWD
+        mkdir -p nosrc
+        echo "# requireSecrets + no wrapped key ⇒ refused (non-zero exit)"
+        if CONTRACT_LOGIN_PASS=any contract-greeter-secret-key example "$PWD/nosrc" 2>/dev/null; then
+          echo "FAIL: requireSecrets did not refuse a login with no obtainable key" >&2; exit 1
+        fi
+        echo "secret-key requireSecrets refusal OK"; touch $out
+      '';
+
   # Secret provisioning (ADR-0031, issue #10): enabling it on an EXPOSED host must fail an assertion —
   # the seat sees the user's plaintext while activating the home, indefensible on an agent box (ADR-0015).
   greeterSecretExposed = eval [
@@ -337,6 +428,8 @@ in
     tier1RestrictedEval = restrictedEvalTest;
     greeterUnlockFlow = unlockFlowTest;
     greeterEscrowKeyFetcherGate = keyFetcherGateTest;
+    greeterSecretKeyFlow = secretKeyFlowTest;
+    greeterSecretKeyRequired = secretKeyRequiredFlowTest;
   };
 
   assertions = [

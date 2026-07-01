@@ -1,8 +1,10 @@
-# The contract's derivation logic — pure functions over the registry and its
-# projections, split out of kit.nix (thermo-nuclear review). `runtimeEligibleFeature`
-# and `exposedHostOffenders` are internal (the kit's `safeSet` and the umbrella's
-# exposed-host assertion close over them); `mkFeatureRecipients` / `mkHostFacts` are the
-# public functions hosts consume (ADR-0020 Q4); `safeSet` is the derived value.
+# The contract's derivation logic — pure functions over the registry and its projections,
+# plus the binding module factories (bindUser, bindUserModule, bindContractPackage) that
+# return NixOS module closures and depend on host config at module-eval time. Split out of
+# kit.nix (thermo-nuclear review). `runtimeEligibleFeature` and `exposedHostOffenders` are
+# internal (the kit's `safeSet` and the umbrella's exposed-host assertion close over them);
+# `mkFeatureRecipients` / `mkHostFacts` are the public functions hosts consume (ADR-0020 Q4);
+# `safeSet` is the derived value.
 {
   lib,
   registry,

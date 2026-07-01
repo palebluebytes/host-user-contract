@@ -1,5 +1,5 @@
 # (7) the privileged runtime-provisioning helper: the shell-side realization.nix (ADR-0028).
-# Usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier>
+# Usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier> [session-key]
 # NixOS users are declarative, and a greeter user is never built into the system (ADR-0026), so
 # realization.nix never runs for them — this IS their realization, run at login. It materializes
 # the (Tier-1 persisted) account and FULLY realizes it from identity.json + the safe-set grant:
@@ -8,11 +8,16 @@
 # still cannot smuggle a privileged group at runtime — plus enrollment in the greeter-seat
 # baseline. Then it activates the built home AS the user. Tier-2 (ephemeral) is deferred. Runs as
 # root (greetd's pre-session context); it drops to the user for activation.
+#
+# keyFile is baked at module-eval time (from custom.greeter.secretProvisioning.keyFile) — the
+# home-relative path the unlocked age identity is installed to before activation. Baked here so
+# the caller (bind) needs no knowledge of secret-provisioning config.
 {
   pkgs,
   lib,
   privilegedGroups,
   enrolledGroups,
+  keyFile,
 }:
 pkgs.writeShellApplication {
   name = "contract-greeter-provision";
@@ -27,10 +32,11 @@ pkgs.writeShellApplication {
     identity=$2
     activation=$3
     tier=$4
-    # Optional (ADR-0031, issue #10): a decrypted session age identity to install for the user, and the
-    # home-relative path home activation reads it from. Empty ⇒ no secret provisioning (the default).
+    # Optional (ADR-0031, issue #10): a decrypted session age identity to install for the user.
+    # Empty ⇒ no secret provisioning (the default). The destination path is baked from the seat's
+    # secretProvisioning.keyFile config so the orchestrator needs no knowledge of it.
     sessionKey=''${5:-}
-    keyRel=''${6:-}
+    keyRel=${lib.escapeShellArg keyFile}
 
     [ "$(id -u)" = 0 ] || { echo "provision: must run as root" >&2; exit 1; }
     [ -f "$identity" ] || { echo "provision: no identity.json at '$identity'" >&2; exit 1; }

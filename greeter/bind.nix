@@ -1,7 +1,9 @@
 # The orchestrator greetd runs: ties the eval-free ordering together (the replaceable UI half).
 # The prompt loop here is the reference UI; a host may swap regreet/its own front end as long as it
 # preserves the ordering. The home BUILD (step 5/6) is delegated to the host's `homeBuilder` binding —
-# it needs home-manager, which the contract does not ship (ADR-0020).
+# it needs home-manager, which the contract does not ship (ADR-0020). Secret key acquisition (step
+# 4b) is delegated to contract-greeter-secret-key, which encapsulates the full passphrase/escrow
+# protocol and the exposed-host guard; this script has no knowledge of secret-provisioning config.
 {
   pkgs,
   lib,
@@ -10,12 +12,10 @@
   trustedSigners,
   homeBuilder,
   tier1NixConfig,
-  exposed,
-  secretProvisioning,
   authScript,
   provisionScript,
   sessionScript,
-  unlockScript,
+  secretKeyScript,
 }:
 pkgs.writeShellApplication {
   name = "contract-greeter-bind";
@@ -26,7 +26,7 @@ pkgs.writeShellApplication {
     authScript
     provisionScript
     sessionScript
-    unlockScript
+    secretKeyScript
   ];
   text = ''
     tier=${lib.escapeShellArg tier}
@@ -39,16 +39,6 @@ pkgs.writeShellApplication {
         )
     }
     homeBuilder=${lib.escapeShellArg (toString homeBuilder)}
-
-    # Secret-provisioning settings (ADR-0031, issues #10/#11), baked from the seat's binding.
-    secretProv=${lib.boolToString secretProvisioning.enable}
-    method=${lib.escapeShellArg secretProvisioning.method}
-    keyFetcher=${lib.escapeShellArg (toString secretProvisioning.keyFetcher)}
-    requireSecrets=${lib.boolToString secretProvisioning.requireSecrets}
-    separatePass=${lib.boolToString secretProvisioning.separatePassphrase}
-    keyRel=${lib.escapeShellArg secretProvisioning.keyFile}
-    wrappedName=${lib.escapeShellArg secretProvisioning.wrappedKeyName}
-    exposed=${lib.boolToString exposed}
 
     # The restricted-eval posture the home is built under, DISPATCHED BY TIER (ADR-0030): a
     # host-signed repo is still built under a restricted eval it cannot widen. Selected by tier so
@@ -81,57 +71,11 @@ pkgs.writeShellApplication {
     # 3. authenticate EVAL-FREE (jq + crypt + Tier-1 signature) before any user Nix.
     printf '%s\n' "$password" | contract-greeter-auth "$src" "$username" "$tier" "$signers"
 
-    # 4b. SECRET PROVISIONING (ADR-0031, issue #10): on a TRUSTED Tier-1 seat, turn the user's
-    # passphrase into their KEY so their OWN home sops decrypt at this roaming login. REFUSED on an
-    # exposed host (ADR-0015 — the seat sees the plaintext) and skipped at tier2 (secret-free). The
-    # decrypted identity goes to a private temp file passed to provision; it never hits argv.
-    sessionKey=""
-    if [ "$secretProv" = true ] && [ "$tier" = tier1 ]; then
-      if [ "$exposed" = true ]; then
-        echo "greeter: secret provisioning refused on an exposed host (ADR-0015)" >&2; exit 1
-      fi
-
-      # Where the wrapped key comes from (ADR-0031): the user's repo (passphrase, issue #10) or the
-      # host's keyFetcher binding (escrow, issue #11 — e.g. fetched off-repo after a phone approval).
-      # Both yield a wrapped key the SAME passphrase-unlock + placement path consumes. The escrow fetch
-      # streams to a FILE (binary-safe — a wrapped key is binary; a shell var would drop NUL bytes).
-      wrappedKey=""
-      cleanupWrapped=""
-      case "$method" in
-        passphrase) [ -f "$src/$wrappedName" ] && wrappedKey="$src/$wrappedName" ;;
-        escrow)
-          if [ -z "$keyFetcher" ]; then
-            echo "greeter: escrow needs a keyFetcher binding; none set" >&2
-          else
-            wrappedKey=$(mktemp); cleanupWrapped=$wrappedKey
-            "$keyFetcher" "$username" > "$wrappedKey" \
-              || { echo "greeter: escrow keyFetcher failed (server unreachable / no approval)" >&2; rm -f "$wrappedKey"; wrappedKey=""; }
-          fi
-          ;;
-      esac
-
-      if [ -n "$wrappedKey" ] && [ -s "$wrappedKey" ]; then
-        if [ "$separatePass" = true ]; then
-          printf 'unlock passphrase: ' >&2; stty -echo 2>/dev/null || true; read -r unlockpass; stty echo 2>/dev/null || true; printf '\n' >&2
-        else
-          unlockpass=$password
-        fi
-        sessionKey=$(mktemp)
-        chmod 600 "$sessionKey"
-        printf '%s\n' "$unlockpass" | contract-greeter-unlock "$wrappedKey" > "$sessionKey"
-      fi
-      [ -n "$cleanupWrapped" ] && rm -f "$cleanupWrapped"
-
-      # No key obtained: fail CLOSED on secrets, never on the login (ADR-0031) — degrade to a
-      # secret-free session — UNLESS the seat requires secrets (a workload that must not run without
-      # them). There is deliberately NO in-repo passphrase fallback (that would be a downgrade attack).
-      if [ -z "$sessionKey" ]; then
-        if [ "$requireSecrets" = true ]; then
-          echo "greeter: requireSecrets is set but no key could be unlocked — refusing the login" >&2; exit 1
-        fi
-        echo "greeter: secret provisioning could not obtain a key ($method); continuing secret-free" >&2
-      fi
-    fi
+    # 4b. acquire the session age key (ADR-0031): contract-greeter-secret-key encapsulates the full
+    # passphrase/escrow protocol, the exposed-host guard, and the fail-closed/degrade logic. It emits
+    # the temp-file path on success, nothing on graceful degradation, and exits non-zero on refusal.
+    # CONTRACT_LOGIN_PASS carries the password for seats configured with separatePassphrase=false.
+    sessionKey=$(CONTRACT_LOGIN_PASS="$password" contract-greeter-secret-key "$username" "$src")
 
     # 5/6. evaluate + build the home THROUGH the contract, under the contract-pinned restricted-eval
     # posture (ADR-0030) — handed to the host's homeBuilder as NIX_CONFIG so a naive `nix build`
@@ -139,7 +83,7 @@ pkgs.writeShellApplication {
     activation=$(env NIX_CONFIG="$evalConfig" "$homeBuilder" "$src" "$username")
 
     # 7. FULLY realize the account (shell-side realization.nix), place the unlocked key, activate.
-    contract-greeter-provision "$username" "$src/${identityFile}" "$activation" "$tier" "$sessionKey" "$keyRel"
+    contract-greeter-provision "$username" "$src/${identityFile}" "$activation" "$tier" "$sessionKey"
     [ -n "$sessionKey" ] && rm -f "$sessionKey"
 
     # 8. launch the session (the desktop is selected here; the host-bound backend renders it).
