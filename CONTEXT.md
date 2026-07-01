@@ -274,21 +274,29 @@ the term is stable, the code is pending (see the cited issue).
   are **deferred** (ADR-0032): no feature carries an exec payload yet, and the mechanism will
   be introduced alongside the first feature that does. (ADR-0018, issue #3)
 
-- **contractPackage** *(designed; not yet built)* — the user flake's
-  `packages.${system}.contractPackage` output: a content-addressed store path the host pins
-  as a flake input and activates at switch time. Contains the home activation script and a
-  `contract-requests.json` sidecar (`{ version, username, requests, packages }`). The host
-  reads `contract-requests.json` at eval time (no IFD — it is pre-built and pinned) and
-  bridges granted feature requests exactly as today; at switch time it runs the activation
-  then replaces `~/.nix-profile` with a host-built package profile. Replaces `bindUserModule`'s
-  inline home evaluation for the **pre-built binding mode**; `bindUserModule` is retained for
-  **inline-eval (hard-enforcement)** deployments. (ADR-0032; amends ADR-0023)
-- **`mkContractPackage`** *(designed; not yet built)* — the contract `lib` function that
-  produces a `contractPackage` from an already-evaluated home config:
-  `mkContractPackage { activationPackage; requests; packages; username }`. Serializes
+- **contractPackage** — the user flake's `packages.${system}.contractPackage` output: a
+  content-addressed store path the host pins as a flake input and activates at switch time.
+  Contains the home activation script and a `contract-requests.json` sidecar
+  (`{ version, username, requests, packages }`). The host reads `contract-requests.json` at
+  eval time (no IFD — it is pre-built and pinned) and bridges granted feature requests exactly
+  as today; at switch time it runs the activation then replaces `~/.nix-profile` with a
+  host-built package profile. Replaces `bindUserModule`'s inline home evaluation for the
+  **pre-built binding mode**; `bindUserModule` is retained for **inline-eval
+  (hard-enforcement)** deployments. **(built — issue #16)** (ADR-0032; amends ADR-0023)
+- **`mkContractPackage`** — the contract `lib` function that produces a `contractPackage` from
+  an already-evaluated home config:
+  `mkContractPackage { pkgs; activationPackage; requests; packages; username }`. Serializes
   `config.contract.requests` and the top-level package manifest into `contract-requests.json`
-  and wraps both into a single derivation. The home is evaluated once by the user's flake;
-  the contract supplies only the wrapper. (ADR-0032)
+  (via `builtins.toFile` at eval time, no IFD) and wraps both into a single derivation. The
+  home is evaluated once by the user's flake; the contract supplies only the wrapper.
+  **(built — issue #14)** (ADR-0032)
+- **`bindContractPackage`** — the host-side binding for the pre-built path:
+  `bindContractPackage { contractPackage; identity; grants }`. Returns a NixOS module that
+  reads `contract-requests.json` at eval time, bridges granted requests via the same
+  `mkUserAccount`/`bridgeRequests` kernel as `bindUserModule`, and registers a
+  `system.activationScripts` entry that runs `contractPackage/activate` at switch time. When
+  `custom.host.packagePolicy.allowedPrograms` is non-empty it also builds and links a
+  host-built package profile. **(built — issue #16)** (ADR-0032)
 
 ## Program scope and package policy
 
@@ -302,33 +310,37 @@ the term is stable, the code is pending (see the cited issue).
   choice: since packages were never enforceable from the host side anyway, the user should
   bring exactly the versions they have tested against. The contract governs *system effects*
   (privilege, secrets, services); program scope is the user's sovereign concern.
-- **nix-daemon feature** *(designed; not yet built)* — the registry entry that grants a user
-  membership in the `nix-users` group and thereby access to the Nix daemon
-  (`nix.settings.allowed-users = ["@nix-users"]`). Denied on hosts requiring program
-  restriction; granted on personal machines. Not an exec-payload feature, but the practical
-  enabler of full package autonomy — a user with daemon access can build and run any
-  derivation. (ADR-0033)
-- **daemon-restricted user** *(designed; not yet built)* — a user for whom the `nix-daemon`
-  feature is denied. Cannot add new store paths. The host builds a **package profile** from
-  the *inclusion list* and installs it as the user's `~/.nix-profile` at activation time,
-  replacing what the activation package set. Unapproved programs are absent from the profile;
-  approved programs are at the host's version (most recent in its nixpkgs). A non-compliant
-  home always deploys — missing programs are simply absent from the session (their home-manager
-  configs may be present but are inert without the binary). (ADR-0033)
-- **package policy / inclusion list** *(designed; not yet built)* — `custom.host.packagePolicy.allowedPrograms`:
-  the set of program names the host will build into a daemon-restricted user's package
-  profile. Each entry resolves to `pkgs.${name}` from the host's nixpkgs pin — one canonical
-  version per program, the most recent the host carries. Programs off the list are not in the
-  profile. The effective profile is the intersection of the inclusion list and the user's
-  package manifest (what the user declared in their home config). (ADR-0033)
+- **nix-daemon feature** — the registry entry (`features.nix`) that grants a user membership
+  in the `nix-users` group and thereby access to the Nix daemon
+  (`nix.settings.allowed-users = ["@nix-users"]`). `nix-users` is in `privilegedGroups`, so
+  it is excluded from the safe set and the greeter never auto-grants it — daemon access is
+  always a deliberate build-time operator decision. Denied on hosts requiring program
+  restriction; granted on personal machines. **(built — issue #15)** (ADR-0033)
+- **daemon-restricted user** — a user for whom the `nix-daemon` feature is denied. Cannot add
+  new store paths. The host builds a **package profile** from the *inclusion list* and installs
+  it as the user's `~/.nix-profile` at activation time, replacing what the activation package
+  set. Unapproved programs are absent from the profile; approved programs are at the host's
+  version (most recent in its nixpkgs). A non-compliant home always deploys — missing programs
+  are simply absent from the session (their home-manager configs may be present but are inert
+  without the binary). **(built — issue #17)** (ADR-0033)
+- **package policy / inclusion list** — `custom.host.packagePolicy.allowedPrograms`: the set
+  of program names the host will build into a daemon-restricted user's package profile. Each
+  entry resolves to `pkgs.${name}` from the host's nixpkgs pin — one canonical version per
+  program, the most recent the host carries. Programs off the list are not in the profile. The
+  effective profile is the intersection of the inclusion list and the user's package manifest
+  (what the user declared in their home config). An empty list (the default) means no policy —
+  `~/.nix-profile` is left as-is after activation. **(built — issue #17)** (ADR-0033)
 
 ## Testing
 
 - **conformance suite** — the contract's own tests (`conformance/`): synthetic users × the
   umbrella, no host repo. **Eval** (`default.nix`) proves grant/deny, the gui-union
-  *decision*, the clamp, the exposed-host ban, the safe set, and the users × archetypes
-  matrix; the **VM** (`vm.nix`, a `runNixOSTest` boot) proves the gui-union *renders* — two
-  gui users with different sessions, both plasma session files live, both accounts realized.
+  *decision*, the clamp, the exposed-host ban, the safe set, the users × archetypes matrix,
+  `mkContractPackage` content, and `bindContractPackage` parity with `bindUserModule`. **VM
+  tests** (each a `runNixOSTest` boot): `vm.nix` (gui-union renders), `greeter-vm.nix`
+  (provisioning crux), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
+  `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
+  `daemon-restricted-vm.nix` (hello on PATH, curl absent, daemon refused).
 - **coherence gate** — the thin host-side check (in the fleet) that every real host's
   trait-tuple is archetype-covered and the real manifest realizes — the fleet's tie-back to
   the contract suite. (ADR-0020)

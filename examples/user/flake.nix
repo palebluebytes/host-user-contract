@@ -43,6 +43,12 @@
               home.username = "example";
               home.homeDirectory = "/home/example";
               home.stateVersion = "25.11";
+              # A declared package in the standalone build: makes the contractPackage's
+              # `packages` manifest non-empty so the package-policy intersection path is
+              # exercisable end-to-end. Kept here (not in home.nix) so the example home
+              # stays contract-pure — home.nix must evaluate with bare evalModules in the
+              # bindUser tracer (no home-manager, so home.packages would be undeclared).
+              home.packages = [ pkgs.hello ];
             }
           ]
           ++ extra;
