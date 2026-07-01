@@ -225,5 +225,9 @@ in
       name = "nix-users is in privilegedGroups";
       ok = lib.elem "nix-users" privilegedGroups;
     }
+    {
+      name = "privilegedGroups: kvm is reserved (present in the derived list despite no feature granting it)";
+      ok = lib.elem "kvm" privilegedGroups;
+    }
   ];
 }

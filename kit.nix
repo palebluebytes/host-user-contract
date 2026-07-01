@@ -9,17 +9,16 @@ let
   registry = import ./features.nix { inherit lib; };
 
   # --- projections of the single registry (the data) ---
-  featureGroups = lib.mapAttrs (_: f: f.groups) (lib.filterAttrs (_: f: f ? groups) registry);
-  privilegedGroups = [
-    "docker"
-    "podman"
-    "wheel"
-    "libvirtd"
-    "kvm"
-    "disk"
-    "qemu-libvirtd"
-    "nix-users"
-  ];
+  # Groups that are privilege-protected before any feature has been written to grant them.
+  # Each entry here is a "todo": move it into a feature's `privilegedGroups` when the
+  # feature is added rather than listing it here.
+  reservedPrivilegedGroups = [ "kvm" ]; # no feature grants kvm yet
+  privilegedGroups = lib.unique (
+    lib.concatMap (f: f.privilegedGroups or [ ]) (lib.attrValues registry) ++ reservedPrivilegedGroups
+  );
+  featureGroups = lib.mapAttrs (_: f: (f.groups or [ ]) ++ (f.privilegedGroups or [ ])) (
+    lib.filterAttrs (_: f: f ? groups || f ? privilegedGroups) registry
+  );
   grantedOptions = lib.mapAttrs (_: f: { enable = lib.mkEnableOption f.grant; }) registry;
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (
     map (f: f.config or { }) (lib.attrValues registry)
@@ -44,7 +43,6 @@ let
     inherit
       lib
       registry
-      privilegedGroups
       featureMeta
       ;
   };

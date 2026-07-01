@@ -7,15 +7,22 @@
 # keys can never drift across the projections because there is only one set of keys.
 #
 # Per-entry shape (all fields optional except `grant`):
-#   grant         : mkEnableOption description for `custom.users.<u>.granted.<f>`
-#   groups        : privileged/host groups the grant confers (clamped in via the
-#                   realization). Listed in `privilegedGroups` ⇒ build-time-only.
-#   secretBearing : the feature pulls a secret onto a host ⇒ an exposed host may not
-#                   be granted it, and it is excluded from the runtime safe set.
-#   secretFiles   : stash-relative sops files whose recipient set is DERIVED from the
-#                   hosts that grant this feature (self.lib.featureRecipients).
-#   config        : user-owned option fragment merged into `custom.users.<u>` — the
-#                   feature's *parameters* (host-affecting ones aggregate, ADR-0019).
+#   grant            : mkEnableOption description for `custom.users.<u>.granted.<f>`
+#   privilegedGroups : groups the grant confers that are SECURITY-CRITICAL — a user can
+#                      never self-escalate into these by declaring them in identity.extraGroups;
+#                      the realization clamps them out and only restores them via a grant.
+#                      A feature with any privilegedGroups is build-time-only (excluded from
+#                      the safe set and never auto-granted by the greeter). kit.nix derives
+#                      the system-wide `privilegedGroups` clamp list from these.
+#   groups           : NON-PRIVILEGED groups the grant confers — self-declaration in
+#                      identity.extraGroups is safe, but the grant is still the canonical
+#                      path. Features with only these may be runtime-eligible (safe set).
+#   secretBearing    : the feature pulls a secret onto a host ⇒ an exposed host may not
+#                      be granted it, and it is excluded from the runtime safe set.
+#   secretFiles      : stash-relative sops files whose recipient set is DERIVED from the
+#                      hosts that grant this feature (self.lib.featureRecipients).
+#   config           : user-owned option fragment merged into `custom.users.<u>` — the
+#                      feature's *parameters* (host-affecting ones aggregate, ADR-0019).
 { lib }:
 {
   # gui: desktop environment. Its host effects are two contract-neutral things only —
@@ -62,7 +69,7 @@
   # never obtain these by declaring them in identity.extraGroups; only this grant does.
   workstation = {
     grant = "privileged workstation groups for this user (host grant)";
-    groups = [
+    privilegedGroups = [
       "docker"
       "podman"
       "wheel"
@@ -77,15 +84,15 @@
   # clamp drops it (ADR-0015 threat model) and only this grant restores it.
   sudo = {
     grant = "wheel/sudo administrative access for this user (host grant)";
-    groups = [ "wheel" ];
+    privilegedGroups = [ "wheel" ];
   };
 
   # virtualization: the privileged disk/libvirtd/qemu-libvirtd groups, split out of gui
   # (slice 11) so gui stays in the safe set — these are build-time-only, never auto-
-  # granted at a greeter. (kvm is in privilegedGroups but conferred to no user today.)
+  # granted at a greeter. (kvm is reserved in kit.nix but not yet conferred by any feature.)
   virtualization = {
     grant = "privileged virtualization groups for this user (host grant)";
-    groups = [
+    privilegedGroups = [
       "disk"
       "qemu-libvirtd"
       "libvirtd"
@@ -110,6 +117,6 @@
   # beyond what the host placed there when activating their contractPackage.
   nix-daemon = {
     grant = "access to the Nix daemon for this user (host grant)";
-    groups = [ "nix-users" ];
+    privilegedGroups = [ "nix-users" ];
   };
 }

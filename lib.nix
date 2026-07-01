@@ -8,20 +8,19 @@
 {
   lib,
   registry,
-  privilegedGroups,
   featureMeta,
 }:
 let
-  # A feature is runtime/greeter-eligible iff it bears no secret and confers no
-  # privileged group (ADR-0018, slice 15). The exec-payload clause is deferred —
-  # no feature uses it yet; it will be re-introduced alongside the first feature
-  # that carries a host-executed user payload (ADR-0032).
+  # A feature is runtime/greeter-eligible iff it bears no secret and declares no
+  # privilegedGroups (ADR-0018, slice 15). The feature is self-describing: checking
+  # `f.privilegedGroups == []` replaces the cross-list intersection that was needed
+  # when `privilegedGroups` was a separate, hand-maintained list in kit.nix.
   runtimeEligibleFeature =
     feature:
     let
       f = registry.${feature} or { };
     in
-    !(f.secretBearing or false) && (lib.intersectLists (f.groups or [ ]) privilegedGroups == [ ]);
+    !(f.secretBearing or false) && (f.privilegedGroups or [ ]) == [ ];
 
   # The runtime-eligible feature names — the safe set (ADR-0018, slice 15).
   safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
