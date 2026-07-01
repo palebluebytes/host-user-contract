@@ -71,6 +71,7 @@ pkgs.testers.runNixOSTest {
   testScript = ''
     machine.start()
     machine.wait_for_unit("multi-user.target")
+    machine.wait_for_unit("contract-activate-testuser.service")
 
     # Account materialized from identity
     machine.succeed("getent passwd testuser")

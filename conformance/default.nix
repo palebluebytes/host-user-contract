@@ -86,7 +86,6 @@ let
     (import ./matrix.nix { inherit lib toolkit; })
     (import ./contract-package.nix {
       inherit
-        lib
         pkgs
         toolkit
         mkContractPackage

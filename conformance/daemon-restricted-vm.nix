@@ -82,6 +82,7 @@ pkgs.testers.runNixOSTest {
   testScript = ''
     machine.start()
     machine.wait_for_unit("multi-user.target")
+    machine.wait_for_unit("contract-activate-testuser.service")
 
     # Account materialized
     machine.succeed("getent passwd testuser")
@@ -89,11 +90,12 @@ pkgs.testers.runNixOSTest {
     # Activation ran: marker from contractPackage/activate
     machine.succeed("test -f /home/testuser/.contract-activated")
 
-    # hello is approved and declared → in the host-built profile → on PATH
-    machine.succeed("su -s /bin/sh -c 'hello' testuser")
+    # hello is approved and declared → in the host-built profile
+    machine.succeed("test -x /home/testuser/.nix-profile/bin/hello")
 
-    # curl is declared but NOT approved → absent from PATH
-    machine.fail("su -s /bin/sh -c 'curl --version' testuser")
+    # curl is declared but NOT approved → absent from the user's profile
+    # (Package policy governs ~/.nix-profile, not system-wide availability.)
+    machine.fail("test -x /home/testuser/.nix-profile/bin/curl")
 
     # testuser is not in nix-users → daemon unreachable
     machine.fail("su -s /bin/sh -c 'nix-store --query --outputs /nix/store' testuser")

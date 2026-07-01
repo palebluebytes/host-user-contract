@@ -5,7 +5,6 @@
 # contract-requests.json fixture — same `mkUserAccount` + `bridgeRequests` kernel, different
 # data source. The fixture is a plain repo path (no derivation, no IFD).
 {
-  lib,
   pkgs,
   toolkit,
   mkContractPackage,
@@ -106,10 +105,10 @@ in
       ok = !boundNone.custom.gui.surface.enabled;
     }
 
-    # bindContractPackage: activation script is registered in the system
+    # bindContractPackage: systemd activation service is registered
     {
-      name = "bindContractPackage: activation script is registered";
-      ok = boundRuntime.system.activationScripts ? "contract-activate-example";
+      name = "bindContractPackage: activation service is registered in systemd";
+      ok = boundRuntime.systemd.services ? "contract-activate-example";
     }
 
     # bindContractPackage: no package policy profile replacement when allowedPrograms is empty
@@ -117,9 +116,9 @@ in
       name = "bindContractPackage: no profile replacement when allowedPrograms is empty (default)";
       ok =
         let
-          scriptText = boundRuntime.system.activationScripts."contract-activate-example".text or "";
+          svcConfig = boundRuntime.systemd.services."contract-activate-example".serviceConfig or { };
         in
-        !(lib.hasInfix "nix-profile" scriptText);
+        !(svcConfig ? ExecStartPost);
     }
   ];
 

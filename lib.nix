@@ -121,13 +121,24 @@ let
     in
     {
       custom.users.${username} = mkUserAccount { inherit identity grants requests; };
-      system.activationScripts."contract-activate-${username}" = {
-        text = ''
-          if [ -e "${contractPackage}/activate" ]; then
-            su -s /bin/sh -c "${contractPackage}/activate" "${username}" || true
-          fi
-        ''
-        + (
+      # A systemd oneshot service (not system.activationScripts) so it runs after PAM is
+      # configured. activationScripts run during the initrd activation phase where runuser/su
+      # cannot open /etc/pam.conf yet — a oneshot service executes post-boot under the full
+      # systemd environment where PAM is ready. Before= ensures the service completes before
+      # multi-user.target, so callers waiting on that target see the home as activated.
+      systemd.services."contract-activate-${username}" = {
+        description = "Activate contract package for ${username}";
+        wantedBy = [ "multi-user.target" ];
+        before = [ "multi-user.target" ];
+        after = [ "local-fs.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          User = username;
+          Environment = "HOME=/home/${username}";
+          ExecStart = "${contractPackage}/activate";
+        }
+        // (
           if allowedPrograms != [ ] then
             let
               profileEnv = pkgs.buildEnv {
@@ -136,11 +147,14 @@ let
                 ignoreCollisions = true;
               };
             in
-            "ln -sfn ${profileEnv} /home/${username}/.nix-profile\n"
+            {
+              # After activate, replace ~/.nix-profile with the host-built policy profile
+              # (intersection of allowedPrograms and user's manifest packages).
+              ExecStartPost = "${pkgs.coreutils}/bin/ln -sfn ${profileEnv} /home/${username}/.nix-profile";
+            }
           else
-            ""
+            { }
         );
-        deps = [ "users" ];
       };
     };
 in

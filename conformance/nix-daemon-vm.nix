@@ -78,11 +78,14 @@ pkgs.testers.runNixOSTest {
     # carol self-declared nix-users but the realization CLAMPED it (privileged group)
     machine.fail("id -nG carol | tr ' ' '\\n' | grep -qx nix-users")
 
-    # alice can reach the nix daemon (nix-store query succeeds)
-    machine.succeed("su -s /bin/sh -c 'nix-store --query --outputs /nix/store' alice 2>&1 | grep -v 'Access denied'")
+    # alice can reach the nix daemon: nix-store --add sends a request to the daemon; if
+    # allowed, it returns a store path (exit 0). /nix/store itself is not a valid store path
+    # for query commands, so we use --add on a temp file — the daemon must process it.
+    machine.succeed("echo nix-daemon-alice-probe > /tmp/nixtest")
+    machine.succeed("su -s /bin/sh -c 'nix-store --add /tmp/nixtest' alice")
 
-    # bob cannot reach the daemon (nix-store is refused)
-    machine.fail("su -s /bin/sh -c 'nix-store --query --outputs /nix/store' bob")
+    # bob cannot reach the daemon — nix-store --add is refused (exit non-zero)
+    machine.fail("su -s /bin/sh -c 'nix-store --add /tmp/nixtest' bob")
 
     print(machine.succeed("id alice; id bob; id carol"))
   '';
