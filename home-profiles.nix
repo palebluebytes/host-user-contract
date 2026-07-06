@@ -1,4 +1,4 @@
-# Home meta-profile options — part of the host↔user contract (ADR-0015).
+# Home meta-profile options — part of the host↔user contract (ADR-0001).
 # Declared by the home umbrella module as `custom.home.profiles.*`.
 # The single home-profile vocabulary: meta-profiles (cli/gui) and the home-feature
 # enable (signing) whose home module supplies the matching config. Declaring them in one

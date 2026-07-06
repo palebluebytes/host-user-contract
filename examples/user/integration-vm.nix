@@ -1,6 +1,6 @@
 # Greeter path END-TO-END with a REAL home (issue #2) — the integration test the contract's own
 # suite cannot host, because building a real home needs home-manager and the contract depends only
-# on nixpkgs `lib` (ADR-0020). It lives in the example user flake, which legitimately has
+# on nixpkgs `lib` (ADR-0004). It lives in the example user flake, which legitimately has
 # home-manager, exactly as a consuming host does: the contract DECIDES (bind + grant + provision
 # mechanism), the consumer RENDERS (a real home-manager home) — the same split the gui-union VM
 # draws by supplying its own SDDM/Plasma.
@@ -10,7 +10,7 @@
 # performs: a real greeter-bound home — built by home-manager THROUGH the contract, granted the safe
 # set (greeterGrants) — is provisioned at RUNTIME onto a booted seat host, and its marker dotfile is
 # observed in the freshly-materialized account's home. (The remaining truly-runtime step — building
-# that home AT login from a fetched flake under restricted eval — stays deferred per ADR-0022; here
+# that home AT login from a fetched flake under restricted eval — stays deferred per ADR-0006; here
 # the real home is built at test-build time and provisioned, which is the faithful, feasible
 # end-to-end.)
 {
@@ -70,7 +70,7 @@ pkgs.testers.runNixOSTest {
     machine.fail("getent passwd ${username}")
 
     # Runtime provision the REAL greeter-bound home: fully realize the account from identity.json
-    # (shell-side realization.nix, ADR-0028) and activate the actual home-manager generation as
+    # (shell-side realization.nix, ADR-0012) and activate the actual home-manager generation as
     # that user.
     machine.succeed("contract-greeter-provision ${username} ${identityJson} ${homeActivation} tier1")
     machine.succeed("getent passwd ${username}")
@@ -85,7 +85,7 @@ pkgs.testers.runNixOSTest {
     machine.succeed("grep -q greeter-activated /home/${username}/.contract-home-active")
     machine.succeed("stat -c %U /home/${username}/.contract-home-active | grep -qx ${username}")
 
-    # The desktop-choice helper (ADR-0029) auto-surfaced the home's contract.requests.gui.desktop to
+    # The desktop-choice helper (ADR-0013) auto-surfaced the home's contract.requests.gui.desktop to
     # ~/.contract-desktop, where the greeter's launcher reads it — no manual step. The example home
     # requests "plasma".
     machine.succeed("test -f /home/${username}/.contract-desktop")

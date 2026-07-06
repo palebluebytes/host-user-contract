@@ -1,4 +1,4 @@
-# Runtime VM for the greeter's provisioning CRUX + session selection (ADR-0026/0028, issue #2).
+# Runtime VM for the greeter's provisioning CRUX + session selection (ADR-0010/0012, issue #2).
 # The one part of the runtime path that needs a booted machine rather than a pure eval: the
 # eval-free auth ordering and the safe-set bind are proven headless in ./default.nix; what only a
 # real host can show is RUNTIME provisioning — materializing an account and realizing it OUTSIDE
@@ -6,12 +6,12 @@
 #
 # It boots ONE seat host with `nixosModules.greeter` enabled and drives the privileged helpers
 # directly against a synthetic identity.json. It asserts that `provision` is the shell-side
-# `realization.nix` (ADR-0028): the account is fully realized — password (so PAM works), GECOS,
+# `realization.nix` (ADR-0012): the account is fully realized — password (so PAM works), GECOS,
 # authorizedKeys, the user's SAFE declared groups, the greeter-seat baseline groups — with the
 # privileged-group CLAMP reproduced at runtime (a hostile `docker` in identity.json is dropped).
-# It then proves session SELECTION (ADR-0026 step 8): the launcher picks the seat-default type, a
+# It then proves session SELECTION (ADR-0010 step 8): the launcher picks the seat-default type, a
 # home override flips it, and each execs the host-bound backend. Building a real home needs
-# home-manager (the contract has none, ADR-0020), so the home here is a stub activation package —
+# home-manager (the contract has none, ADR-0004), so the home here is a stub activation package —
 # the real-home end-to-end lives in examples/user (the consumer-renders boundary, like gui-union).
 {
   pkgs,
@@ -110,7 +110,7 @@ pkgs.testers.runNixOSTest {
     # The external user does NOT exist at build time — NixOS users are declarative.
     machine.fail("getent passwd example")
 
-    # RUNTIME provision: the shell-side realization (ADR-0028).
+    # RUNTIME provision: the shell-side realization (ADR-0012).
     machine.succeed("contract-greeter-provision example ${identityJson} ${activationStub} tier1")
     machine.succeed("getent passwd example")
 
@@ -131,14 +131,14 @@ pkgs.testers.runNixOSTest {
     # - the home activated AS the user
     machine.succeed("test -f /home/example/.contract-home-activated")
 
-    # Per-user desktop SELECTION (ADR-0029): no home choice ⇒ the seat default (plasma) launches.
+    # Per-user desktop SELECTION (ADR-0013): no home choice ⇒ the seat default (plasma) launches.
     machine.succeed("contract-greeter-session example /home/example")
     machine.succeed("grep -qx plasma /tmp/desktop-launched")
     # The user's home chooses gnome ⇒ gnome launches instead.
     machine.succeed("echo gnome > /home/example/.contract-desktop")
     machine.succeed("contract-greeter-session example /home/example")
     machine.succeed("grep -qx gnome /tmp/desktop-launched")
-    # A desktop the seat does NOT offer degrades to the default, never breaks the login (ADR-0029).
+    # A desktop the seat does NOT offer degrades to the default, never breaks the login (ADR-0013).
     machine.succeed("echo hyprland > /home/example/.contract-desktop")
     machine.succeed("contract-greeter-session example /home/example")
     machine.succeed("grep -qx plasma /tmp/desktop-launched")

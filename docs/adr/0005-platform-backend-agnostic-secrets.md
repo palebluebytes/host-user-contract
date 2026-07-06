@@ -1,8 +1,8 @@
 # The platform interface abstracts secret *provisioning*, not just file location
 
-**Status:** Accepted (landed with the extraction, [ADR-0020](0020-extract-contract-flake.md)).
+**Status:** Accepted (landed with the extraction, [ADR-0004](0004-extract-contract-flake.md)).
 
-The contract's `platform` interface ([ADR-0015](0015-host-user-contract.md) mechanic 6)
+The contract's `platform` interface ([ADR-0001](0001-host-user-contract.md) mechanic 6)
 was meant to keep a feature from naming the host's secrets backend. It only half does:
 `secretFile name → path` resolves *where the ciphertext lives*, but its shape is
 **sops-modeled** — "a named secret group → its encrypted **sops** source file" — and the
@@ -20,7 +20,7 @@ binding maps logical secrets to `sops.secrets` *or* `age.secrets` and publishes 
 back through the interface. sops is the first and only current binding; **agenix becomes a
 drop-in host binding requiring no change to the contract or to any feature module.**
 
-This lands **with the extraction** ([ADR-0020](0020-extract-contract-flake.md)), not after:
+This lands **with the extraction** ([ADR-0004](0004-extract-contract-flake.md)), not after:
 publishing the contract with a sops-shaped interface would make backend-agnosticism a
 *breaking change* to an already-published interface.
 
@@ -33,7 +33,7 @@ publishing the contract with a sops-shaped interface would make backend-agnostic
   runtime path out; the host binding is the only place a backend is named. The contract
   gains no backend dependency; backends are swapped by swapping one host-side binding module.
 - **Drop down to a raw specialArg of resolver functions** — rejected for the same reason
-  ADR-0015 rejected it for the locator: a typed option set fails loudly when a host forgets
+  ADR-0001 rejected it for the locator: a typed option set fails loudly when a host forgets
   to bind, an untyped attrset fails late with `attribute missing`.
 
 ## Consequences

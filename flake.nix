@@ -1,5 +1,5 @@
 {
-  description = "The host↔user contract — shared schema, host-invariant realization, derivation logic, and conformance kit (ADR-0015, ADR-0020). Depends only on nixpkgs lib.";
+  description = "The host↔user contract — shared schema, host-invariant realization, derivation logic, and conformance kit (ADR-0001, ADR-0004). Depends only on nixpkgs lib.";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -14,23 +14,23 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in
     {
-      # The umbrella kit (ADR-0020 Q2): one module per eval-side, closed over the
+      # The umbrella kit (ADR-0004 Q2): one module per eval-side, closed over the
       # registry. A consumer imports these and binds the platform host-side.
       #
-      # `nixosModules` is deliberately NOT a single `default` (ADR-0024): `default` is the
+      # `nixosModules` is deliberately NOT a single `default` (ADR-0008): `default` is the
       # schema + realization + features every host wants; `greeter` is the opt-in reference
       # runtime greeter (greetd + the eval-free bind→provision flow) a SEAT host enables and a
       # headless host omits — à-la-carte justified precisely by that split.
       nixosModules.default = kit.nixosModule;
       nixosModules.greeter = kit.greeterModule;
       homeModules.default = kit.homeModule;
-      # Opt-in home helper (ADR-0029): materialises ~/.contract-desktop from the home's
+      # Opt-in home helper (ADR-0013): materialises ~/.contract-desktop from the home's
       # contract.requests.gui.desktop, so the greeter's launcher reads the user's desktop choice.
       # Separate from default because it touches home-manager's `home.file` (default stays
-      # tracer-pure — evaluable with no home-manager, ADR-0024).
+      # tracer-pure — evaluable with no home-manager, ADR-0008).
       homeModules.greeterDesktop = kit.homeGreeterDesktopModule;
 
-      # The contract derivation functions (ADR-0020 Q4). The host applies the
+      # The contract derivation functions (ADR-0004 Q4). The host applies the
       # fleet-bound ones (e.g. mkFeatureRecipients self.nixosConfigurations) itself.
       inherit (kit) lib;
 
@@ -48,7 +48,7 @@
         identitySchema
         ;
 
-      # The contract's own conformance suite (ADR-0020 Q5): proves the contract's
+      # The contract's own conformance suite (ADR-0004 Q5): proves the contract's
       # promises against synthetic users on synthetic systems built from the umbrella —
       # no host repo. Independent CI; the host keeps only the thin coherence gate.
       checks = forAllSystems (system: {
@@ -83,14 +83,14 @@
         # Runtime proof (a booted VM): the gui-session union RENDERS — one seat, two gui
         # users with different sessions ⇒ both plasma session files live + both accounts
         # activated. Uses a test-only SDDM/Plasma binding the suite supplies (the contract
-        # itself is display-backend-agnostic). Moved here from the fleet (ADR-0020).
+        # itself is display-backend-agnostic). Moved here from the fleet (ADR-0004).
         conformance-vm = import ./conformance/vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           inherit system;
         };
 
-        # Runtime proof of the greeter's provisioning CRUX (ADR-0022, issue #2): a booted seat
+        # Runtime proof of the greeter's provisioning CRUX (ADR-0006, issue #2): a booted seat
         # host with nixosModules.greeter enabled materializes the example user's account and
         # activates a built home at runtime — the declarative→runtime bridge eval cannot show.
         greeter-vm = import ./conformance/greeter-vm.nix {
@@ -100,7 +100,7 @@
           inherit system;
         };
 
-        # Session RENDER (ADR-0029 step 8): the bound desktop brings up a LIVE session on real
+        # Session RENDER (ADR-0013 step 8): the bound desktop brings up a LIVE session on real
         # virtio-gpu DRM, via greetd-as-user. Wayland (cage) and X11 as separate boots, plus two
         # different desktops one-after-another on one seat. Heavy (a real graphical boot) — the
         # render counterpart to greeter-vm's selection. A real GNOME/Plasma is the same shape with a
@@ -126,10 +126,10 @@
           inherit system;
         };
 
-        # The reference escrow keyserver (issue #13, ADR-0031): proves the EXAMPLE release server +
+        # The reference escrow keyserver (issue #13, ADR-0015): proves the EXAMPLE release server +
         # reference keyFetcher enforce the release gate — number-matching, a one-time requester-bound
         # token, binary-safe transport, signature verification — with a keypair-controlled "phone".
-        # An example, not contract code (ADR-0020); tested here so it stays honest.
+        # An example, not contract code (ADR-0004); tested here so it stays honest.
         escrow-keyserver = import ./examples/escrow-keyserver/gate-test.nix {
           pkgs = nixpkgs.legacyPackages.${system};
         };
@@ -146,7 +146,7 @@
           inherit system;
         };
 
-        # A REAL full desktop environment launched by the greeter (ADR-0029) — the non-technical-user
+        # A REAL full desktop environment launched by the greeter (ADR-0013) — the non-technical-user
         # target. The seat enables the DE and binds its session entry to a desktop; a greeter login
         # brings it up live, exactly as a display manager would exec it. Heavy (a full DE closure).
         greeter-desktop-plasma = import ./conformance/greeter-desktop-vm.nix {
@@ -181,7 +181,7 @@
             # GNOME 50's gnome-session starts gnome-shell as a systemd USER service, detached from
             # greetd's login session, so mutter can't find its seat ("no matching session"). Launch
             # gnome-shell as a DIRECT CHILD of the greetd session (as kwin/cage/sway run) so it is in
-            # the session and takes the seat — the seat's GNOME binding (a host concern, ADR-0029).
+            # the session and takes the seat — the seat's GNOME binding (a host concern, ADR-0013).
             command =
               let
                 p = nixpkgs.legacyPackages.${system};
@@ -196,7 +196,7 @@
           };
         };
 
-        # Runtime proof of the nix-daemon feature (ADR-0033, issue #15): a system with
+        # Runtime proof of the nix-daemon feature (ADR-0017, issue #15): a system with
         # nix.settings.allowed-users = ["@nix-users"] where one user is granted nix-daemon
         # (in nix-users → can use the daemon) and one is not (daemon-restricted).
         nix-daemon-vm = import ./conformance/nix-daemon-vm.nix {
@@ -205,7 +205,7 @@
           inherit system;
         };
 
-        # Runtime proof of the pre-built binding path (ADR-0032, issue #16): a system that
+        # Runtime proof of the pre-built binding path (ADR-0016, issue #16): a system that
         # uses bindContractPackage to bind the example user, boots, and verifies the account
         # materializes and the activation script runs.
         prebuilt-bind-vm = import ./conformance/prebuilt-bind-vm.nix {
@@ -215,7 +215,7 @@
           inherit (self.lib) bindContractPackage;
         };
 
-        # Runtime proof of package policy + daemon restriction (ADR-0033, issue #17): host
+        # Runtime proof of package policy + daemon restriction (ADR-0017, issue #17): host
         # denies nix-daemon, sets allowedPrograms = ["hello"]; contractPackage declares hello
         # and curl; after activation hello works from PATH and curl does not.
         daemon-restricted-vm = import ./conformance/daemon-restricted-vm.nix {
@@ -228,7 +228,7 @@
 
       # `nix fmt`: treefmt over the whole tree — nixfmt (RFC 166) for Nix, ruff for Python, shfmt for
       # shell. All formatters come from nixpkgs, so the contract flake still inputs only nixpkgs (no
-      # treefmt-nix/git-hooks.nix inputs, ADR-0020). Config: ./treefmt.toml.
+      # treefmt-nix/git-hooks.nix inputs, ADR-0004). Config: ./treefmt.toml.
       formatter = forAllSystems (
         system:
         let

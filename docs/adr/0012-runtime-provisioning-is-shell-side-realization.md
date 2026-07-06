@@ -1,8 +1,8 @@
 # Runtime provisioning is the shell-side realization: fully realize the account before the session
 
-**Status:** Accepted; refines [ADR-0026](0026-greeter-seat-baseline-not-per-login-rebuild.md) (the greeter-seat baseline) and serves the portable-user north star (below).
+**Status:** Accepted; refines [ADR-0010](0010-greeter-seat-baseline-not-per-login-rebuild.md) (the greeter-seat baseline) and serves the portable-user north star (below).
 
-Because a greeter user is **never built into the system** (ADR-0026 — no per-login rebuild), `realization.nix` — the module that maps a `custom.users.<u>`'s identity + grants to a full system account (`hashedPassword`, `authorizedKeys`, GECOS, the **clamped** safe declared groups + the grant groups) — **never runs for a greeter user**. `provision` is therefore the *only* thing that creates the account, yet today it does little more than `useradd`: the account ends up with **no password** (PAM lockout — a persisted Tier-1 user cannot unlock a screen locker or `su`), no SSH keys, no description, and none of the user's safe declared groups. That **breaks [ADR-0024](0024-greeter-is-a-contract-deliverable.md)'s promise** that a greeter-bound user realizes *identically* to a build-time one.
+Because a greeter user is **never built into the system** (ADR-0010 — no per-login rebuild), `realization.nix` — the module that maps a `custom.users.<u>`'s identity + grants to a full system account (`hashedPassword`, `authorizedKeys`, GECOS, the **clamped** safe declared groups + the grant groups) — **never runs for a greeter user**. `provision` is therefore the *only* thing that creates the account, yet today it does little more than `useradd`: the account ends up with **no password** (PAM lockout — a persisted Tier-1 user cannot unlock a screen locker or `su`), no SSH keys, no description, and none of the user's safe declared groups. That **breaks [ADR-0008](0008-greeter-is-a-contract-deliverable.md)'s promise** that a greeter-bound user realizes *identically* to a build-time one.
 
 ## Decision
 
@@ -11,7 +11,7 @@ Because a greeter user is **never built into the system** (ADR-0026 — no per-l
 - sets `hashedPassword` — the *same* hash `auth` already verified (so PAM works: screen-locker unlock, `su`);
 - installs `authorizedKeys` from `sshKey` + `trustedKeys`;
 - sets GECOS from `name`;
-- adds the user's **safe declared groups** and enrolls the account in the **greeter-seat baseline** (the grant groups, ADR-0026);
+- adds the user's **safe declared groups** and enrolls the account in the **greeter-seat baseline** (the grant groups, ADR-0010);
 - reproduces `realization.nix`'s **privileged-group clamp** in shell, so a hostile `identity.json` still cannot smuggle a privileged group at runtime.
 
 Home activation **and** account realization both complete **before** the session starts.
@@ -28,4 +28,4 @@ The contract's runtime aim is a **portable user**: the *same* identity logs into
 ## Considered Options
 
 - **Minimal account (username + home only)** — rejected: breaks realize-identically and causes PAM lockout of persisted users.
-- **Per-login `nixos-rebuild` to run `realization.nix`** — rejected ([ADR-0026](0026-greeter-seat-baseline-not-per-login-rebuild.md)): global blast radius and declarative drift.
+- **Per-login `nixos-rebuild` to run `realization.nix`** — rejected ([ADR-0010](0010-greeter-seat-baseline-not-per-login-rebuild.md)): global blast radius and declarative drift.

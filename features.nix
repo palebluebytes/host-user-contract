@@ -1,5 +1,5 @@
 # The feature registry — the SINGLE source of truth for the contract's feature
-# vocabulary (ADR-0015, mechanic 2). One entry per feature; every other feature
+# vocabulary (ADR-0001, mechanic 2). One entry per feature; every other feature
 # surface the contract exposes (the `granted.*` grant options, `featureMeta`,
 # `featureGroups`, the user-owned `featureConfig` options, the imported feature
 # modules, the derived safe set, and the sops recipients) is a PROJECTION of this
@@ -22,7 +22,7 @@
 #   secretFiles      : stash-relative sops files whose recipient set is DERIVED from the
 #                      hosts that grant this feature (self.lib.featureRecipients).
 #   config           : user-owned option fragment merged into `custom.users.<u>` — the
-#                      feature's *parameters* (host-affecting ones aggregate, ADR-0019).
+#                      feature's *parameters* (host-affecting ones aggregate, ADR-0003).
 { lib }:
 {
   # gui: desktop environment. Its host effects are two contract-neutral things only —
@@ -41,7 +41,7 @@
     ];
     config = {
       # gui.session: which display session this user logs into. Host-affecting and
-      # UNION-aggregated by the realization (ADR-0019) — a Wayland user and an X11
+      # UNION-aggregated by the realization (ADR-0003) — a Wayland user and an X11
       # user coexist on one seat, each logging into their own. A user declares this;
       # it NEVER sets services.xserver.enable directly.
       gui.session = lib.mkOption {
@@ -52,7 +52,7 @@
         default = "wayland";
         description = "Display session this user logs into; unioned across granted gui users by the realization.";
       };
-      # gui.desktop: which DESKTOP this user logs into at a greeter (ADR-0029). FREE-FORM and
+      # gui.desktop: which DESKTOP this user logs into at a greeter (ADR-0013). FREE-FORM and
       # DE-agnostic by design — the contract carries the user's opaque preference (so it travels
       # with the home: same desktop on any seat that offers it, the portable-user north star); the
       # SEAT maps the name to a real DE (custom.greeter.desktops) and an un-offered/empty name
@@ -60,7 +60,7 @@
       gui.desktop = lib.mkOption {
         type = lib.types.str;
         default = "";
-        description = "Desktop this user logs into at a greeter; a free-form name the seat maps to an offered desktop (ADR-0029). Empty ⇒ the seat default.";
+        description = "Desktop this user logs into at a greeter; a free-form name the seat maps to an offered desktop (ADR-0013). Empty ⇒ the seat default.";
       };
     };
   };
@@ -81,7 +81,7 @@
   # dev toolchain (e.g. a break-glass admin, or a co-admin user). wheel is privileged, so
   # like workstation it is build-time-only and excluded from the safe set — never a
   # greeter auto-grant. A user can never obtain wheel by declaring it in identity; the
-  # clamp drops it (ADR-0015 threat model) and only this grant restores it.
+  # clamp drops it (ADR-0001 threat model) and only this grant restores it.
   sudo = {
     grant = "wheel/sudo administrative access for this user (host grant)";
     privilegedGroups = [ "wheel" ];
@@ -112,7 +112,7 @@
   # membership — the host wires `nix.settings.allowed-users = ["@nix-users"]` so only
   # members of this group may talk to the daemon. `nix-users` is in `privilegedGroups`
   # (so the clamp drops self-declared daemon access), making this build-time-only — the
-  # greeter NEVER auto-grants daemon access (ADR-0033). A user denied this feature is
+  # greeter NEVER auto-grants daemon access (ADR-0017). A user denied this feature is
   # daemon-restricted: they cannot build derivations, install packages, or add store paths
   # beyond what the host placed there when activating their contractPackage.
   nix-daemon = {

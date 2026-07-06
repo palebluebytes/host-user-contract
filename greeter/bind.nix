@@ -1,7 +1,7 @@
 # The orchestrator greetd runs: ties the eval-free ordering together (the replaceable UI half).
 # The prompt loop here is the reference UI; a host may swap regreet/its own front end as long as it
 # preserves the ordering. The home BUILD (step 5/6) is delegated to the host's `homeBuilder` binding —
-# it needs home-manager, which the contract does not ship (ADR-0020). Secret key acquisition (step
+# it needs home-manager, which the contract does not ship (ADR-0004). Secret key acquisition (step
 # 4b) is delegated to contract-greeter-secret-key, which encapsulates the full passphrase/escrow
 # protocol and the exposed-host guard; this script has no knowledge of secret-provisioning config.
 {
@@ -40,7 +40,7 @@ pkgs.writeShellApplication {
     }
     homeBuilder=${lib.escapeShellArg (toString homeBuilder)}
 
-    # The restricted-eval posture the home is built under, DISPATCHED BY TIER (ADR-0030): a
+    # The restricted-eval posture the home is built under, DISPATCHED BY TIER (ADR-0014): a
     # host-signed repo is still built under a restricted eval it cannot widen. Selected by tier so
     # the posture is honestly tier-scoped — tier1 uses the contract's canonical, conformance-checked
     # tier1EvalConfig; tier2 (untrusted, ephemeral) is DEFERRED and refused here, before any build,
@@ -48,7 +48,7 @@ pkgs.writeShellApplication {
     # fetch too (below), so the repo's own nixConfig is ignored even while locking.
     case "$tier" in
       tier1) evalConfig=${lib.escapeShellArg tier1NixConfig} ;;
-      *) echo "greeter: no eval posture defined for tier '$tier' (tier2 deferred, ADR-0030)" >&2; exit 1 ;;
+      *) echo "greeter: no eval posture defined for tier '$tier' (tier2 deferred, ADR-0014)" >&2; exit 1 ;;
     esac
 
     [ -n "$homeBuilder" ] || {
@@ -71,14 +71,14 @@ pkgs.writeShellApplication {
     # 3. authenticate EVAL-FREE (jq + crypt + Tier-1 signature) before any user Nix.
     printf '%s\n' "$password" | contract-greeter-auth "$src" "$username" "$tier" "$signers"
 
-    # 4b. acquire the session age key (ADR-0031): contract-greeter-secret-key encapsulates the full
+    # 4b. acquire the session age key (ADR-0015): contract-greeter-secret-key encapsulates the full
     # passphrase/escrow protocol, the exposed-host guard, and the fail-closed/degrade logic. It emits
     # the temp-file path on success, nothing on graceful degradation, and exits non-zero on refusal.
     # CONTRACT_LOGIN_PASS carries the password for seats configured with separatePassphrase=false.
     sessionKey=$(CONTRACT_LOGIN_PASS="$password" contract-greeter-secret-key "$username" "$src")
 
     # 5/6. evaluate + build the home THROUGH the contract, under the contract-pinned restricted-eval
-    # posture (ADR-0030) — handed to the host's homeBuilder as NIX_CONFIG so a naive `nix build`
+    # posture (ADR-0014) — handed to the host's homeBuilder as NIX_CONFIG so a naive `nix build`
     # binding inherits the floor; it augments the seat's nix.conf (experimental-features survive).
     activation=$(env NIX_CONFIG="$evalConfig" "$homeBuilder" "$src" "$username")
 

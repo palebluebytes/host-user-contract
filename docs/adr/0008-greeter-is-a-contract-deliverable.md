@@ -1,14 +1,14 @@
 # The greeter is a contract deliverable: `bindUser` in `lib` + a reusable greeter module
 
-**Status:** Accepted; **implemented (Tier 1)**. The "one mechanism both paths call" exists in the contract's `lib` as **`bindUserModule`** (issue #8): a NixOS module the host imports, which evaluates the home once inside the host's home-manager and bridges the granted `contract.requests` by config reference — so a real (home-manager-using) home binds. `bindUser` (issue #5) remains beside it as the **headless tracer**: the package-purest eval-level proof of the same request→grant→bridge logic over a *contract-pure* home. **`nixosModules` is now split `default` + `greeter`, and the reference greeter program exists** (`greeter.nix`, issue #2): greetd wiring, the eval-free auth script (`jq` `identity.json` + libc-crypt password + Tier-1 SSH signature), and the privileged runtime-provisioning helper that materializes the account and activates the built home at login. The home *build* is the host's `homeBuilder` binding (it needs home-manager). The contract stays package-free — the **host** supplies home-manager and the greeter's scripts reference the **host's** `pkgs`, so the contract flake inputs only nixpkgs `lib` (ADR-0020). Conformance gained a greeter dimension (the eval-free auth flow — password **and** Tier-1 signature — is executed; the unbound/bound litmus is asserted) plus a provisioning VM (`greeter-vm`). The steps the contract's own suite cannot cover — anything needing home-manager, which the contract does not depend on — live in the **example user flake** (the model a real user repo follows when it CIs its own home): `checks.home-build` proves the real home builds through the contract, and `checks.greeter-provision` is the greeter path **end-to-end** — a booted seat host onto which the real greeter-bound home is provisioned at runtime and observed activated. The contract's `greeter-vm` proves the same provisioning helper in isolation with a stub, so the mechanism is checkable with no host repo while the real composition is checked where home-manager lives. Deferred: Tier 2 (untrusted/ephemeral), and the in-VM-**at-login** home build under restricted eval (ADR-0022) — the end-to-end builds the real home at test-build time and provisions it. **Amends** [ADR-0022](0022-anyhost-greeter-runtime-binding.md) and [ADR-0023](0023-user-flake-shape.md), which placed `bindUser` and the greeter host-side; the mechanism moves into the contract. The *threat model* (tiers, untrusted-eval) is unchanged.
+**Status:** Accepted; **implemented (Tier 1)**. The "one mechanism both paths call" exists in the contract's `lib` as **`bindUserModule`** (issue #8): a NixOS module the host imports, which evaluates the home once inside the host's home-manager and bridges the granted `contract.requests` by config reference — so a real (home-manager-using) home binds. `bindUser` (issue #5) remains beside it as the **headless tracer**: the package-purest eval-level proof of the same request→grant→bridge logic over a *contract-pure* home. **`nixosModules` is now split `default` + `greeter`, and the reference greeter program exists** (`greeter.nix`, issue #2): greetd wiring, the eval-free auth script (`jq` `identity.json` + libc-crypt password + Tier-1 SSH signature), and the privileged runtime-provisioning helper that materializes the account and activates the built home at login. The home *build* is the host's `homeBuilder` binding (it needs home-manager). The contract stays package-free — the **host** supplies home-manager and the greeter's scripts reference the **host's** `pkgs`, so the contract flake inputs only nixpkgs `lib` (ADR-0004). Conformance gained a greeter dimension (the eval-free auth flow — password **and** Tier-1 signature — is executed; the unbound/bound litmus is asserted) plus a provisioning VM (`greeter-vm`). The steps the contract's own suite cannot cover — anything needing home-manager, which the contract does not depend on — live in the **example user flake** (the model a real user repo follows when it CIs its own home): `checks.home-build` proves the real home builds through the contract, and `checks.greeter-provision` is the greeter path **end-to-end** — a booted seat host onto which the real greeter-bound home is provisioned at runtime and observed activated. The contract's `greeter-vm` proves the same provisioning helper in isolation with a stub, so the mechanism is checkable with no host repo while the real composition is checked where home-manager lives. Deferred: Tier 2 (untrusted/ephemeral), and the in-VM-**at-login** home build under restricted eval (ADR-0006) — the end-to-end builds the real home at test-build time and provisions it. **Amends** [ADR-0006](0006-anyhost-greeter-runtime-binding.md) and [ADR-0007](0007-user-flake-shape.md), which placed `bindUser` and the greeter host-side; the mechanism moves into the contract. The *threat model* (tiers, untrusted-eval) is unchanged.
 
-[ADR-0022](0022-anyhost-greeter-runtime-binding.md) and [ADR-0023](0023-user-flake-shape.md)
+[ADR-0006](0006-anyhost-greeter-runtime-binding.md) and [ADR-0007](0007-user-flake-shape.md)
 described the greeter as a **consumer**: "the host repo exposes `bindUser`," and "a seat host
 enables a `greeter` profile" authored fleet-side. That was the in-repo-migration framing carried
 over from when host and contract shared one repo. It is wrong for the published contract, for the
 same reason the realization and feature modules are contract-shipped and not re-authored per host
-([ADR-0015](0015-host-user-contract.md) mechanic 5, [ADR-0020](0020-extract-contract-flake.md)):
-**"any host runs a greeter" is the contract's north star ([ADR-0018](0018-user-confinement-manifest-greeter.md)),
+([ADR-0001](0001-host-user-contract.md) mechanic 5, [ADR-0004](0004-extract-contract-flake.md)):
+**"any host runs a greeter" is the contract's north star ([ADR-0002](0002-user-confinement-manifest-greeter.md)),
 and making every fleet reimplement `greetd` + `bindUser` reintroduces exactly the drift the
 contract exists to remove.**
 
@@ -21,11 +21,11 @@ supplies only bindings — the same split already used for the `platform` interf
   imports `homeModules.default` + the user's home module, injects `pkgs` + `hostFacts`, and
   harvests `config.contract.requests`, applying the **granted** ones. Nothing in it names a host.
   It joins `mkFeatureRecipients` / `mkHostFacts` as a contract function, called by **both** binding
-  paths (build-time and runtime) exactly as [ADR-0023](0023-user-flake-shape.md) intended — only
+  paths (build-time and runtime) exactly as [ADR-0007](0007-user-flake-shape.md) intended — only
   the home of the function changes.
 - **The contract ships a `greeter` NixOS module — canonical, but replaceable.** `nixosModules.greeter`
   is a **reference implementation**: the `greetd` service, the eval-free auth flow
-  ([ADR-0022](0022-anyhost-greeter-runtime-binding.md): fetch source → `jq` `identity.json` → verify
+  ([ADR-0006](0006-anyhost-greeter-runtime-binding.md): fetch source → `jq` `identity.json` → verify
   password/signature → classify tier → `bindUser` with `grants = safeSet` → build → provision), and
   the privileged **runtime-provisioning helper**. A seat host **enables** it and gets a working
   greeter for free — but it is `mkDefault`/overridable, so a host may swap its own greeter *program*
@@ -34,7 +34,7 @@ supplies only bindings — the same split already used for the `platform` interf
 - **The host supplies only bindings**, never mechanism: *which* seat hosts enable the greeter, the
   display/theme binding, the trust-tier **policy** (is this host Tier 1 only, or does it accept Tier
   2?), and the `platform` secrets binding the provisioning step may use. Headless hosts simply never
-  enable the module — **incapacity, not a ban** ([ADR-0018](0018-user-confinement-manifest-greeter.md)).
+  enable the module — **incapacity, not a ban** ([ADR-0002](0002-user-confinement-manifest-greeter.md)).
 - **`safeSet`, `homeModules.default`, the `contract.requests` namespace, and the `identity.json`
   convention** — the surface `bindUser` composes — are already contract-owned (the in-flight
   scaffolding, this repo's issue #5). They feed the contract `bindUser` directly.
@@ -47,7 +47,7 @@ user and an operator-granted user realize identically because both go through th
 
 The split is drawn to keep the security-critical part uniform across the fleet while letting the
 heavy, opinionated part be a reference a host can replace — and, deliberately, to keep the contract's
-**hard** dependency package-free ([ADR-0020](0020-extract-contract-flake.md)'s "depends only on
+**hard** dependency package-free ([ADR-0004](0004-extract-contract-flake.md)'s "depends only on
 nixpkgs `lib`").
 
 - **Canonical & mandatory — pure `lib`/module, no package.** `bindUser`, the derived `safeSet`, and
@@ -71,12 +71,12 @@ the contract; everything else about the greeter is the host's to change.
 Bindings only — never mechanism: the seat-host *enable* decision, the display/theme, the per-host
 trust-tier policy, and the `platform` secrets binding. The contract evaluates with the greeter
 module present but **unbound** (no seat host enabled, no theme) exactly as it evaluates with the
-`platform` unbound ([ADR-0020](0020-extract-contract-flake.md)'s second litmus test).
+`platform` unbound ([ADR-0004](0004-extract-contract-flake.md)'s second litmus test).
 
 ## Consequences
 
-- **Supersedes the placement** in [ADR-0023](0023-user-flake-shape.md) ("the host repo exposes
-  `bindUser`") and [ADR-0022](0022-anyhost-greeter-runtime-binding.md) ("a seat host enables a
+- **Supersedes the placement** in [ADR-0007](0007-user-flake-shape.md) ("the host repo exposes
+  `bindUser`") and [ADR-0006](0006-anyhost-greeter-runtime-binding.md) ("a seat host enables a
   `greeter` profile" authored fleet-side). `hosts/default.nix` now *calls* the contract's `bindUser`
   and *enables* `nixosModules.greeter`; it authors neither.
 - **The conformance suite gains a greeter dimension** — the headless `bindUser` tracer (issue #5)
@@ -85,7 +85,7 @@ module present but **unbound** (no seat host enabled, no theme) exactly as it ev
 - **`nixosModules` is no longer a single `default`.** The contract ships `nixosModules.default`
   (schema + realization + features + platform) and `nixosModules.greeter` (opt-in). À-la-carte is
   justified here precisely because a headless host wants the former and not the latter.
-- **The untrusted-eval threat model ([ADR-0022](0022-anyhost-greeter-runtime-binding.md)) is
+- **The untrusted-eval threat model ([ADR-0006](0006-anyhost-greeter-runtime-binding.md)) is
   unaffected by this move** — Tier 1 builds now, Tier 2 stays deferred; the hardening knobs live in
   the contract module rather than a fleet profile, but the security question ("own identities vs
   anyone?") and its answer are identical.
@@ -95,7 +95,7 @@ module present but **unbound** (no seat host enabled, no theme) exactly as it ev
 
 ## Considered Options
 
-- **Greeter as a consumer (ADR-0022/0023 as written)** — rejected now: it re-authors `greetd` +
+- **Greeter as a consumer (ADR-0006/0007 as written)** — rejected now: it re-authors `greetd` +
   `bindUser` per fleet, the drift the contract exists to remove, and contradicts "*any* host runs a
   greeter" being a contract promise rather than a per-fleet rebuild.
 - **`bindUser` in the contract but the greeter module host-side** — rejected: it splits one
@@ -106,7 +106,7 @@ module present but **unbound** (no seat host enabled, no theme) exactly as it ev
   realization/platform pattern applied to the runtime path.
 - **A single non-replaceable greeter program baked into the contract** — rejected: it would make the
   contract ship a bespoke privileged binary as a *hard* dependency (against
-  [ADR-0020](0020-extract-contract-flake.md)'s package-free invariant) and force one greetd/UI choice
+  [ADR-0004](0004-extract-contract-flake.md)'s package-free invariant) and force one greetd/UI choice
   on every fleet. Shipping it as a `mkDefault` reference keeps the mechanism canonical while the
   program stays replaceable.
 - **Ship only `bindUser` + a spec, no reference greeter** — rejected: it abandons the north star

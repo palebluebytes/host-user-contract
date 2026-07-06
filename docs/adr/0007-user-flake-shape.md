@@ -1,10 +1,10 @@
 # The user flake shape and `bindUser`
 
-**Status:** Accepted. The contract surface it names — the `identity.json` convention + `loadIdentity`, the `contract.requests` namespace, and the headless `bindUser` — is **implemented** (issue #5); the greeter program that drives `bindUser` at runtime is not ([ADR-0022](0022-anyhost-greeter-runtime-binding.md), issue #2). Concretises [ADR-0018](0018-user-confinement-manifest-greeter.md)'s deferred slice-14. **Amended by [ADR-0024](0024-greeter-is-a-contract-deliverable.md)** (`bindUser` lives in the contract's `lib`, not "the host repo" — the host calls it), **[ADR-0025](0025-binduser-single-identity-loader.md)** (the home *holds* its identity via `bindUser`'s single load + injection, rather than loading `identity.json` itself), and **[ADR-0032](0032-prebuilt-binding-mode.md)** (the user flake gains a `packages.${system}.contractPackage` output for the pre-built binding mode; `bindUserModule`'s inline eval path is retained for hard-enforcement deployments).
+**Status:** Accepted. The contract surface it names — the `identity.json` convention + `loadIdentity`, the `contract.requests` namespace, and the headless `bindUser` — is **implemented** (issue #5); the greeter program that drives `bindUser` at runtime is not ([ADR-0006](0006-anyhost-greeter-runtime-binding.md), issue #2). Concretises [ADR-0002](0002-user-confinement-manifest-greeter.md)'s deferred slice-14. **Amended by [ADR-0008](0008-greeter-is-a-contract-deliverable.md)** (`bindUser` lives in the contract's `lib`, not "the host repo" — the host calls it), **[ADR-0009](0009-binduser-single-identity-loader.md)** (the home *holds* its identity via `bindUser`'s single load + injection, rather than loading `identity.json` itself), and **[ADR-0016](0016-prebuilt-binding-mode.md)** (the user flake gains a `packages.${system}.contractPackage` output for the pre-built binding mode; `bindUserModule`'s inline eval path is retained for hard-enforcement deployments).
 
-The greeter ([ADR-0022](0022-anyhost-greeter-runtime-binding.md)) binds an *external* user
+The greeter ([ADR-0006](0006-anyhost-greeter-runtime-binding.md)) binds an *external* user
 flake — which forced the question the in-repo phase deferred (the "user surface becomes a
-flake emitting requests," ADR-0018's deeper slice-14): **what does a user repo export, and how
+flake emitting requests," [ADR-0002](0002-user-confinement-manifest-greeter.md)'s deeper slice-14): **what does a user repo export, and how
 does a host turn it into a running user?** This ADR fixes that shape. It is the prerequisite
 for the greeter and the design `users/inkpotmonkey/` will be split out to follow.
 
@@ -17,7 +17,7 @@ A user flake is a **home-manager config repo** with three parts:
    it; the host/greeter read the *same file* with `jq`. Data, not code, because the greeter must
    **authenticate before evaluating any of the user's Nix** — evaluating an untrusted home
    module runs every module body (IFD, `builtins.fetch*`, non-termination; eval is not a
-   sandbox), so auth runs on inert data. (See ADR-0022 for the auth + signature flow.)
+   sandbox), so auth runs on inert data. (See ADR-0006 for the auth + signature flow.)
 2. **A contract-parameterized home module** — it *uses* contract-declared options
    (`custom.home.profiles.*`) and *emits* host-affecting **requests** in the `contract.requests`
    namespace (`gui.session = "x11"`, …), but imports **no** contract and writes **no** system
@@ -34,7 +34,7 @@ irrelevant: the binding supplies the canonical versions (below).
 ## `bindUser`: one mechanism, both paths
 
 The host repo exposes a single **`bindUser { userFlake, grants }`**, called by *both* binding
-paths (ADR-0018: one mechanism, opposite defaults). It:
+paths ([ADR-0002](0002-user-confinement-manifest-greeter.md): one mechanism, opposite defaults). It:
 
 - sets `custom.users.<u>.identity = fromJSON userFlake/identity.json` → the contract realization
   materializes the **system account**;

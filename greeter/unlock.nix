@@ -1,4 +1,4 @@
-# (4b) the secret-unlock step (ADR-0031, issue #10): turn the user's PASSPHRASE into their KEY.
+# (4b) the secret-unlock step (ADR-0015, issue #10): turn the user's PASSPHRASE into their KEY.
 # Usage: contract-greeter-unlock <wrapped-key-file>   (unlock passphrase on stdin)
 #
 # A roaming user's OWN home secrets (their sops) decrypt with the user's private key, which a greeter

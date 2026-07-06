@@ -1,6 +1,6 @@
-# (7) the privileged runtime-provisioning helper: the shell-side realization.nix (ADR-0028).
+# (7) the privileged runtime-provisioning helper: the shell-side realization.nix (ADR-0012).
 # Usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier> [session-key]
-# NixOS users are declarative, and a greeter user is never built into the system (ADR-0026), so
+# NixOS users are declarative, and a greeter user is never built into the system (ADR-0010), so
 # realization.nix never runs for them — this IS their realization, run at login. It materializes
 # the (Tier-1 persisted) account and FULLY realizes it from identity.json + the safe-set grant:
 # password (the same hash auth verified ⇒ PAM works), authorizedKeys, GECOS, and the user's safe
@@ -32,7 +32,7 @@ pkgs.writeShellApplication {
     identity=$2
     activation=$3
     tier=$4
-    # Optional (ADR-0031, issue #10): a decrypted session age identity to install for the user.
+    # Optional (ADR-0015, issue #10): a decrypted session age identity to install for the user.
     # Empty ⇒ no secret provisioning (the default). The destination path is baked from the seat's
     # secretProvisioning.keyFile config so the orchestrator needs no knowledge of it.
     sessionKey=''${5:-}
@@ -43,8 +43,8 @@ pkgs.writeShellApplication {
     [ -x "$activation/activate" ] || { echo "provision: '$activation' is not a home-activation package" >&2; exit 1; }
 
     case "$tier" in
-      tier1) : ;; # persisted (a normal account with a real home, ADR-0022)
-      tier2) echo "provision: tier2 (ephemeral) provisioning is deferred (ADR-0022)" >&2; exit 1 ;;
+      tier1) : ;; # persisted (a normal account with a real home, ADR-0006)
+      tier2) echo "provision: tier2 (ephemeral) provisioning is deferred (ADR-0006)" >&2; exit 1 ;;
       *) echo "provision: unknown tier '$tier'" >&2; exit 1 ;;
     esac
 
@@ -54,7 +54,7 @@ pkgs.writeShellApplication {
         --user-group "$username"
     fi
 
-    # --- shell-side realization.nix (ADR-0028): identity + safe-set grant ⇒ the account ---
+    # --- shell-side realization.nix (ADR-0012): identity + safe-set grant ⇒ the account ---
     # GECOS = name.
     name=$(jq -r '.name // empty' "$identity")
     [ -n "$name" ] && usermod -c "$name" "$username"
@@ -91,7 +91,7 @@ pkgs.writeShellApplication {
     chown "$username:$username" "$ssh_dir/authorized_keys"
     chmod 600 "$ssh_dir/authorized_keys"
 
-    # Secret provisioning (ADR-0031): if the greeter unlocked a session age identity, install it at the
+    # Secret provisioning (ADR-0015): if the greeter unlocked a session age identity, install it at the
     # user's sops key path BEFORE activation, so the user's OWN home sops decrypt for this session. The
     # key is the user's (unlocked from their repo by their passphrase); the seat only places it.
     install -d -o "$username" -g "$username" "$home"

@@ -1,5 +1,5 @@
-# Conformance domain: the reference greeter module (ADR-0024, issue #2) and the Tier-1 restricted-eval
-# posture it applies (ADR-0030). Eval-level claims (the present-but-unbound litmus, the FIXED safe-set
+# Conformance domain: the reference greeter module (ADR-0008, issue #2) and the Tier-1 restricted-eval
+# posture it applies (ADR-0014). Eval-level claims (the present-but-unbound litmus, the FIXED safe-set
 # grant, the pinned eval posture) plus two EXECUTION proofs built as sub-derivations: the eval-free
 # auth flow and the restricted-eval enforcement. Returns those drvs so ./default.nix builds them.
 {
@@ -26,7 +26,7 @@ let
     }
   ];
 
-  # The auth-flow EXECUTION test (ADR-0024 condition 1, the CANONICAL eval-free auth): pull the
+  # The auth-flow EXECUTION test (ADR-0008 condition 1, the CANONICAL eval-free auth): pull the
   # actual shipped `contract-greeter-auth` script out of the enabled greeter's systemPackages and
   # run it against the example user repo's identity.json. It must accept the right password and
   # reject a wrong one / a mismatched username — having read only data (`jq` + libc crypt), never
@@ -67,7 +67,7 @@ let
           echo "FAIL: a mismatched username was accepted" >&2; exit 1
         fi
 
-        # --- Tier 1: the repo must be SIGNED by a host-trusted key (ADR-0022) ---
+        # --- Tier 1: the repo must be SIGNED by a host-trusted key (ADR-0006) ---
         # Build a signed source: the example identity.json + an SSH signature over the tree
         # manifest (exactly what the auth script recomputes and verifies), plus the allowed-signers
         # file a host would derive from custom.greeter.trustedSigners.
@@ -101,7 +101,7 @@ let
         echo "eval-free auth flow OK" ; touch $out
       '';
 
-  # The restricted-eval EXECUTION test (ADR-0030): prove the contract's PINNED Tier-1 posture, when
+  # The restricted-eval EXECUTION test (ADR-0014): prove the contract's PINNED Tier-1 posture, when
   # rendered to NIX_CONFIG exactly as the greeter hands it to the homeBuilder, actually RESTRICTS a
   # real Nix eval — not just that the attrset spells the right words. We run the very renderer the
   # greeter uses (renderNixConfig tier1EvalConfig) into NIX_CONFIG, then evaluate a hostile
@@ -138,7 +138,7 @@ let
         touch $out
       '';
 
-  # The secret-key EXECUTION test (ADR-0031, issues #10): pull the shipped `contract-greeter-secret-key`
+  # The secret-key EXECUTION test (ADR-0015, issues #10): pull the shipped `contract-greeter-secret-key`
   # from a seat with secretProvisioning enabled (passphrase method, separatePassphrase=false so the test
   # can supply the password via CONTRACT_LOGIN_PASS without a TTY). Three cases: right passphrase → key
   # file containing the age identity; no wrapped key in src → graceful degradation (empty output, exit 0);
@@ -229,8 +229,8 @@ let
         echo "secret-key requireSecrets refusal OK"; touch $out
       '';
 
-  # Secret provisioning (ADR-0031, issue #10): enabling it on an EXPOSED host must fail an assertion —
-  # the seat sees the user's plaintext while activating the home, indefensible on an agent box (ADR-0015).
+  # Secret provisioning (ADR-0015, issue #10): enabling it on an EXPOSED host must fail an assertion —
+  # the seat sees the user's plaintext while activating the home, indefensible on an agent box (ADR-0001).
   greeterSecretExposed = eval [
     greeterModule
     {
@@ -242,7 +242,7 @@ let
     }
   ];
 
-  # The unlock EXECUTION test (ADR-0031): pull the shipped `contract-greeter-unlock` and prove it turns
+  # The unlock EXECUTION test (ADR-0015): pull the shipped `contract-greeter-unlock` and prove it turns
   # the user's PASSPHRASE into their KEY — wrap a real age identity with the contract's convention (magic
   # header + openssl pbkdf2), then the right passphrase recovers exactly that identity, a wrong one is
   # cleanly rejected, and the magic header never leaks into the placed key.
@@ -282,7 +282,7 @@ let
         echo "unlock flow OK"; touch $out
       '';
 
-  # --- phone-gated escrow (ADR-0031 update, issue #11) ---
+  # --- phone-gated escrow (ADR-0015 update, issue #11) ---
   # escrow without a keyFetcher host binding is a hard eval error (nowhere to get the key).
   greeterEscrowNoFetcher = eval [
     greeterModule
@@ -295,7 +295,7 @@ let
   ];
 
   # The escrow fetch is a host-bound `keyFetcher` command (the contract ships the seam, not the wire
-  # protocol — ADR-0031 update). This is a REFERENCE keyFetcher the test binds, standing in for a host's
+  # protocol — ADR-0015 update). This is a REFERENCE keyFetcher the test binds, standing in for a host's
   # real one (#13 composes OpenBao + ntfy): `keyFetcher <username>` requests a release and polls, writing
   # the wrapped key to STDOUT. It streams via a FILE (curl -o), never a shell var — a wrapped key is
   # binary and `$(curl)` would silently drop NUL bytes. The release URL is configured out-of-band
@@ -434,7 +434,7 @@ in
 
   assertions = [
     {
-      # The greeter grant (ADR-0022/0024): default-open over the safe set — it enables exactly
+      # The greeter grant (ADR-0006/0008): default-open over the safe set — it enables exactly
       # the runtime-eligible features, no operator choice, no more.
       name = "greeterGrants: enables exactly the safe set (default-open, nothing beyond it)";
       ok =
@@ -442,7 +442,7 @@ in
         && lib.all (n: greeterGrants.${n}.enable) (lib.attrNames greeterGrants);
     }
     {
-      # ADR-0024 conformance condition (3): a greeter grants AT MOST the safe set, so a
+      # ADR-0008 conformance condition (3): a greeter grants AT MOST the safe set, so a
       # runtime-bound user can never receive a privileged-group or secret-bearing feature —
       # escalation is impossible by construction, not by a deny rule.
       name = "greeterGrants: grants no privileged-group or secret-bearing feature (no escalation)";
@@ -452,7 +452,7 @@ in
         && !(lib.elem "signing" (lib.attrNames greeterGrants));
     }
     {
-      # ADR-0024 litmus (mirrors the platform interface): the greeter ships in the eval but a
+      # ADR-0008 litmus (mirrors the platform interface): the greeter ships in the eval but a
       # host that does not enable it gets nothing — greetd stays off, no seat is bound.
       name = "greeter: present-but-unbound turns nothing on (greetd disabled)";
       ok = !greeterUnbound.services.greetd.enable;
@@ -464,7 +464,7 @@ in
         && lib.hasInfix "contract-greeter-bind" greeterBound.services.greetd.settings.default_session.command;
     }
     {
-      # ADR-0024 condition 3: the runtime grant is FIXED to the safe set — not an operator choice,
+      # ADR-0008 condition 3: the runtime grant is FIXED to the safe set — not an operator choice,
       # impossible to widen here. So a greeter login can never receive a privileged/secret feature.
       name = "greeter: the runtime grant is fixed to greeterGrants (the safe set), unwidenable";
       ok =
@@ -472,18 +472,18 @@ in
         && !(lib.elem "workstation" (lib.attrNames greeterBound.custom.greeter.grants));
     }
     {
-      # The home BUILD is the host's binding (ADR-0024 "the host supplies only bindings") —
+      # The home BUILD is the host's binding (ADR-0008 "the host supplies only bindings") —
       # null by default because it needs home-manager, which the contract does not depend on.
       name = "greeter: the home builder is an unbound host binding (null by default)";
       ok = greeterUnbound.custom.greeter.homeBuilder == null;
     }
     {
-      # ADR-0031: secret provisioning is off by default (a host opts in on a trusted seat).
+      # ADR-0015: secret provisioning is off by default (a host opts in on a trusted seat).
       name = "secret provisioning: off by default";
       ok = !greeterUnbound.custom.greeter.secretProvisioning.enable;
     }
     {
-      # ADR-0031 / ADR-0015: enabling it on an exposed host is a hard eval error (the seat sees the
+      # ADR-0015 / ADR-0001: enabling it on an exposed host is a hard eval error (the seat sees the
       # user's plaintext while activating the home — an agent box must never hold the user's key).
       name = "secret provisioning: enabling it on an exposed host fails an assertion";
       ok = lib.any (
@@ -491,15 +491,15 @@ in
       ) greeterSecretExposed.assertions;
     }
     {
-      # ADR-0031 issue #11: escrow needs a host keyFetcher binding.
+      # ADR-0015 issue #11: escrow needs a host keyFetcher binding.
       name = "secret provisioning: escrow method without a keyFetcher fails an assertion";
       ok = lib.any (
         a: !a.assertion && lib.hasInfix "keyFetcher" a.message
       ) greeterEscrowNoFetcher.assertions;
     }
     {
-      # ADR-0030: the contract PINS the Tier-1 eval posture. accept-flake-config=false is the
-      # un-widenable linchpin (ADR-0027 applied to eval: a repo cannot self-certify its eval by
+      # ADR-0014: the contract PINS the Tier-1 eval posture. accept-flake-config=false is the
+      # un-widenable linchpin (ADR-0011 applied to eval: a repo cannot self-certify its eval by
       # declaring its own nixConfig); the rest are restrict-eval, no IFD, and a sandboxed build.
       name = "tier1 eval: the posture forbids the repo widening its own eval (accept-flake-config=false)";
       ok = tier1EvalConfig.accept-flake-config == false;

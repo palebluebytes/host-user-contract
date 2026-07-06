@@ -1,4 +1,4 @@
-# (4b) the secret key acquisition step (ADR-0031, issues #10/#11): from the seat's baked config,
+# (4b) the secret key acquisition step (ADR-0015, issues #10/#11): from the seat's baked config,
 # obtain the user's session age key — from their repo (passphrase method) or via the host's
 # keyFetcher binding (escrow method) — decrypt it with contract-greeter-unlock, and emit the
 # temp-file path on stdout. Three outcomes:
@@ -28,7 +28,7 @@ pkgs.writeShellApplication {
     unlockScript
   ];
   text = ''
-    # Baked seat config (resolved at module-eval time, ADR-0031)
+    # Baked seat config (resolved at module-eval time, ADR-0015)
     secretProv=${lib.boolToString secretProvisioning.enable}
     method=${lib.escapeShellArg secretProvisioning.method}
     keyFetcher=${lib.escapeShellArg (toString secretProvisioning.keyFetcher)}
@@ -41,17 +41,17 @@ pkgs.writeShellApplication {
     username=$1
     src=$2
 
-    # Not enabled or not tier1: graceful no-op (tier2 is secret-free by design, ADR-0031)
+    # Not enabled or not tier1: graceful no-op (tier2 is secret-free by design, ADR-0015)
     if [ "$secretProv" = false ] || [ "$tier" != tier1 ]; then
       exit 0
     fi
 
-    # Exposed host: the seat sees the user's plaintext during activation — indefensible (ADR-0015)
+    # Exposed host: the seat sees the user's plaintext during activation — indefensible (ADR-0001)
     if [ "$exposed" = true ]; then
-      echo "secret-key: secret provisioning refused on an exposed host (ADR-0015)" >&2; exit 1
+      echo "secret-key: secret provisioning refused on an exposed host (ADR-0001)" >&2; exit 1
     fi
 
-    # Key acquisition: where the wrapped key comes from (ADR-0031, issues #10/#11). Both paths
+    # Key acquisition: where the wrapped key comes from (ADR-0015, issues #10/#11). Both paths
     # yield a wrapped-key FILE the same passphrase-unlock + placement path consumes. The escrow
     # fetch streams to a file (binary-safe: a wrapped key is openssl ciphertext, not ASCII; a
     # shell var would drop NUL bytes).
@@ -75,7 +75,7 @@ pkgs.writeShellApplication {
 
     sessionKey=""
     if [ -n "$wrappedKey" ] && [ -s "$wrappedKey" ]; then
-      # Unlock passphrase: separate prompt (recommended) or reuse the login password (ADR-0031).
+      # Unlock passphrase: separate prompt (recommended) or reuse the login password (ADR-0015).
       # separatePassphrase=false: bind already holds the password; it passes it as CONTRACT_LOGIN_PASS.
       if [ "$separatePass" = true ]; then
         printf 'unlock passphrase: ' >&2
@@ -94,7 +94,7 @@ pkgs.writeShellApplication {
     fi
     [ -n "$cleanupWrapped" ] && rm -f "$cleanupWrapped"
 
-    # Fail CLOSED on secrets, never on the login (ADR-0031): degrade to a secret-free session
+    # Fail CLOSED on secrets, never on the login (ADR-0015): degrade to a secret-free session
     # unless requireSecrets demands otherwise. No in-repo passphrase fallback for escrow — that
     # would be a downgrade attack.
     if [ -z "$sessionKey" ]; then

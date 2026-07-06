@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reference escrow keyFetcher (issue #13, ADR-0031) — an EXAMPLE the seat binds to
+# Reference escrow keyFetcher (issue #13, ADR-0015) — an EXAMPLE the seat binds to
 # `custom.greeter.secretProvisioning.keyFetcher`. The contract calls it as `keyFetcher <username>`
 # and captures STDOUT to a file; this prints the user's wrapped age key (opaque bytes) to stdout.
 #

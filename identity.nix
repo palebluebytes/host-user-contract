@@ -1,5 +1,5 @@
 # Shared declaration of the per-user identity option set — part of the host↔user
-# contract (ADR-0015). Used by BOTH umbrella modules so the system-level
+# contract (ADR-0001). Used by BOTH umbrella modules so the system-level
 # `custom.users.<user>.identity` submodule and the home-level `identity` options
 # describe the same data and can't drift; the host bridges the two when it binds a user.
 { lib }:

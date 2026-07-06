@@ -1,7 +1,7 @@
-# Runtime VM smoke for the gui-session union (ADR-0019) — the one piece of the
+# Runtime VM smoke for the gui-session union (ADR-0003) — the one piece of the
 # contract's regression gate that genuinely needs a booted machine rather than a pure
 # eval (the eval-level decision lives in ./default.nix). Ported into the contract's own
-# suite from the fleet, where it lived at `parts/checks/host-user-contract-vm` (ADR-0020:
+# suite from the fleet, where it lived at `parts/checks/host-user-contract-vm` (ADR-0004:
 # the generic suite — including this VM — ships with the contract and gets independent CI).
 #
 # It boots ONE single-seat host that grants gui to two users with *different*
@@ -12,7 +12,7 @@
 # real machine, not just in the option tree.
 #
 # The contract is display-backend-agnostic (it decides `custom.gui.surface`; a host's
-# binding renders it — ADR-0021 review), so this suite supplies its OWN minimal test
+# binding renders it — ADR-0005 review), so this suite supplies its OWN minimal test
 # binding (SDDM + Plasma 6) to render the decision, exactly the role a host's
 # gui-desktop binding plays in production. The shipped contract module stays neutral; the
 # *test* picks a backend, the same way ./default.nix stubs the platform interface.
@@ -81,12 +81,12 @@ pkgs.testers.runNixOSTest {
           # Offer X11 iff some granted gui user wants it.
           xserver.enable = lib.mkDefault surface.x11;
           # plasma6 defaults the Wayland greeter on; keep it when the union includes a
-          # Wayland user, override it off when the union is X11-only (ADR-0019 priority).
+          # Wayland user, override it off when the union is X11-only (ADR-0003 priority).
           displayManager.sddm.wayland.enable = lib.mkIf (!surface.wayland) (lib.mkOverride 900 false);
         };
 
         # Two gui users on one seat, each wanting a different session. The host grants gui
-        # to both; the realization unions their sessions (ADR-0019).
+        # to both; the realization unions their sessions (ADR-0003).
         custom.users.aurelia = {
           identity = {
             name = "Aurelia Wayland";

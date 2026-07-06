@@ -1,8 +1,8 @@
 # (8) the session launcher: the greeter SELECTS the desktop, the HOST binds the backend.
 # Usage: contract-greeter-session <username> <home-dir>
-# ADR-0029: the contract resolves the user's chosen DESKTOP (surfaced from the bound home as
+# ADR-0013: the contract resolves the user's chosen DESKTOP (surfaced from the bound home as
 # ~/.contract-desktop, else the seat default) against the desktops the SEAT offers, and execs that
-# desktop's command AS the user in greetd's seat session. The contract ships no desktop (ADR-0020).
+# desktop's command AS the user in greetd's seat session. The contract ships no desktop (ADR-0004).
 {
   pkgs,
   lib,
@@ -11,7 +11,7 @@
 }:
 let
   # The desktops this seat offers, baked into a shell `case` the launcher resolves the user's
-  # requested desktop against (ADR-0029). Each arm sets the session type + the launch command.
+  # requested desktop against (ADR-0013). Each arm sets the session type + the launch command.
   desktopArms = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
       name: d:
@@ -47,7 +47,7 @@ pkgs.writeShellApplication {
             want=$defaultDesktop
           fi
 
-          # An un-offered/unknown desktop degrades to the seat default — never breaks the login (ADR-0029).
+          # An un-offered/unknown desktop degrades to the seat default — never breaks the login (ADR-0013).
           dtype=""; dcmd=""
           if ! resolve "$want"; then
             echo "session: desktop '$want' not offered by this seat; using default '$defaultDesktop'" >&2
@@ -59,7 +59,7 @@ pkgs.writeShellApplication {
           # and a systemd-user instance — which is greetd's job (it creates the logind seat session and
           # runs this command as the user). So when already the user (greetd's model) exec in place; only
           # drop privs with runuser when invoked by the root orchestrator (which is NOT a seat session —
-          # that path suits headless/marker backends, not a real GPU session). ADR-0026/0029 step 8.
+          # that path suits headless/marker backends, not a real GPU session). ADR-0010/0013 step 8.
           if [ "$(id -un)" = "$username" ]; then
             exec env HOME="$home" XDG_SESSION_TYPE="$dtype" bash -c "$dcmd"
           else

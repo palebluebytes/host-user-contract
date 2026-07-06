@@ -1,5 +1,5 @@
-# Conformance domain: mkContractPackage (ADR-0032, issue #14) and bindContractPackage
-# (ADR-0032, issue #16). mkContractPackage is proven by an execution proof (the derivation
+# Conformance domain: mkContractPackage (ADR-0016, issue #14) and bindContractPackage
+# (ADR-0016, issue #16). mkContractPackage is proven by an execution proof (the derivation
 # builds and has correct content). bindContractPackage is proven at eval level: the same
 # gui-session union and account that bindUserModule produces emerges from reading a pre-built
 # contract-requests.json fixture — same `mkUserAccount` + `bridgeRequests` kernel, different

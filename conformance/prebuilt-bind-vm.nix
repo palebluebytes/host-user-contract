@@ -1,4 +1,4 @@
-# Runtime VM for the pre-built binding path (ADR-0032, issue #16). Proves that
+# Runtime VM for the pre-built binding path (ADR-0016, issue #16). Proves that
 # bindContractPackage correctly materializes a user account, bridges feature requests
 # into the realization, and runs the contractPackage's activate script at system activation.
 # The contractPackage is a synthetic derivation: activate writes a marker file, and

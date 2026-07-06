@@ -1,4 +1,4 @@
-# The contract's OWN conformance suite (ADR-0020 Q5): proves the contract's promises in
+# The contract's OWN conformance suite (ADR-0004 Q5): proves the contract's promises in
 # ISOLATION — synthetic manifests bound on synthetic systems built from the contract
 # umbrella + bare nixpkgs, with no host repo, no real user, and no host bindings. This is
 # what gives the contract independent CI and protects it for every consumer.

@@ -1,4 +1,4 @@
-# Host-invariant account realization — part of the host↔user contract (ADR-0015,
+# Host-invariant account realization — part of the host↔user contract (ADR-0001,
 # mechanic 5). Maps each `custom.users.<u>` to a system account. Powers route
 # through *grants*, not raw identity:
 #   - the display manager / networkmanager come from the gui grant, not a profile;
@@ -8,7 +8,7 @@
 #     (contract featureGroups). A user can never escalate by listing `docker` in
 #     its own identity; a host must grant `workstation`.
 #
-# Audit (ADR-0015 threat model) — which identity fields confer host-side power:
+# Audit (ADR-0001 threat model) — which identity fields confer host-side power:
 #   name/email/gmail/username .... inert (descriptive)
 #   sshKey/trustedKeys ........... login as that user (public keys; the user's call)
 #   hashedPassword ............... login credential (one-way hash)
@@ -20,7 +20,7 @@
 # is where those decisions live; this module only enforces the rule.
 #
 # Closes over its contract data (privilegedGroups, featureGroups) rather than reaching
-# through the consumer's `self` (ADR-0020): contract/default.nix applies this with the
+# through the consumer's `self` (ADR-0004): contract/default.nix applies this with the
 # registry-derived values, so the shipped module depends on neither `self` nor `inputs`
 # — only the NixOS module args. This is what lets the contract become a standalone flake.
 { privilegedGroups, featureGroups }:
@@ -31,7 +31,7 @@
 }:
 let
   users = config.custom.users;
-  # The gui-session union (ADR-0019): the host display surface is derived from
+  # The gui-session union (ADR-0003): the host display surface is derived from
   # every *granted* gui user's session preference, not from any one user writing a
   # raw host singleton. A single-seat host can therefore offer both session types
   # and each user logs into their own (stock SDDM remembers the choice per user).
@@ -48,12 +48,12 @@ let
   safeDeclared = u: lib.filter (g: !lib.elem g privilegedGroups) u.identity.extraGroups;
 in
 {
-  # The session-union DECISION (ADR-0019), as neutral data — NOT a display backend.
+  # The session-union DECISION (ADR-0003), as neutral data — NOT a display backend.
   # The contract decides which sessions the host's shared display surface must offer
   # (the union over granted gui users' preferences, so two users with different
   # sessions coexist on one seat). A host-side display binding (e.g. an SDDM/Plasma or
   # GDM/GNOME one) reads this and renders it; the contract stays desktop-environment-
-  # agnostic (ADR-0021 review finding 2).
+  # agnostic (ADR-0005 review finding 2).
   options.custom.gui.surface = {
     enabled = lib.mkOption {
       type = lib.types.bool;

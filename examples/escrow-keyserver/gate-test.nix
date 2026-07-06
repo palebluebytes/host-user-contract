@@ -1,4 +1,4 @@
-# Gate test for the reference escrow keyserver (issue #13, ADR-0031). Proves the REAL composition —
+# Gate test for the reference escrow keyserver (issue #13, ADR-0015). Proves the REAL composition —
 # release-server.py + the reference key-fetcher — enforces the release gate end-to-end, with a
 # keypair-controlled "phone" standing in for the real device (no phone/WebAuthn dependency). It tests
 # the value-adds over the contract's minimal seam fixture: NUMBER-MATCHING, a ONE-TIME requester-bound

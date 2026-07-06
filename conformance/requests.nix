@@ -1,6 +1,6 @@
-# Conformance domain: the contract.requests namespace (ADR-0018/0023) a user's home emits, and the
-# desktop-choice home helper (ADR-0029) that surfaces it to ~/.contract-desktop. Both are home-side,
-# proven with bare evalModules — no home-manager (ADR-0020).
+# Conformance domain: the contract.requests namespace (ADR-0002/0007) a user's home emits, and the
+# desktop-choice home helper (ADR-0013) that surfaces it to ~/.contract-desktop. Both are home-side,
+# proven with bare evalModules — no home-manager (ADR-0004).
 {
   lib,
   toolkit,
@@ -59,13 +59,13 @@ in
       ok = !malformedRequest.success;
     }
     {
-      # ADR-0029 helper: a requested desktop is auto-surfaced to ~/.contract-desktop verbatim, so the
+      # ADR-0013 helper: a requested desktop is auto-surfaced to ~/.contract-desktop verbatim, so the
       # greeter's launcher (which runs before the home Nix) reads the user's choice with no manual step.
       name = "desktop helper: contract.requests.gui.desktop materialises ~/.contract-desktop";
       ok = desktopChosen.home.file.".contract-desktop".text == "plasma";
     }
     {
-      # No desktop requested ⇒ no dotfile, so the greeter degrades to the seat default (ADR-0029).
+      # No desktop requested ⇒ no dotfile, so the greeter degrades to the seat default (ADR-0013).
       name = "desktop helper: no desktop request leaves ~/.contract-desktop absent (seat default)";
       ok = !(desktopUnset.home.file ? ".contract-desktop");
     }

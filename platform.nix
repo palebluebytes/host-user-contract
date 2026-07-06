@@ -1,4 +1,4 @@
-# Platform interface — part of the host↔user contract (ADR-0015 mechanic 6, ADR-0021).
+# Platform interface — part of the host↔user contract (ADR-0001 mechanic 6, ADR-0005).
 # The host implements this interface and the user's features consume it, so a feature
 # names a *logical* secret and never the host's secrets **backend** (sops, agenix, …).
 #
@@ -10,7 +10,7 @@
 #     never write `sops.*`; only the binding does.
 #
 # Why a typed option set rather than a specialArgs attrset: a host that fails to bind is a
-# clear *option* error, not a late `attribute missing` (ADR-0015 Q6). Plaintext never
+# clear *option* error, not a late `attribute missing` (ADR-0001 Q6). Plaintext never
 # appears at eval — only the decrypted runtime path, located at activation.
 { lib }:
 {
@@ -23,7 +23,7 @@
     description = "Resolve a secrets-repo subpath to the ciphertext source the host backend reads.";
   };
 
-  # --- Provisioning seam (ADR-0021): logical secret in, runtime path out. ---
+  # --- Provisioning seam (ADR-0005): logical secret in, runtime path out. ---
   secrets = lib.mkOption {
     type = lib.types.attrsOf (
       lib.types.submodule {

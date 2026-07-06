@@ -1,5 +1,5 @@
 {
-  description = "Example user flake (ADR-0023) — a home-manager config repo consumed by a host via the contract's bindUser. Its inputs exist only for standalone dev; when bound, the host supplies the canonical contract + pkgs.";
+  description = "Example user flake (ADR-0007) — a home-manager config repo consumed by a host via the contract's bindUser. Its inputs exist only for standalone dev; when bound, the host supplies the canonical contract + pkgs.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -66,7 +66,7 @@
       # the home module + identity.json build against the contract on their own.
       homeConfigurations.example = mkHome { };
 
-      # The pre-built binding artifact (ADR-0032, issue #14): a content-addressed derivation
+      # The pre-built binding artifact (ADR-0016, issue #14): a content-addressed derivation
       # containing `activate` + `contract-requests.json`. A host pins this as a flake input
       # and uses `contract.lib.bindContractPackage` to bind it at eval time — the host reads
       # the JSON (no IFD) and activates the store path at switch time. This replaces the
@@ -85,7 +85,7 @@
       homeConfigurations.example-greeter = mkHome {
         granted = contract.greeterGrants;
         extra = [
-          # The desktop-choice helper (ADR-0029): a real home imports it ALONGSIDE the umbrella so the
+          # The desktop-choice helper (ADR-0013): a real home imports it ALONGSIDE the umbrella so the
           # home's contract.requests.gui.desktop is auto-surfaced to ~/.contract-desktop for the greeter.
           contract.homeModules.greeterDesktop
           { home.file.".contract-home-active".text = "greeter-activated for ${identity.name}"; }
@@ -96,7 +96,7 @@
         # The REAL home build step — the home module + identity.json + the contract umbrella
         # render a genuine home-manager generation (with an `activate` script, the shape the
         # greeter's provisioning helper consumes). The contract's OWN suite cannot cover this:
-        # it needs home-manager, which the contract does not depend on (ADR-0020), so it lives
+        # it needs home-manager, which the contract does not depend on (ADR-0004), so it lives
         # HERE, in the example flake that legitimately has home-manager — the model a real user
         # repo follows when it CIs its own home.
         home-build = self.homeConfigurations.example.activationPackage;

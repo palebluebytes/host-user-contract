@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# Reference escrow release server (issue #13, ADR-0031) — an EXAMPLE, not contract code.
+# Reference escrow release server (issue #13, ADR-0015) — an EXAMPLE, not contract code.
 #
 # It is the user's own key-release service that the greeter's `keyFetcher` host binding talks to. It
-# composes the prior-art patterns the grill settled on (see ADR-0031 update):
+# composes the prior-art patterns the grill settled on (see ADR-0015 update):
 #
 #   - one-time, requester-bound release token  (Vault/OpenBao response-wrapping):  /request mints a
 #       random token; the key is collected ONCE via GET /key/<token> and then destroyed — so a race on

@@ -1,10 +1,10 @@
 # Pre-built binding mode: user CI produces `contractPackage`; the host pins, reads, and activates it
 
-**Status:** Proposed. Amends [ADR-0023](0023-user-flake-shape.md) (user flake shape gains
-`packages.${system}.contractPackage`); amends [ADR-0018](0018-user-confinement-manifest-greeter.md)
-(`execPayload` deferred); related to [ADR-0033](0033-daemon-restricted-user-package-policy.md).
+**Status:** Proposed. Amends [ADR-0007](0007-user-flake-shape.md) (user flake shape gains
+`packages.${system}.contractPackage`); amends [ADR-0002](0002-user-confinement-manifest-greeter.md)
+(`execPayload` deferred); related to [ADR-0017](0017-daemon-restricted-user-package-policy.md).
 
-[ADR-0023](0023-user-flake-shape.md) fixed the user flake shape and `bindUserModule` as the
+[ADR-0007](0007-user-flake-shape.md) fixed the user flake shape and `bindUserModule` as the
 real binding mechanism: the host imports the user's home module into `home-manager.users.<u>`
 and evaluates it inline as part of its own NixOS build. Two properties of this model prompted
 reconsideration:
@@ -28,7 +28,7 @@ mode makes the build-time path match.
 
 ### 1. The user flake gains `packages.${system}.contractPackage`
 
-A new required output alongside `identity.json` and the home module (ADR-0023). It is a
+A new required output alongside `identity.json` and the home module (ADR-0007). It is a
 content-addressed derivation produced by the contract's `mkContractPackage` lib function:
 
 ```nix
@@ -75,7 +75,7 @@ bridges feature requests into feature configuration exactly as `bindUserModule` 
 
 After the host's NixOS switch, a privileged activation step (a system activation script or
 a `provision`-style service) runs `$contractPackage/activate` and then replaces `~/.nix-profile`
-with a host-built package profile (see ADR-0033). The user's session starts with the full
+with a host-built package profile (see [ADR-0017](0017-daemon-restricted-user-package-policy.md)). The user's session starts with the full
 home config and the host-approved package set.
 
 ### 4. `bindUserModule` is retained for inline-eval (hard-enforcement) deployments
@@ -123,7 +123,7 @@ safe-set-eligible) remains in the model — only the flag and its derivation ste
   by user CI automating `nix flake update` on a schedule. Documented as a required operational
   discipline, not a structural guarantee.
 - **`inputs.nixpkgs.follows` invariant is relaxed** for pre-built users. The one-nixpkgs
-  invariant (ADR-0023) holds for the inline-eval mode; pre-built users own their pin.
+  invariant (ADR-0007) holds for the inline-eval mode; pre-built users own their pin.
 - **`home-manager rollback` is replaced by CI artifact pinning.** No per-host generation
   links; the user's CI build history is the rollback path.
 
@@ -131,8 +131,8 @@ safe-set-eligible) remains in the model — only the flag and its derivation ste
 
 - The contract `lib` gains `mkContractPackage`. No new NixOS module or package dependency —
   the function is a pure derivation wrapper over an already-evaluated home. The package-free
-  invariant (ADR-0020) holds.
-- The user flake shape (ADR-0023) grows one required output. User repos must add it; the
+  invariant (ADR-0004) holds.
+- The user flake shape (ADR-0007) grows one required output. User repos must add it; the
   contract documents the `mkContractPackage` call as the standard wiring.
 - The conformance suite gains a test for the pre-built path: pin a minimal `contractPackage`,
   have the host read its requests and activate it, assert the same realized account as the

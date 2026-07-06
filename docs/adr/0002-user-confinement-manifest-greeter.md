@@ -1,13 +1,13 @@
 # A user is a home-manager module: requests, feature modules, and the anyHost greeter
 
-**Status:** Accepted as the model; **not yet implemented** here. **Amended by [ADR-0032](0032-prebuilt-binding-mode.md)**: the `execPayload` registry flag and its exclusion from `runtimeEligibleFeature` are deferred — no feature carries a host-executed payload yet; the mechanism re-enters when a concrete feature requires it. The `contract.requests` channel this ADR introduces does not exist in the contract yet — feature configuration still rides the system side (`custom.users.<u>.<feature>`, per [ADR-0019](0019-feature-configuration-aggregates.md)), which is the staged starting point this ADR's "known knots" #2 sanctions; the home-side requests namespace is tracked by issue #5. The three in-tree leaks this ADR closes are *fleet-repo* artifacts (this contract repo ships no user module). **Supersedes** [ADR-0015](0015-host-user-contract.md) mechanic 7's curated-catalog model (replaced by the `contract.requests` channel) and the slice-09 "model C" meta-issue. The runtime-binding half is carried forward by [ADR-0022](0022-anyhost-greeter-runtime-binding.md) and [ADR-0023](0023-user-flake-shape.md).
+**Status:** Accepted as the model; **not yet implemented** here. **Amended by [ADR-0016](0016-prebuilt-binding-mode.md)**: the `execPayload` registry flag and its exclusion from `runtimeEligibleFeature` are deferred — no feature carries a host-executed payload yet; the mechanism re-enters when a concrete feature requires it. The `contract.requests` channel this ADR introduces does not exist in the contract yet — feature configuration still rides the system side (`custom.users.<u>.<feature>`, per [ADR-0003](0003-feature-configuration-aggregates.md)), which is the staged starting point this ADR's "known knots" #2 sanctions; the home-side requests namespace is tracked by issue #5. The three in-tree leaks this ADR closes are *fleet-repo* artifacts (this contract repo ships no user module). **Supersedes** [ADR-0001](0001-host-user-contract.md) mechanic 7's curated-catalog model (replaced by the `contract.requests` channel) and the slice-09 "model C" meta-issue. The runtime-binding half is carried forward by [ADR-0006](0006-anyhost-greeter-runtime-binding.md) and [ADR-0007](0007-user-flake-shape.md).
 
-[ADR-0015](0015-host-user-contract.md) mechanic 7 named the eventual goal — evaluate a
+[ADR-0001](0001-host-user-contract.md) mechanic 7 named the eventual goal — evaluate a
 user against a *restricted option universe* so it cannot set arbitrary host options —
 and then **deferred** it ("model A in-repo now, model C at the repo split"). This ADR
 promotes that deferral into a concrete model, because three things are now true that
-were not when 0015 was written: the deferral is **already leaking in-tree**, the
-[0019](0019-feature-configuration-aggregates.md) feature-configuration work gave us the
+were not when 0001 was written: the deferral is **already leaking in-tree**, the
+[0003](0003-feature-configuration-aggregates.md) feature-configuration work gave us the
 data-vs-effect split the model needs, and a **north-star use case** has appeared that
 makes "airtight, not hygienic" non-negotiable — a greeter on any host that takes a
 flake URL + username + password and transparently enables that user.
@@ -49,7 +49,7 @@ grants, never a write the user performs.**
   it understands; an unknown request key is *ignored* (the lenient "build still happens"
   posture), but a *malformed known* request (wrong-typed `session`, misspelled feature
   param) *errors*, because the schema is the user's typo-net. There is **no curated
-  system-option catalog** — model C's old headline cost ([ADR-0015](0015-host-user-contract.md)
+  system-option catalog** — model C's old headline cost ([ADR-0001](0001-host-user-contract.md)
   mechanic 7) dissolves: home knobs ride home-manager directly (no re-exposure), system
   effects ride contract feature modules the user never touches, and the only schema is the
   per-feature request shape, which the model needs regardless.
@@ -100,7 +100,7 @@ added deliberately, rather than re-opening raw `hostName`.
 
 The end goal is that **any host runs a greeter** taking a flake URL + username +
 password and **transparently enabling** that user, with **gui as the default** unless the
-host opts out. This looks like it contradicts 0015 mechanic 2's *default-closed* grant,
+host opts out. This looks like it contradicts 0001 mechanic 2's *default-closed* grant,
 but it does not — the two defaults belong to **two binding paths** over the *same*
 contract, and the opposite defaults are correct:
 
@@ -173,7 +173,7 @@ We also keep two host-side notions distinct, because only one carries security w
   knobs stay in home-manager, so ADR-0014's
   home-manager version skew is confined to the home side as today — though, since the user
   surface *is* home-manager, the contract's feature modules pin the **host's** home-manager
-  ([ADR-0015](0015-host-user-contract.md) mechanic 4's one-nixpkgs/`follows`) to keep that
+  ([ADR-0001](0001-host-user-contract.md) mechanic 4's one-nixpkgs/`follows`) to keep that
   skew at the dotfile edge rather than the contract edge.
 - **`permittedInsecurePackages` and overlays move host-ward.** A user can no longer relax
   a host-wide security gate; if a granted feature needs an insecure package or an overlay,
@@ -196,7 +196,7 @@ defer:
    evaluation to aggregate (the union). It is the price of one contained surface, and it is
    the main *mechanical* risk. The escape hatch, if it bites: keep host-affecting params
    operator-authored system-side (grant data), and let the home-manager surface carry only
-   user-domain config — the gui-session union already works that way today (ADR-0019), so
+   user-domain config — the gui-session union already works that way today ([ADR-0003](0003-feature-configuration-aggregates.md)), so
    the prototype can start there and adopt session-as-request later.
 3. **home-manager version skew on the critical path** — because the user surface *is*
    home-manager, ADR-0014's skew (e.g. `porcupineFish`) is central, not an edge.
@@ -234,7 +234,7 @@ foundation the greeter will stand on.
 
 ## Considered alternatives
 
-- **Restricted `evalModules` over a curated system catalog** ([ADR-0015](0015-host-user-contract.md)
+- **Restricted `evalModules` over a curated system catalog** ([ADR-0001](0001-host-user-contract.md)
   mechanic 7's original framing) — superseded by the request-channel enforcement above.
   Giving the user a single module evaluation against a hand-curated set of re-exposed system
   options would *error* on out-of-catalog writes (tensioning with "build still happens")

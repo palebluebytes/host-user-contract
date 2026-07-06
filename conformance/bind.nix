@@ -1,4 +1,4 @@
-# Conformance domain: the two binding shapes (ADR-0023/0024). bindUser is the HEADLESS TRACER
+# Conformance domain: the two binding shapes (ADR-0007/0008). bindUser is the HEADLESS TRACER
 # (issue #5) — harvest a contract-pure home with bare evalModules, no home-manager. bindUserModule
 # is the REAL mechanism (issue #8) — the home is evaluated once by the host's home-manager and the
 # request→feature bridge is a config reference, so a REAL home (programs.git) binds.
@@ -16,7 +16,7 @@ let
     exampleHostFacts
     ;
 
-  # --- the headless bindUser tracer (ADR-0023/0024, issue #5) ---
+  # --- the headless bindUser tracer (ADR-0007/0008, issue #5) ---
   # Runtime path: the canonical greeter grant — default-open over the safe set (greeterGrants).
   boundRuntime = bindUser {
     userModule = exampleHome;
@@ -34,8 +34,8 @@ let
   # Realize bindUser's system fragment on a synthetic host ⇒ exercises realization + union.
   boundHost = eval [ boundRuntime.system ];
 
-  # --- the REAL bind: bindUserModule (ADR-0024, issue #8) ---
-  # The contract can't depend on home-manager (ADR-0020), so this suite supplies a package-free
+  # --- the REAL bind: bindUserModule (ADR-0008, issue #8) ---
+  # The contract can't depend on home-manager (ADR-0004), so this suite supplies a package-free
   # STAND-IN for the `home-manager.users` option the bind module references: an attrsOf a freeform
   # submodule. That declares the option path so the config reference resolves, and the freeformType
   # makes a home that sets non-contract options (programs.git) evaluate without throwing, the way real
@@ -56,7 +56,7 @@ let
   # A REAL-ish home: it sets a non-contract home-manager option (programs.git, reading the
   # injected identity) AND emits a contract request. The tracer would throw on programs.git;
   # the real bind must not. (Kept inline, NOT in examples/user/home.nix, which stays
-  # contract-pure so the tracer can still harvest it — ADR-0024 / issue #5.)
+  # contract-pure so the tracer can still harvest it — ADR-0008 / issue #5.)
   realHome =
     { config, ... }:
     {
@@ -84,7 +84,7 @@ in
       ok = (boundRuntime.home ? config) && boundRuntime.requests.gui.session == "x11";
     }
     {
-      name = "bindUser: the home HOLDS the injected identity (single loader, ADR-0025)";
+      name = "bindUser: the home HOLDS the injected identity (single loader, ADR-0009)";
       ok = boundRuntime.home.config.identity.name == "Example User";
     }
     {
@@ -117,7 +117,7 @@ in
     }
     {
       # The bridge is a CONFIG REFERENCE into the single home eval — the granted request feeds
-      # the union without a second harvest (ADR-0018 data-flow inversion).
+      # the union without a second harvest (ADR-0002 data-flow inversion).
       name = "bindUserModule: a granted request bridges by config reference, feeding the union (wayland)";
       ok = realBoundRuntime.custom.gui.surface.enabled && realBoundRuntime.custom.gui.surface.wayland;
     }

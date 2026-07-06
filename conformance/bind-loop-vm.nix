@@ -1,18 +1,18 @@
-# Runtime VM: the FULL real bind loop (ADR-0022, issue #2) — the one truly-runtime step every other
+# Runtime VM: the FULL real bind loop (ADR-0006, issue #2) — the one truly-runtime step every other
 # greeter test stops short of. greeter-vm/integration-vm drive `provision`/`session` directly with a
 # pre-built home; this drives the actual `contract-greeter-bind` ORCHESTRATOR end-to-end, exactly as a
 # greetd login does: flake URL + username + password on stdin →
-#   archive (real fetch of a local flake) → eval-free Tier-1 signature auth → SECRET UNLOCK (ADR-0031,
+#   archive (real fetch of a local flake) → eval-free Tier-1 signature auth → SECRET UNLOCK (ADR-0015,
 #   the user's age key from a passphrase) → homeBuilder (a REAL runtime `nix build`) → provision
 #   (account realization + key placement) → session launch — and the activated home decrypts the
 #   user's OWN secret with the placed key (the roaming user has their secrets back at this seat).
 #
-# Two things it needs that the contract leaves to the host (ADR-0024): a `homeBuilder` binding (here a
+# Two things it needs that the contract leaves to the host (ADR-0008): a `homeBuilder` binding (here a
 # reference one) and a desktop binding. The fixture user flake's home is a MINIMAL real derivation — an
 # `$out/activate` script, which is all `provision` requires — with no nixpkgs/home-manager input, so the
 # test isolates the bind LOOP and the runtime build is tiny and offline. (A real home-manager home is
 # already proven by the example flake's `home-build` + `greeter-provision`.) The build runs under the
-# greeter's pinned restricted-eval posture (ADR-0030) with no network: the fixture's builder is STATIC
+# greeter's pinned restricted-eval posture (ADR-0014) with no network: the fixture's builder is STATIC
 # busybox (no ELF interpreter, so it execs in the bare build sandbox a raw derivation gives), pre-seeded
 # via system.extraDependencies along with the fetched repo and the signer.
 {
@@ -26,9 +26,9 @@ let
   username = "alice";
   password = "bind-loop-pw";
 
-  # The reference homeBuilder (the host binding ADR-0024 leaves null): given the fetched src + username,
+  # The reference homeBuilder (the host binding ADR-0008 leaves null): given the fetched src + username,
   # build the user's home THROUGH their flake and print the activation package path. The REAL-SEAT form
-  # is the one-liner below; a real seat runs it under the greeter's restricted-eval NIX_CONFIG (ADR-0030):
+  # is the one-liner below; a real seat runs it under the greeter's restricted-eval NIX_CONFIG (ADR-0014):
   #
   #   nix build "$src#homeConfigurations.$user.activationPackage" --no-link --print-out-paths --offline
   #
@@ -46,7 +46,7 @@ let
     printf '%s\n' ${homeDrv}
   '';
 
-  # A test SSH signer — the host's Tier-1 trust anchor (ADR-0027). Generated at build time; its PUBLIC
+  # A test SSH signer — the host's Tier-1 trust anchor (ADR-0011). Generated at build time; its PUBLIC
   # key is read via IFD into trustedSigners (eval-time), its PRIVATE key signs the fixture repo below.
   signer = pkgs.runCommand "bind-loop-signer" { nativeBuildInputs = [ pkgs.openssh ]; } ''
     mkdir -p $out
@@ -54,7 +54,7 @@ let
   '';
   signerPub = lib.removeSuffix "\n" (builtins.readFile "${signer}/key.pub");
 
-  # --- secret provisioning (ADR-0031, issue #10) ---
+  # --- secret provisioning (ADR-0015, issue #10) ---
   # The roaming user's OWN secret + the key to read it. Generated at build time: an age identity, the
   # identity WRAPPED with a passphrase (the contract convention — magic header + openssl pbkdf2, what
   # the greeter's contract-greeter-unlock reverses), and a secret encrypted to the identity's recipient.
@@ -129,7 +129,7 @@ let
 
   # The fetched "user repo": flake.nix + a no-input flake.lock (so archive does not regenerate one and
   # change the signed tree) + identity.json (username + a known hashedPassword) + contract.sig, an SSH
-  # signature over the tree manifest the auth recomputes (ADR-0027). Exactly the shape auth verifies.
+  # signature over the tree manifest the auth recomputes (ADR-0011). Exactly the shape auth verifies.
   userRepo =
     pkgs.runCommand "bind-loop-user-repo"
       {
@@ -143,7 +143,7 @@ let
         mkdir -p "$out"
         cp ${fixtureFlake} "$out/flake.nix"
         printf '%s' '{"nodes":{"root":{}},"root":"root","version":7}' > "$out/flake.lock"
-        # The passphrase-wrapped age key the greeter unlocks (ADR-0031); part of the signed tree.
+        # The passphrase-wrapped age key the greeter unlocks (ADR-0015); part of the signed tree.
         cp ${secrets}/contract-key.enc "$out/contract-key.enc"
 
         hash=$(perl -e 'print crypt($ARGV[0], $ARGV[1])' '${password}' '$6$bindloopsalt$')
@@ -200,7 +200,7 @@ pkgs.testers.runNixOSTest {
       custom.greeter.desktops.marker.command =
         "${pkgs.coreutils}/bin/touch /home/${username}/.bind-loop-session";
       custom.greeter.defaultDesktop = "marker";
-      # Secret provisioning (ADR-0031): a trusted seat unlocks the user's age key from a SEPARATE
+      # Secret provisioning (ADR-0015): a trusted seat unlocks the user's age key from a SEPARATE
       # passphrase and places it for activation. (Exposed-host refusal is proven in conformance.)
       custom.greeter.secretProvisioning.enable = true;
       custom.greeter.secretProvisioning.separatePassphrase = true;

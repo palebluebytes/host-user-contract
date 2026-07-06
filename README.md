@@ -5,8 +5,8 @@ any user — and deny features a user introduces — on rebuild. It is neither h
 it is the negotiated interface between them.
 
 It depends on nothing but nixpkgs `lib` and evaluates standalone (no host repo). The full
-design lives in [`docs/adr/`](docs/adr/) — start with `0015-host-user-contract.md` (the
-contract), `0020-extract-contract-flake.md` (this repo), `0022`/`0023` (the greeter +
+design lives in [`docs/adr/`](docs/adr/) — start with `0001-host-user-contract.md` (the
+contract), `0004-extract-contract-flake.md` (this repo), `0006`/`0007` (the greeter +
 user-flake shape that consume it).
 
 ## What it ships

@@ -1,6 +1,6 @@
 # (3) the eval-free auth: jq over the inert identity.json, zero lines of user Nix.
 # Usage: contract-greeter-auth <src> <username> <tier> <allowed-signers-file>  (password on stdin)
-# The CANONICAL, mandatory mechanism (ADR-0024 condition 1). It reads only data (`jq`) and
+# The CANONICAL, mandatory mechanism (ADR-0008 condition 1). It reads only data (`jq`) and
 # re-hashes the password with libc crypt (via perl, which covers yescrypt/sha512crypt exactly
 # as /etc/shadow does) — it never evaluates the user's flake.
 { pkgs, identityFile }:
@@ -31,7 +31,7 @@ pkgs.writeShellApplication {
     computed=$(perl -e 'print crypt($ARGV[0], $ARGV[1])' "$password" "$stored")
     [ "$computed" = "$stored" ] || { echo "auth: password mismatch" >&2; exit 1; }
 
-    # Tier 1 (semi-trusted): the repo must be SIGNED by a HOST-pinned key (ADR-0022, ADR-0027).
+    # Tier 1 (semi-trusted): the repo must be SIGNED by a HOST-pinned key (ADR-0006, ADR-0011).
     # We verify an SSH signature over a manifest of the tree (the whole config is signed, not
     # just identity.json) against the host's operator-pinned trustedSigners ALONE. The host is
     # the SOLE Tier-1 trust anchor — a repo cannot vouch for its own tier (a repo naming and

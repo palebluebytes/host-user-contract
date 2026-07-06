@@ -1,7 +1,7 @@
 # Shared conformance fixtures — the synthetic-world builders every domain file reuses, so each
 # domain (./realization.nix, ./requests.nix, ./bind.nix, ./greeter.nix, ./matrix.nix) stays a
 # focused list of claims rather than re-deriving the harness. Built once in ./default.nix and
-# passed to each domain. No host repo, no real user, no host bindings (ADR-0020 Q5).
+# passed to each domain. No host repo, no real user, no host bindings (ADR-0004 Q5).
 {
   lib,
   contractModule,
@@ -25,7 +25,7 @@ rec {
             fsType = "tmpfs";
           };
           system.stateVersion = "25.11";
-          # Stub the platform interface (ADR-0020 review F3). The contract's own CI binds
+          # Stub the platform interface (ADR-0004 review F3). The contract's own CI binds
           # no real secrets backend; a no-op keeps the suite robust if a future system-side
           # secret feature reads custom.platform.secretFile during eval.
           custom.platform = {
@@ -65,7 +65,7 @@ rec {
   # the home umbrella proves the namespace's shape with no home-manager.
   evalHome = mods: (lib.evalModules { modules = [ homeModule ] ++ mods; }).config;
 
-  # The in-repo example user (ADR-0023): a contract-pure home + its identity.json, bound by the
+  # The in-repo example user (ADR-0007): a contract-pure home + its identity.json, bound by the
   # tracer and the real bindUserModule. exampleIdentity has username "example", name "Example User".
   exampleHome = import ../examples/user/home.nix;
   exampleIdentity = loadIdentity ../examples/user/identity.json;

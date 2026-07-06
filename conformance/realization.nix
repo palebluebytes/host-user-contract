@@ -72,8 +72,8 @@ let
     { networking.hostName = "box"; }
   ];
 
-  # --- the identity.json loader (ADR-0023, issue #5): lossless over identity.nix ---
-  # A fixture identity.json written at eval time, carrying the optional fields ADR-0023's
+  # --- the identity.json loader (ADR-0007, issue #5): lossless over identity.nix ---
+  # A fixture identity.json written at eval time, carrying the optional fields ADR-0007's
   # first 5-field schema dropped (trustedKeys, extraGroups) — the realization reads both,
   # so the loader must carry both.
   identityFixture = builtins.toFile "identity.json" (
@@ -180,7 +180,7 @@ in
       ok = lib.elem "audio" danaGroups && !(lib.elem "docker" danaGroups);
     }
 
-    # --- the nix-daemon feature (ADR-0033, issue #15) ---
+    # --- the nix-daemon feature (ADR-0017, issue #15) ---
     {
       name = "nix-daemon: grant confers nix-users group";
       ok =

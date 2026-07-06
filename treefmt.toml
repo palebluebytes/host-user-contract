@@ -1,5 +1,5 @@
 # Multi-language formatting for the contract, run via `nix fmt` (treefmt over nixpkgs tools — no extra
-# flake inputs, ADR-0020). Nix is the deliverable; Python (the reference escrow server) and shell (the
+# flake inputs, ADR-0004). Nix is the deliverable; Python (the reference escrow server) and shell (the
 # reference keyFetcher) are example/host-side code.
 
 [formatter.nix]

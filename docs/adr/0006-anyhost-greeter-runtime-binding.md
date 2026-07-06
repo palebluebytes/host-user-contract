@@ -1,17 +1,17 @@
 # The anyHost greeter: tiered runtime binding of a user from a flake URL
 
-**Status:** Accepted (Tier 1 to be built; Tier 2 designed-for, deferred). Depends on [ADR-0023](0023-user-flake-shape.md) (the bound user-flake shape). **Amended by [ADR-0024](0024-greeter-is-a-contract-deliverable.md):** the greeter (`greetd` + the binding flow below) is a **contract-shipped module**, not a fleet-authored profile; a seat host *enables* it. **Amended by [ADR-0026](0026-greeter-seat-baseline-not-per-login-rebuild.md):** runtime grant effects are a standing greeter-seat baseline (no per-login rebuild), and session launch (step 8) selects the type while the host binds the backend. **Amended by [ADR-0027](0027-host-is-sole-tier1-signing-authority.md):** the **host** pins the Tier-1 signers; the signature is *not* verified against a key in `identity.json` (a repo cannot self-certify its tier). Where the Tier-1 text below says "the key in `identity.json`," read "the host's pinned signers."
+**Status:** Accepted (Tier 1 to be built; Tier 2 designed-for, deferred). Depends on [ADR-0007](0007-user-flake-shape.md) (the bound user-flake shape). **Amended by [ADR-0008](0008-greeter-is-a-contract-deliverable.md):** the greeter (`greetd` + the binding flow below) is a **contract-shipped module**, not a fleet-authored profile; a seat host *enables* it. **Amended by [ADR-0010](0010-greeter-seat-baseline-not-per-login-rebuild.md):** runtime grant effects are a standing greeter-seat baseline (no per-login rebuild), and session launch (step 8) selects the type while the host binds the backend. **Amended by [ADR-0011](0011-host-is-sole-tier1-signing-authority.md):** the **host** pins the Tier-1 signers; the signature is *not* verified against a key in `identity.json` (a repo cannot self-certify its tier). Where the Tier-1 text below says "the key in `identity.json`," read "the host's pinned signers."
 
-The project's north star ([ADR-0018](0018-user-confinement-manifest-greeter.md)): any seat
+The project's north star ([ADR-0002](0002-user-confinement-manifest-greeter.md)): any seat
 host runs a **greeter** that takes a **flake URL + username + password** and transparently
 enables that user — gui by default. This is the **runtime** binding path, the twin of the
 operator-authored build-time path (`hosts/default.nix`). Both drive the *same* contract,
-manifests, and feature modules ([ADR-0020](0020-extract-contract-flake.md)); the difference
+manifests, and feature modules ([ADR-0004](0004-extract-contract-flake.md)); the difference
 is the default: build-time is **default-closed** (the operator grants explicitly), the
 greeter is **default-open over the safe set** — a logging-in user is auto-granted every
 runtime-eligible feature, and privilege is impossible because the safe set excludes it
 (`safeSet = ["gui"]` today; secret-bearing and privileged-group features are build-time-only,
-ADR-0018 slice 15).
+[ADR-0002](0002-user-confinement-manifest-greeter.md) slice 15).
 
 The manifest confinement (slices 10–16) makes the *resulting system* safe. It does **not**
 make *evaluating and building an external flake at login* safe — a second, harder threat

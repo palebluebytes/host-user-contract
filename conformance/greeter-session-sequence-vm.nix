@@ -1,4 +1,4 @@
-# Runtime VM: DIFFERENT graphical systems booting ONE AFTER ANOTHER on one seat (ADR-0026).
+# Runtime VM: DIFFERENT graphical systems booting ONE AFTER ANOTHER on one seat (ADR-0010).
 # The single-seat counterpart to the wayland↔x11 handoff question: a Wayland user's session ends,
 # then a DIFFERENT Wayland compositor comes up on the same seat — proving the seat can host distinct
 # desktop systems sequentially (DRM master released by the first, acquired by the next, within one

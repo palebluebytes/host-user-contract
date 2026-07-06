@@ -3,7 +3,7 @@
 # return NixOS module closures and depend on host config at module-eval time. Split out of
 # kit.nix (thermo-nuclear review). `runtimeEligibleFeature` and `exposedHostOffenders` are
 # internal (the kit's `safeSet` and the umbrella's exposed-host assertion close over them);
-# `mkFeatureRecipients` / `mkHostFacts` are the public functions hosts consume (ADR-0020 Q4);
+# `mkFeatureRecipients` / `mkHostFacts` are the public functions hosts consume (ADR-0004 Q4);
 # `safeSet` is the derived value.
 {
   lib,
@@ -12,7 +12,7 @@
 }:
 let
   # A feature is runtime/greeter-eligible iff it bears no secret and declares no
-  # privilegedGroups (ADR-0018, slice 15). The feature is self-describing: checking
+  # privilegedGroups (ADR-0002, slice 15). The feature is self-describing: checking
   # `f.privilegedGroups == []` replaces the cross-list intersection that was needed
   # when `privilegedGroups` was a separate, hand-maintained list in kit.nix.
   runtimeEligibleFeature =
@@ -22,16 +22,16 @@ let
     in
     !(f.secretBearing or false) && (f.privilegedGroups or [ ]) == [ ];
 
-  # The runtime-eligible feature names — the safe set (ADR-0018, slice 15).
+  # The runtime-eligible feature names — the safe set (ADR-0002, slice 15).
   safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
 
   # The request→feature-configuration bridge, shared by BOTH binding shapes (the headless
   # tracer below and the real `bindUserModule`). Given a user's harvested `contract.requests`
   # and the set of features the host GRANTED, copy each granted feature's request params into
-  # the system-side feature-configuration shape the realization consumes (ADR-0019) — the two
+  # the system-side feature-configuration shape the realization consumes (ADR-0003) — the two
   # shapes are identical (both are featureConfigOptions), so it is a direct copy. Only KNOWN
   # granted features with request data are bridged; an ungranted request is never copied, so
-  # requesting an ungranted feature is a silent no-op (ADR-0018: "the grant is the sole
+  # requesting an ungranted feature is a silent no-op (ADR-0002: "the grant is the sole
   # enabler; degradation is silent"). `requests` is a value in the tracer and a CONFIG
   # REFERENCE in the module — the fold is identical either way.
   grantedNamesOf = grants: lib.filter (f: grants.${f}.enable or false) (lib.attrNames grants);
@@ -58,7 +58,7 @@ let
       granted = grants;
     }
     // bridgeRequests requests (grantedNamesOf grants);
-  # mkContractPackage (ADR-0032, issue #14): assemble the pre-built binding artifact from an
+  # mkContractPackage (ADR-0016, issue #14): assemble the pre-built binding artifact from an
   # already-evaluated home. The user's CI calls this and publishes the result; the host pins it
   # as a flake input. `activationPackage` is the home-manager activation package (has
   # `$out/activate`); `requests` is the evaluated `contract.requests` attrset; `packages` is the
@@ -93,7 +93,7 @@ let
       cp ${manifestFile} $out/contract-requests.json
     '';
 
-  # bindContractPackage (ADR-0032, issue #16): the HOST-SIDE binding for the pre-built path.
+  # bindContractPackage (ADR-0016, issue #16): the HOST-SIDE binding for the pre-built path.
   # Unlike `bindUserModule` (which evaluates the home inline), this reads the already-built
   # `contract-requests.json` from a pinned store path and bridges the feature requests exactly
   # as the inline-eval path does — same `mkUserAccount`, same `bridgeRequests`. No home-manager
@@ -102,7 +102,7 @@ let
   # `contractPackage` must be a realized store path at eval time — in the pre-built workflow it is
   # a pinned flake input already in the store, so reading its JSON is a plain `builtins.readFile`,
   # not IFD. The module references `pkgs` (the host's NixOS pkgs) to build the package-policy
-  # profile when `custom.host.packagePolicy.allowedPrograms` is non-empty (ADR-0033, issue #17).
+  # profile when `custom.host.packagePolicy.allowedPrograms` is non-empty (ADR-0017, issue #17).
   # `hostFacts` has no role in the pre-built path (the home is already evaluated) and is omitted.
   bindContractPackage =
     {
@@ -162,23 +162,23 @@ in
 {
   inherit runtimeEligibleFeature safeSet;
 
-  # The runtime/greeter grant (ADR-0022, ADR-0024): "default-open over the safe set". The
+  # The runtime/greeter grant (ADR-0006, ADR-0008): "default-open over the safe set". The
   # greeter does not let an operator choose features — it auto-grants every runtime-eligible
   # one, and privilege is impossible because the safe set EXCLUDES secret-bearing and
   # privileged-group features by construction. This is the canonical, conformance-checked grant
   # value the greeter binds with (`bindUserModule { grants = greeterGrants; … }`); single-sourcing
-  # it here is exactly ADR-0024's conformance condition (3): a greeter grants AT MOST the safe
+  # it here is exactly ADR-0008's conformance condition (3): a greeter grants AT MOST the safe
   # set. `grants` is shaped `{ <feature>.enable = bool; }` (the registry's grantedOptions), so
   # this lifts the safe-set NAME LIST into that grant attrset.
   greeterGrants = lib.genAttrs safeSet (_: {
     enable = true;
   });
 
-  # The Tier-1 restricted-eval posture (ADR-0030): the canonical Nix settings under which the
+  # The Tier-1 restricted-eval posture (ADR-0014): the canonical Nix settings under which the
   # greeter EVALUATES and BUILDS a host-signed (semi-trusted) user home (step 5/6). Tier 1 is
-  # vouched-for by the host's signature (ADR-0027), not blindly trusted — the build still runs
+  # vouched-for by the host's signature (ADR-0011), not blindly trusted — the build still runs
   # under a restricted eval to contain accidents and, crucially, to keep the repo from WIDENING
-  # its own eval posture (ADR-0027 applied to eval: a repo cannot self-certify). As nix.conf:
+  # its own eval posture (ADR-0011 applied to eval: a repo cannot self-certify). As nix.conf:
   #   - accept-flake-config = false           the repo's own `nixConfig` is IGNORED — the
   #                                           un-widenable linchpin; without it a Tier-1 flake could
   #                                           relax every setting below by self-declaration.
@@ -209,7 +209,7 @@ in
       ) settings
     );
 
-  # Recipients-from-grants (ADR-0015, slice 06): for each secret-bearing feature's sops
+  # Recipients-from-grants (ADR-0001, slice 06): for each secret-bearing feature's sops
   # file, the set of hosts that GRANT it — the single source of truth for .sops.yaml
   # recipients. Applied to a fleet's nixosConfigurations by the host (it reads the fleet).
   mkFeatureRecipients =
@@ -236,7 +236,7 @@ in
     ) { } secretFeatures;
 
   # The secret-bearing features an exposed host has been (wrongly) granted — the
-  # exposed-host ban (ADR-0015 threat model). Must be empty.
+  # exposed-host ban (ADR-0001 threat model). Must be empty.
   exposedHostOffenders =
     config:
     lib.concatMap (
@@ -249,7 +249,7 @@ in
       ) (lib.attrNames featureMeta)
     ) (lib.attrNames config.custom.users);
 
-  # The restricted projection of host state a user's home modules may read (ADR-0018,
+  # The restricted projection of host state a user's home modules may read (ADR-0002,
   # slice 12): self-scoped, no hostName, no secret value.
   mkHostFacts = config: userName: {
     exposed = config.custom.host.exposed;
@@ -257,18 +257,18 @@ in
     granted = config.custom.users.${userName}.granted;
   };
 
-  # bindUser (ADR-0023, ADR-0024): binds an external user's home module to the contract —
+  # bindUser (ADR-0007, ADR-0008): binds an external user's home module to the contract —
   # it harvests the user's `contract.requests`, then returns the system fragment that realizes
   # the account (identity), records the grants, and BRIDGES the GRANTED requests to the
-  # system-side feature configuration the realization consumes (ADR-0019). Ungranted requests
+  # system-side feature configuration the realization consumes (ADR-0003). Ungranted requests
   # are inert — never bridged — so requesting an ungranted feature is a silent no-op, not an
-  # error (ADR-0018: "the grant is the sole enabler; degradation is silent"). `homeModule` is
+  # error (ADR-0002: "the grant is the sole enabler; degradation is silent"). `homeModule` is
   # the contract's homeModules.default, partially applied by the kit so a caller passes only
   # the user side.
   #
   # SCOPE — this is the HEADLESS TRACER (issue #5): the package-PUREST proof of the confined
   # request→grant→bridge logic. It harvests by evaluating the home against the contract
-  # umbrella ALONE (lib.evalModules, no home-manager, not even a stub — ADR-0020's package-free
+  # umbrella ALONE (lib.evalModules, no home-manager, not even a stub — ADR-0004's package-free
   # invariant), so it can only evaluate a CONTRACT-PURE home that sets nothing but contract
   # options. A REAL home module also sets home-manager options (programs.*, home.*), which are
   # undeclared here and would throw. `bindUserModule` below is the REAL binding mechanism both
@@ -287,7 +287,7 @@ in
     let
       username = identity.username;
       # Evaluate the user's home against the contract home umbrella. bindUser is the SINGLE
-      # reader of the loaded identity (ADR-0025): it injects the same value into the home it
+      # reader of the loaded identity (ADR-0009): it injects the same value into the home it
       # gives the system account, so the home HOLDS its identity (e.g. for git name/email)
       # and the account and home can never disagree about who the user is — the home never
       # loads identity.json itself. hostFacts/pkgs are injected for the user module to adapt to.
@@ -308,19 +308,19 @@ in
       system.custom.users.${username} = mkUserAccount { inherit identity grants requests; };
     };
 
-  # bindUserModule (ADR-0024, issue #8): the REAL binding mechanism, called by BOTH paths an
-  # operator build-time grant and a runtime greeter (ADR-0022). Unlike the tracer, it harvests
+  # bindUserModule (ADR-0008, issue #8): the REAL binding mechanism, called by BOTH paths an
+  # operator build-time grant and a runtime greeter (ADR-0006). Unlike the tracer, it harvests
   # nothing itself — it returns a NixOS MODULE the host imports, and the home is evaluated ONCE
   # by the host's home-manager. The bridge is then a CONFIG REFERENCE
   # (config.home-manager.users.<u>.contract.requests), not a second eval, so the data flows the
-  # right way (ADR-0018: the system reads the home eval) and a REAL home that sets home-manager
+  # right way (ADR-0002: the system reads the home eval) and a REAL home that sets home-manager
   # options (programs.git, home.packages) binds — those options are declared by the host's
   # home-manager, the very thing the tracer's bare evalModules lacks.
   #
-  # PACKAGE-FREE (ADR-0020): this module only *references* `home-manager.*` option paths; it
+  # PACKAGE-FREE (ADR-0004): this module only *references* `home-manager.*` option paths; it
   # does NOT import home-manager. The HOST supplies home-manager (it already does to build
   # homes) — so the contract keeps depending on nixpkgs `lib` alone. Identity is the single
-  # loaded value injected into both the account and the home (ADR-0025), exactly as the tracer;
+  # loaded value injected into both the account and the home (ADR-0009), exactly as the tracer;
   # `hostFacts` is injected per-user via the home submodule's `_module.args` (home-manager's
   # `extraSpecialArgs` is global, so the read-only, per-user host projection rides the submodule
   # instead). `pkgs` needs no injection here — home-manager provides it to the home natively.
@@ -343,9 +343,9 @@ in
         inherit identity grants;
         requests = config.home-manager.users.${username}.contract.requests;
       };
-      # The home, evaluated once by the host's home-manager. identity is injected (ADR-0025);
+      # The home, evaluated once by the host's home-manager. identity is injected (ADR-0009);
       # hostFacts rides the submodule's module args so the home reads its self-scoped, read-only
-      # host projection (ADR-0018) without a global specialArg.
+      # host projection (ADR-0002) without a global specialArg.
       home-manager.users.${username} = {
         imports = [
           homeModule

@@ -2,7 +2,7 @@
 
 **Status:** Accepted (implemented; proven by the conformance suite, eval + VM).
 
-The realization owns host-wide singletons so users don't fight over them (ADR-0015
+The realization owns host-wide singletons so users don't fight over them (ADR-0001
 mechanic 5). But a user still has host-*affecting* preferences — most visibly, a
 gui user wants a **Wayland** session or an **X11** session. weedySeadragon makes
 this concrete: `inkpotmonkey` (Wayland) and `eyeofalligator` (X11) both log in, and
@@ -42,9 +42,9 @@ union the same way.
 - Under the current trust model (A), this is enforced only by **hygiene**: nothing
   stops a user module from writing the raw `services.xserver.enable` again and
   re-breaking the union. Making it impossible is the **restricted-`evalModules`
-  boundary (model C, ADR-0015 mechanic 7)**, deferred — see the model-C meta issue.
+  boundary (model C, ADR-0001 mechanic 7)**, deferred — see the model-C meta issue.
 - The conformance suite proves it at two levels (both in this repo's `conformance/`,
-  ADR-0020). At eval (`conformance/default.nix`): two fixture users with different
+  ADR-0004). At eval (`conformance/default.nix`): two fixture users with different
   `gui.session` on one host ⇒ the host enables *both* session types and both accounts are
   intact; a Wayland-only host enables only the Wayland greeter and an X11-only host only
   X11 (the surface is *derived*, not constant). At runtime (`conformance/vm.nix`, a
@@ -58,7 +58,7 @@ union the same way.
   config. Forcing Wayland drops eyeofalligator's X11; forcing X11 drops inkpotmonkey's
   Wayland. The point is that each keeps *their* session.
 - **Confine users so the conflict is impossible (model C)** — deferred, not rejected
-  (ADR-0015 mechanic 7 / the model-C meta issue). It is the stronger, bypass-proof
+  (ADR-0001 mechanic 7 / the model-C meta issue). It is the stronger, bypass-proof
   guarantee, but a large curated-catalog commitment; the union delivers coexistence
   now without it, and for a single-author fleet the residual foot-gun is review-stage.
 - **Let users set the host singleton with priorities** (`mkForce`/`mkDefault`) —

@@ -1,8 +1,8 @@
 # The host is the sole authority for Tier-1 signing trust; a repo cannot vouch for itself
 
-**Status:** Accepted; amends [ADR-0022](0022-anyhost-greeter-runtime-binding.md) (which placed the signing key in `identity.json`).
+**Status:** Accepted; amends [ADR-0006](0006-anyhost-greeter-runtime-binding.md) (which placed the signing key in `identity.json`).
 
-[ADR-0022](0022-anyhost-greeter-runtime-binding.md)'s Tier-1 flow said the greeter "verifies the repo signature against the key in `identity.json`." That is **circular**: Tier 1 means "operator-trusted / *my own* repos," but if the repo supplies the very key it is verified against, a hostile repo names its own key, signs with it, and **self-certifies into Tier 1** — collapsing Tier 1 into Tier 2's "anyone" threat model. A signature proves integrity (this tree is internally consistent), not *authenticity relative to this host*.
+[ADR-0006](0006-anyhost-greeter-runtime-binding.md)'s Tier-1 flow said the greeter "verifies the repo signature against the key in `identity.json`." That is **circular**: Tier 1 means "operator-trusted / *my own* repos," but if the repo supplies the very key it is verified against, a hostile repo names its own key, signs with it, and **self-certifies into Tier 1** — collapsing Tier 1 into Tier 2's "anyone" threat model. A signature proves integrity (this tree is internally consistent), not *authenticity relative to this host*.
 
 ## Decision
 
@@ -10,7 +10,7 @@ The **host** is the sole Tier-1 trust anchor. The operator pins the allowed sign
 
 ## Considered Options
 
-- **Verify against the repo's key in `identity.json`** ([ADR-0022](0022-anyhost-greeter-runtime-binding.md) literal) — rejected: self-certification, which defeats the point of a tier.
+- **Verify against the repo's key in `identity.json`** ([ADR-0006](0006-anyhost-greeter-runtime-binding.md) literal) — rejected: self-certification, which defeats the point of a tier.
 - **Intersection (host signers ∩ `identity.json.trustedKeys`, "both must vouch")** — rejected: the repo-side key is attacker-controlled, so requiring it vouches for nothing; it only adds a failure mode (an operator-trusted repo that forgot to list the key fails). Strictly worse than host-only.
 - **Host-pinned signers (chosen)** — the operator is the trust anchor, matching Tier 1's "my own / operator-trusted" definition.
 

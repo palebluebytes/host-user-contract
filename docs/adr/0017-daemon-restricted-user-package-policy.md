@@ -1,11 +1,11 @@
 # Daemon-restricted users and host-built package profiles: the `nix-daemon` feature, package policy, and graceful degradation
 
-**Status:** Proposed. Related to [ADR-0032](0032-prebuilt-binding-mode.md) (pre-built
+**Status:** Proposed. Related to [ADR-0016](0016-prebuilt-binding-mode.md) (pre-built
 binding mode); requires the `contractPackage`'s `packages` manifest field defined there.
 
 ## Context
 
-The pre-built binding mode (ADR-0032) establishes that packages in a user's home are
+The pre-built binding mode (ADR-0016) establishes that packages in a user's home are
 **advisory**: the user owns their package versions and the host owns the feature grants.
 This ADR addresses the complementary question — what happens when a host wants to restrict
 which programs appear in a user's session?
@@ -98,7 +98,7 @@ accepted.
 ### 6. Upgrade path to hard enforcement
 
 For hosts that need hard enforcement — where even the residual risk is unacceptable — the
-exit is the **inline-eval mode** (ADR-0032): the host evaluates the home against a filtered
+exit is the **inline-eval mode** (ADR-0016): the host evaluates the home against a filtered
 `pkgs` that only exposes allowed programs. Programs not in the allowed set fail to build.
 `programs.*` still works; the restriction lives in `pkgs`, not the home module. This
 abandons the pre-built mode for those users. It is documented as Tier 3 and deferred.
@@ -123,7 +123,7 @@ abandons the pre-built mode for those users. It is documented as Tier 3 and defe
   membership exactly as it handles other granted groups. No new realization logic.
 - A new host option surface: `custom.host.packagePolicy.allowedPrograms`. This is a host
   **binding** (the contract ships the mechanism; the host supplies the list), consistent with
-  the platform/display binding pattern (ADR-0024).
+  the platform/display binding pattern (ADR-0008).
 - The conformance suite gains a VM test (`daemon-restricted-vm.nix`):
   - Host denies `nix-daemon`; `allowedPrograms` contains `hello`
   - `contractPackage` declares `hello` and `curl` in its manifest

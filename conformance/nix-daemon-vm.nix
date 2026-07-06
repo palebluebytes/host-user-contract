@@ -1,4 +1,4 @@
-# Runtime VM for the nix-daemon feature (ADR-0033, issue #15). Proves the grant/deny
+# Runtime VM for the nix-daemon feature (ADR-0017, issue #15). Proves the grant/deny
 # divide at runtime: a user granted nix-daemon is in nix-users and can talk to the
 # daemon; a user denied it cannot. The host wires nix.settings.allowed-users = ["@nix-users"]
 # — the daemon refuses connections from non-members. The runtime clamp is also proven:

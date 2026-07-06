@@ -3,7 +3,7 @@
 # derivation logic (./lib.nix) and the umbrella modules (./modules.nix) and returns the
 # public surface. It depends on NOTHING but `lib` — no `self`, no `inputs` — which is
 # what lets the contract be a standalone flake (./flake.nix wraps this). The host
-# supplies only the `platform` binding and the package/display bindings (ADR-0020).
+# supplies only the `platform` binding and the package/display bindings (ADR-0004).
 { lib }:
 let
   registry = import ./features.nix { inherit lib; };
@@ -59,10 +59,10 @@ let
     inherit (contractLib) exposedHostOffenders;
   };
 
-  # The opt-in reference greeter (ADR-0024, issue #2): a SEPARATE nixosModule a seat host
+  # The opt-in reference greeter (ADR-0008, issue #2): a SEPARATE nixosModule a seat host
   # enables, not part of nixosModule.default (a headless host wants the schema, not the
   # greeter). It is the one module that references real packages — supplied by the host's
-  # `pkgs`, so the contract FLAKE still inputs only nixpkgs `lib` (ADR-0020). It is closed
+  # `pkgs`, so the contract FLAKE still inputs only nixpkgs `lib` (ADR-0004). It is closed
   # over the fixed runtime grant + the identity.json filename it authenticates on.
   greeterModule = import ./greeter.nix {
     inherit lib privilegedGroups featureGroups;
@@ -87,17 +87,17 @@ in
   inherit (contractLib) safeSet greeterGrants tier1EvalConfig;
 
   # The identity.json schema, exposed so a host/greeter can introspect the jq-readable
-  # shape it authenticates against before any eval (ADR-0023, issue #5).
+  # shape it authenticates against before any eval (ADR-0007, issue #5).
   inherit (identityJson) identityFile identitySchema;
 
-  # Public derivation functions hosts consume (ADR-0020 Q4). The internal predicates
+  # Public derivation functions hosts consume (ADR-0004 Q4). The internal predicates
   # (runtimeEligibleFeature, exposedHostOffenders) stay internal to ./lib.nix.
   lib = {
     inherit (contractLib) mkFeatureRecipients mkHostFacts renderNixConfig;
-    # The identity.json loader (ADR-0023): lossless over identity.nix, used by both the
+    # The identity.json loader (ADR-0007): lossless over identity.nix, used by both the
     # user's home module and host-side bindUser.
     inherit (identityJson) loadIdentity;
-    # The binding mechanism (ADR-0023/0024), each partially applied over the contract's own
+    # The binding mechanism (ADR-0007/0008), each partially applied over the contract's own
     # homeModule so a caller passes only { userModule, identity, grants, … }:
     #   - bindUser (issue #5): the headless tracer — harvests a contract-pure home via bare
     #     evalModules, returns { username, home, requests, system }. The logic-level proof.
@@ -107,7 +107,7 @@ in
     #     home-manager; the contract stays package-free.
     bindUser = args: contractLib.bindUser (args // { homeModule = modules.homeModule; });
     bindUserModule = args: contractLib.bindUserModule (args // { homeModule = modules.homeModule; });
-    # Pre-built binding mode (ADR-0032):
+    # Pre-built binding mode (ADR-0016):
     #   - mkContractPackage (issue #14): assembles the contractPackage derivation a user CI
     #     produces — activate + contract-requests.json — from an already-evaluated home.
     #   - bindContractPackage (issue #16): the host-side binding for the pre-built path; reads
@@ -115,8 +115,8 @@ in
     inherit (contractLib) mkContractPackage bindContractPackage;
   };
 
-  # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0024) + the
-  # home-manager-aware desktop-choice helper (ADR-0029, separate from the tracer-pure homeModule).
+  # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0008) + the
+  # home-manager-aware desktop-choice helper (ADR-0013, separate from the tracer-pure homeModule).
   inherit (modules) nixosModule homeModule homeGreeterDesktopModule;
   inherit greeterModule;
 }

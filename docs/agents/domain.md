@@ -8,7 +8,7 @@ This is a **single-context** repo: one `CONTEXT.md` + `docs/adr/` at the root.
 
 - **`CONTEXT.md`** at the repo root, if it exists.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in. This repo already
-  carries the host↔user contract arc (`0015`–`0023`); start with `0015-host-user-contract.md`.
+  carries the host↔user contract arc (`0001`–`0007`); start with `0001-host-user-contract.md`.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The producer skill (`/grill-with-docs`) creates `CONTEXT.md` lazily when terms or decisions actually get resolved.
 
@@ -18,10 +18,10 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 /
 ├── CONTEXT.md                         ← created lazily by /grill-with-docs
 ├── docs/adr/
-│   ├── 0015-host-user-contract.md
-│   ├── 0020-extract-contract-flake.md
-│   ├── 0022-anyhost-greeter-runtime-binding.md
-│   └── 0023-user-flake-shape.md
+│   ├── 0001-host-user-contract.md
+│   ├── 0004-extract-contract-flake.md
+│   ├── 0006-anyhost-greeter-runtime-binding.md
+│   └── 0007-user-flake-shape.md
 └── *.nix
 ```
 
@@ -35,4 +35,4 @@ If the concept you need isn't in the glossary yet, that's a signal — either yo
 
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
-> _Contradicts ADR-0015 (host↔user contract) — but worth reopening because…_
+> _Contradicts ADR-0001 (host↔user contract) — but worth reopening because…_

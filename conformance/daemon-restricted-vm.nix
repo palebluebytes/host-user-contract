@@ -1,4 +1,4 @@
-# Runtime VM for package policy and daemon restriction (ADR-0033, issue #17). Proves the
+# Runtime VM for package policy and daemon restriction (ADR-0017, issue #17). Proves the
 # full #17 guarantee: a daemon-restricted user (nix-daemon denied) whose contractPackage
 # declares hello + curl, with allowedPrograms = ["hello"], ends up with:
 #   - hello available in PATH (approved + declared)

@@ -1,4 +1,4 @@
-# Runtime VM for the greeter's SESSION RENDER (ADR-0026 step 8) — proves the bound
+# Runtime VM for the greeter's SESSION RENDER (ADR-0010 step 8) — proves the bound
 # `custom.greeter.session.<type>` backend brings up a LIVE graphical session, the render counterpart
 # to greeter-vm's session SELECTION (which only checks which command is chosen).
 #
@@ -7,7 +7,7 @@
 # `initial_session` autologin into our `contract-greeter-session` launcher (run as the user, so it
 # execs the backend in place), the same shape production uses. QEMU's virtio-gpu gives real DRM
 # (software-rendered via llvmpipe), exactly as nixpkgs' own cage/sway graphical tests do. The
-# compositor is supplied as a TEST binding (the contract ships none, ADR-0020) — the
+# compositor is supplied as a TEST binding (the contract ships none, ADR-0004) — the
 # consumer-renders boundary, like the gui-union VM supplying SDDM/Plasma.
 #
 # Render is decoupled from provisioning here (alice is a declared account) — provisioning is proven

@@ -19,7 +19,7 @@ Single-context — one `CONTEXT.md` (the domain glossary) + `docs/adr/` at the r
 
 ## Dev environment, formatting & linting
 
-The contract flake inputs **only nixpkgs** (ADR-0020), so all dev tools come from `nix develop`, not
+The contract flake inputs **only nixpkgs** (ADR-0004), so all dev tools come from `nix develop`, not
 from flake inputs (no `treefmt-nix`/`git-hooks.nix`).
 
 - **Work inside `nix develop`** (or direnv): it provides `treefmt nixfmt ruff shfmt statix deadnix
