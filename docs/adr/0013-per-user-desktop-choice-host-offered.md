@@ -1,6 +1,6 @@
 # A greeter login is a per-user desktop choice; the seat offers desktops, the contract carries the name
 
-**Status:** Accepted; refines [ADR-0010](0010-greeter-seat-baseline-not-per-login-rebuild.md) (session launch, step 8) for full desktop environments.
+**Status:** Accepted; refines [ADR-0010](0010-greeter-seat-baseline-not-per-login-rebuild.md) (session launch, step 8) for full desktop environments. Extended by [ADR-0018](0018-session-type-derives-from-desktop.md), which carries this ADR's "session type is a per-desktop property" principle to the build-time path and retires the user-facing `gui.session`.
 
 ADR-0010's session launch keyed only on **session type** (`wayland`/`x11`) bound seat-wide. That cannot express the real requirement: user A logs into **GNOME**, logs out, user B logs into **Plasma**, on the same seat — different *desktops*, chosen *per user*, which is the experience non-technical users need. The seat mechanism already supports the sequencing (greetd serialises `seat0`; each login is a fresh seat session — GNOME→Plasma is the same DRM handoff as any compositor swap); what was missing is *which* desktop each user gets.
 

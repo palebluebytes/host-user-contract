@@ -1,6 +1,6 @@
 # Host-affecting feature configuration aggregates across granted users (the gui-session union)
 
-**Status:** Accepted (implemented; proven by the conformance suite, eval + VM).
+**Status:** Accepted (implemented; proven by the conformance suite, eval + VM). The `gui.session` user-facing option is superseded by [ADR-0018](0018-session-type-derives-from-desktop.md) (session type derives from the desktop); the aggregation/union mechanic below stands, now unioning derived types.
 
 The realization owns host-wide singletons so users don't fight over them (ADR-0001
 mechanic 5). But a user still has host-*affecting* preferences — most visibly, a

@@ -72,8 +72,12 @@ the term is stable, the code is pending (see the cited issue).
   `identity.extraGroups` (untrusted input). Privileged groups come only from a grant — a
   user can never self-escalate by listing `docker`/`wheel` in its identity.
 - **gui-session union** — the realization deriving the host's display surface
-  (`custom.gui.surface`) as the union of every granted gui user's `gui.session`, so a
-  Wayland user and an X11 user coexist on one seat. (ADR-0003)
+  (`custom.gui.surface`) as the union of every granted gui user's **session type**, so a
+  Wayland user and an X11 user coexist on one seat. The session type is a **derived property
+  of the user's chosen desktop** ([[desktop-choice]]), not a user-declared preference — a
+  protocol is a property of the desktop, not an independent want. **(the build-time derivation
+  is designed; not yet built — today the union still reads the `gui.session` enum)**
+  (ADR-0003, ADR-0018)
 - **model A / B / C** — trust postures for the user surface (ADR-0001 mechanic 7): A = user
   exports arbitrary modules (in-repo migration only; "deny" cosmetic); B = flat data only
   (deny enforceable, expressiveness lost); C = restricted `evalModules` over a curated
@@ -357,6 +361,10 @@ the term is stable, the code is pending (see the cited issue).
   request, `bindUser` bridges granted ones into feature configuration, the realization reads
   feature configuration. Same shape, different owner and trust-side — never call a user's
   request "feature configuration," or a host-written value a "request."
+- **desktop** vs **session type** — **desktop** (`gui.desktop`) is the user's intent, an
+  experience that travels with the identity; **session type** (`wayland`/`x11`) is a *derived*
+  property of the chosen desktop, never a user preference. Don't treat `gui.session` as a
+  user-owned choice — it is retired as user-facing vocabulary (ADR-0018).
 - **platform** names the secret-provisioning **interface**; don't conflate the interface
   (contract) with the **binding** (host).
 - **user secret** is ambiguous on its own — say *public identity*, *hashedPassword*, or
