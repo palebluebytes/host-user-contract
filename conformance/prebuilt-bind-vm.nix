@@ -11,7 +11,7 @@
   bindContractPackage,
 }:
 let
-  # A synthetic contractPackage: activate writes a marker; JSON carries gui.session = "x11".
+  # A synthetic contractPackage: activate writes a marker; JSON carries a gui.desktop request.
   contractPackage = pkgs.runCommand "prebuilt-bind-vm-contract-package" { } ''
     mkdir -p $out
     cat > $out/activate <<'SH'
@@ -24,7 +24,7 @@ let
     {
       "version": 1,
       "username": "testuser",
-      "requests": { "gui": { "session": "x11", "desktop": "" } },
+      "requests": { "gui": { "desktop": "plasma" } },
       "packages": []
     }
     JSON

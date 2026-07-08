@@ -32,12 +32,17 @@
 let
   users = config.custom.users;
   # The gui-session union (ADR-0003): the host display surface is derived from
-  # every *granted* gui user's session preference, not from any one user writing a
-  # raw host singleton. A single-seat host can therefore offer both session types
-  # and each user logs into their own (stock SDDM remembers the choice per user).
+  # every *granted* gui user's session type, not from any one user writing a raw
+  # host singleton. A single-seat host can therefore offer both session types and
+  # each user logs into their own (stock SDDM remembers the choice per user).
   guiUsers = lib.filter (u: u.granted.gui.enable or false) (lib.attrValues users);
   anyGuiGranted = guiUsers != [ ];
-  guiSessions = map (u: u.gui.session) guiUsers;
+  # ADR-0018: a user's session type is a DERIVED property of their chosen desktop, not a
+  # declared preference. The host maps each offered desktop name to its session type
+  # (custom.gui.desktops); the union looks up each granted gui user's gui.desktop there. An
+  # unnamed or un-offered desktop degrades to a wayland surface (the seat's baseline session).
+  sessionTypeOf = u: config.custom.gui.desktops.${u.gui.desktop} or "wayland";
+  guiSessions = map sessionTypeOf guiUsers;
   anyWayland = lib.elem "wayland" guiSessions;
   anyX11 = lib.elem "x11" guiSessions;
 
@@ -54,6 +59,22 @@ in
   # sessions coexist on one seat). A host-side display binding (e.g. an SDDM/Plasma or
   # GDM/GNOME one) reads this and renders it; the contract stays desktop-environment-
   # agnostic (ADR-0005 review finding 2).
+  # ADR-0018: the build-time desktop→type map. A host that offers a desktop declares its
+  # session type here — the build-time analogue of the greeter seat's
+  # `custom.greeter.desktops.<name>.type`. The gui-session union derives each granted gui
+  # user's session type from it; the contract consumes the map and never introspects the
+  # DE's session files (package-free, ADR-0004).
+  options.custom.gui.desktops = lib.mkOption {
+    type = lib.types.attrsOf (
+      lib.types.enum [
+        "wayland"
+        "x11"
+      ]
+    );
+    default = { };
+    description = "Host map from a gui.desktop name to its session type (ADR-0018); the gui-session union derives each granted gui user's session type from it. An unmapped or empty choice degrades to a wayland surface.";
+  };
+
   options.custom.gui.surface = {
     enabled = lib.mkOption {
       type = lib.types.bool;

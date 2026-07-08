@@ -74,12 +74,12 @@
 
     # contract.requests (ADR-0002/0007, issue #5): the typed, read-only namespace a user's
     # home module POPULATES to describe host-affecting parameters of the features it
-    # offers (e.g. gui.session). The host harvests the GRANTED ones post-eval (bindUser);
+    # offers (e.g. gui.desktop). The host harvests the GRANTED ones post-eval (bindUser);
     # the user only asks, never writes system state. Its per-feature shape IS the registry's
     # feature `config` fragments (featureConfigOptions) — the same parameters carried
     # system-side as custom.users.<u>.<feature>.* today (ADR-0003), now emitted from the
     # user's own side. Enforcement (ADR-0002 "ignore-overreach / validate-intent"):
-    #   - a KNOWN request is typed, so a malformed one (wrong-typed gui.session, a
+    #   - a KNOWN request is typed, so a malformed one (wrong-typed gui.desktop, a
     #     misspelled param within a known feature) ERRORS — the schema is the typo-net;
     #   - an UNKNOWN feature key is ACCEPTED and ignored (the freeformType below), so a
     #     request for a feature this contract version lacks never breaks the build — the

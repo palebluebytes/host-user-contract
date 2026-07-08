@@ -10,12 +10,13 @@
 let
   inherit (toolkit) evalHome;
 
-  guiRequest = evalHome [ { contract.requests.gui.session = "x11"; } ];
+  guiRequest = evalHome [ { contract.requests.gui.desktop = "plasma"; } ];
   # An unknown FEATURE key is accepted (freeformType) and ignored — build still happens.
   unknownRequest = evalHome [ { contract.requests.bogusFeature.whatever = 42; } ];
-  # A malformed KNOWN request (bad enum) must fail to evaluate (the typo-net).
+  # A malformed KNOWN request must fail to evaluate (the typo-net, ADR-0002). gui.desktop is
+  # free-form but still typed `str`, so a wrong-typed value (an int, not a str) errors.
   malformedRequest = builtins.tryEval (
-    (evalHome [ { contract.requests.gui.session = "macos"; } ]).contract.requests.gui.session
+    (evalHome [ { contract.requests.gui.desktop = 42; } ]).contract.requests.gui.desktop
   );
 
   # The desktop helper sets `home.file`, a home-manager option the tracer-pure umbrella does not
@@ -47,15 +48,15 @@ in
 {
   assertions = [
     {
-      name = "requests: a known request (gui.session) is readable on the home eval";
-      ok = guiRequest.contract.requests.gui.session == "x11";
+      name = "requests: a known request (gui.desktop) is readable on the home eval";
+      ok = guiRequest.contract.requests.gui.desktop == "plasma";
     }
     {
       name = "requests: an unknown feature key is accepted and ignored (build still happens)";
       ok = unknownRequest.contract.requests.bogusFeature.whatever == 42;
     }
     {
-      name = "requests: a malformed known request (bad gui.session enum) errors";
+      name = "requests: a malformed known request (wrong-typed gui.desktop) errors";
       ok = !malformedRequest.success;
     }
     {

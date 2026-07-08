@@ -28,10 +28,7 @@ let
     inherit pkgs;
     activationPackage = activationStub;
     requests = {
-      gui = {
-        session = "x11";
-        desktop = "plasma";
-      };
+      gui.desktop = "plasma";
     };
     packages = [ pkgs.hello ];
     username = "testuser";
@@ -51,7 +48,6 @@ let
         jq -e '.version == 1'              "$manifest"
         jq -e '.username == "testuser"'    "$manifest"
         jq -e '.packages | contains(["hello"])' "$manifest"
-        jq -e '.requests.gui.session == "x11"'  "$manifest"
         jq -e '.requests.gui.desktop == "plasma"' "$manifest"
 
         touch $out
@@ -59,7 +55,7 @@ let
 
   # --- bindContractPackage eval proof (issue #16) ---
   # Use a plain repo-path fixture (no derivation build needed, no IFD) so the eval assertions
-  # stay pure. The fixture mirrors the example user's request: gui.session = "x11".
+  # stay pure. The fixture mirrors the example user's request: gui.desktop = "plasma".
   fixturePackage = ./fixtures/example-contract-package;
 
   boundRuntime = eval [
@@ -95,8 +91,8 @@ in
 
     # bindContractPackage: granted request bridges to the gui union (parity with bindUserModule)
     {
-      name = "bindContractPackage: a granted gui request bridges to the union (x11)";
-      ok = boundRuntime.custom.gui.surface.enabled && boundRuntime.custom.gui.surface.x11;
+      name = "bindContractPackage: a granted gui request bridges to the union (wayland)";
+      ok = boundRuntime.custom.gui.surface.enabled && boundRuntime.custom.gui.surface.wayland;
     }
 
     # bindContractPackage: ungranted request is inert

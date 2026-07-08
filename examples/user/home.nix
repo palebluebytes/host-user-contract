@@ -20,14 +20,12 @@
 # eval — so this fixture, which must evaluate in both, only emits its request.
 { ... }:
 {
-  # A host-affecting REQUEST: this user wants an X11 session. It is inert until a host
-  # GRANTS gui — then bindUser harvests it and the gui-session union offers X11 (ADR-0003).
-  # The user only asks; the host decides and writes.
-  contract.requests.gui.session = "x11";
-
   # The user's DESKTOP choice (ADR-0013): a free-form, DE-agnostic name that travels with the home.
+  # It is inert until a host GRANTS gui — then bindUser harvests it and the seat maps it to a real
+  # desktop (else its default). The session type (wayland/x11) is DERIVED from this desktop, never
+  # expressed as a user preference (ADR-0018): the gui-session union reads the desktop's mapped type.
   # Still just a request here (contract-pure, so the tracer harvests it); the contract's
   # homeModules.greeterDesktop helper materialises it to ~/.contract-desktop in a real home build,
-  # where the greeter's launcher reads it and maps it to a desktop the seat offers (else its default).
+  # where the greeter's launcher reads it.
   contract.requests.gui.desktop = "plasma";
 }

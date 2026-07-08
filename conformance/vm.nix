@@ -4,8 +4,8 @@
 # suite from the fleet, where it lived at `parts/checks/host-user-contract-vm` (ADR-0004:
 # the generic suite — including this VM — ships with the contract and gets independent CI).
 #
-# It boots ONE single-seat host that grants gui to two users with *different*
-# `gui.session` preferences (Wayland + X11) and proves the realization derived a display
+# It boots ONE single-seat host that grants gui to two users whose chosen desktops have
+# *different* session types (Wayland + X11, derived per ADR-0018) and proves the realization derived a display
 # surface offering BOTH sessions: the live system's session directory contains a plasma
 # Wayland session AND a plasma X11 session, and both user accounts activated. That is the
 # coexistence claim — two users log into their own session on one seat — observed on a
@@ -85,8 +85,13 @@ pkgs.testers.runNixOSTest {
           displayManager.sddm.wayland.enable = lib.mkIf (!surface.wayland) (lib.mkOverride 900 false);
         };
 
-        # Two gui users on one seat, each wanting a different session. The host grants gui
-        # to both; the realization unions their sessions (ADR-0003).
+        # Two gui users on one seat, each choosing a desktop of a different session type. The
+        # host maps each offered desktop to its type (ADR-0018); the realization unions the
+        # derived types (ADR-0003), so the seat offers both.
+        custom.gui.desktops = {
+          "plasma-wayland" = "wayland";
+          "plasma-x11" = "x11";
+        };
         custom.users.aurelia = {
           identity = {
             name = "Aurelia Wayland";
@@ -94,7 +99,7 @@ pkgs.testers.runNixOSTest {
             username = "aurelia";
           };
           granted.gui.enable = true;
-          gui.session = "wayland";
+          gui.desktop = "plasma-wayland";
         };
         custom.users.borealis = {
           identity = {
@@ -103,7 +108,7 @@ pkgs.testers.runNixOSTest {
             username = "borealis";
           };
           granted.gui.enable = true;
-          gui.session = "x11";
+          gui.desktop = "plasma-x11";
         };
       };
     };

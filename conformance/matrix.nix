@@ -40,7 +40,7 @@ let
     exposed = false;
     grantsFor =
       n:
-      # gui users carry a gui.session (mkUser sets it only when gui); cli users don't.
+      # gui users carry a gui.desktop (mkUser sets it only when gui); cli users don't.
       if users.${n}.custom.users.${n} ? gui then
         {
           gui.enable = true;

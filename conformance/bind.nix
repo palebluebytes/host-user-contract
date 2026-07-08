@@ -24,7 +24,7 @@ let
     grants = greeterGrants;
     hostFacts = exampleHostFacts;
   };
-  # No grants: the same gui.session request must be inert (never bridged).
+  # No grants: the same gui.desktop request must be inert (never bridged).
   boundNone = bindUser {
     userModule = exampleHome;
     identity = exampleIdentity;
@@ -61,7 +61,7 @@ let
     { config, ... }:
     {
       programs.git.userName = config.identity.name;
-      contract.requests.gui.session = "wayland";
+      contract.requests.gui.desktop = "wayland-de";
     };
   realBound =
     grants:
@@ -80,8 +80,8 @@ in
 {
   assertions = [
     {
-      name = "bindUser: the home evaluates and its gui.session request is harvested";
-      ok = (boundRuntime.home ? config) && boundRuntime.requests.gui.session == "x11";
+      name = "bindUser: the home evaluates and its gui.desktop request is harvested";
+      ok = (boundRuntime.home ? config) && boundRuntime.requests.gui.desktop == "plasma";
     }
     {
       name = "bindUser: the home HOLDS the injected identity (single loader, ADR-0009)";
@@ -94,8 +94,8 @@ in
         && boundHost.users.users.example.description == "Example User";
     }
     {
-      name = "bindUser: a safe-set grant bridges the gui request, feeding the union (x11)";
-      ok = boundHost.custom.gui.surface.enabled && boundHost.custom.gui.surface.x11;
+      name = "bindUser: a safe-set grant bridges the gui request, feeding the union (wayland)";
+      ok = boundHost.custom.gui.surface.enabled && boundHost.custom.gui.surface.wayland;
     }
     {
       name = "bindUser: an ungranted request is inert (no system feature config bridged)";
@@ -107,7 +107,7 @@ in
       name = "bindUserModule: a real home-manager home (programs.git) binds and evaluates";
       ok =
         realBoundRuntime.home-manager.users.example.programs.git.userName == "Example User"
-        && realBoundRuntime.home-manager.users.example.contract.requests.gui.session == "wayland";
+        && realBoundRuntime.home-manager.users.example.contract.requests.gui.desktop == "wayland-de";
     }
     {
       name = "bindUserModule: the account materializes from identity.json";

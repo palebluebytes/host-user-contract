@@ -40,27 +40,17 @@
       "dialout"
     ];
     config = {
-      # gui.session: which display session this user logs into. Host-affecting and
-      # UNION-aggregated by the realization (ADR-0003) — a Wayland user and an X11
-      # user coexist on one seat, each logging into their own. A user declares this;
-      # it NEVER sets services.xserver.enable directly.
-      gui.session = lib.mkOption {
-        type = lib.types.enum [
-          "wayland"
-          "x11"
-        ];
-        default = "wayland";
-        description = "Display session this user logs into; unioned across granted gui users by the realization.";
-      };
-      # gui.desktop: which DESKTOP this user logs into at a greeter (ADR-0013). FREE-FORM and
-      # DE-agnostic by design — the contract carries the user's opaque preference (so it travels
-      # with the home: same desktop on any seat that offers it, the portable-user north star); the
-      # SEAT maps the name to a real DE (custom.greeter.desktops) and an un-offered/empty name
-      # degrades to the seat default. NEVER names a system package.
+      # gui.desktop: which DESKTOP this user logs into (ADR-0013). FREE-FORM and DE-agnostic by
+      # design — the contract carries the user's opaque preference (so it travels with the home:
+      # same desktop on any seat that offers it, the portable-user north star); the SEAT maps the
+      # name to a real DE (custom.greeter.desktops at a greeter, custom.gui.desktops at build time)
+      # and an un-offered/empty name degrades to the seat default. NEVER names a system package.
+      # A user's session type (wayland/x11) is DERIVED from this desktop, never declared as a
+      # user preference — the gui-session union reads the desktop's mapped type (ADR-0018).
       gui.desktop = lib.mkOption {
         type = lib.types.str;
         default = "";
-        description = "Desktop this user logs into at a greeter; a free-form name the seat maps to an offered desktop (ADR-0013). Empty ⇒ the seat default.";
+        description = "Desktop this user logs into; a free-form name the seat maps to an offered desktop and its session type (ADR-0013, ADR-0018). Empty ⇒ the seat default.";
       };
     };
   };
