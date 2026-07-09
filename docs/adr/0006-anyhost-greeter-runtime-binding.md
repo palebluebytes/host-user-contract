@@ -77,7 +77,7 @@ authenticate on inert data *before* running any of the user's Nix:
   (as `git.nix` already falls back to `~/.ssh` without the `signing` grant). Contract
   secret-features satisfy this via the safe set; the user's personal secrets must gate likewise.
   A greeter-bound user gets a secret-free baseline; full secrets need the build-time path (where
-  the key lives). Restoring secrets at a greeter is deferred (issue 19 (fleet repo tracker)).
+  the key lives). Restoring secrets at a greeter is deferred.
 - **Portable users build their home with their *own* pkgs, not `useGlobalPkgs`.** Packages are
   the user's self-contained concern; overlays are `nixpkgs → nixpkgs` (arbitrary code), so a user
   must never *request* one — instead the user flake carries its overlays and they materialize
@@ -117,6 +117,6 @@ authenticate on inert data *before* running any of the user's Nix:
   runtime-provisioning helper.
 - Tier 2 (untrusted) is deferred but designed-for; its hardened eval + ephemeral provisioning is
   tracked as future work, not a blocker.
-- Portable kanata (slice 18 (fleet repo tracker))
+- Portable kanata
   stays build-time-only — a `kanata-with-cmd` keymap is host-executed user code (an exec payload),
   so it is excluded from the safe set and a greeter never grants it.

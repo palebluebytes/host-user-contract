@@ -37,7 +37,7 @@ packages.${system}.contractPackage =
     activationPackage = homeConfig.activationPackage;
     requests          = homeConfig.config.contract.requests;
     packages          = homeConfig.config.home.packages;  # top-level package names
-    username          = "inkpotmonkey";
+    username          = "<user>";
   };
 ```
 
@@ -54,7 +54,7 @@ $out/
 ```json
 {
   "version": 1,
-  "username": "inkpotmonkey",
+  "username": "<user>",
   "requests": {
     "gui": { "session": "wayland", "desktop": "plasma" }
   },

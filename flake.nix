@@ -83,7 +83,7 @@
         # Runtime proof (a booted VM): the gui-session union RENDERS — one seat, two gui
         # users with different sessions ⇒ both plasma session files live + both accounts
         # activated. Uses a test-only SDDM/Plasma binding the suite supplies (the contract
-        # itself is display-backend-agnostic). Moved here from the fleet (ADR-0004).
+        # itself is display-backend-agnostic). Moved here from its original in-repo home (ADR-0004).
         conformance-vm = import ./conformance/vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;

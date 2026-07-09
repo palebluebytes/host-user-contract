@@ -6,7 +6,7 @@ The greeter ([ADR-0006](0006-anyhost-greeter-runtime-binding.md)) binds an *exte
 flake — which forced the question the in-repo phase deferred (the "user surface becomes a
 flake emitting requests," [ADR-0002](0002-user-confinement-manifest-greeter.md)'s deeper slice-14): **what does a user repo export, and how
 does a host turn it into a running user?** This ADR fixes that shape. It is the prerequisite
-for the greeter and the design `users/inkpotmonkey/` will be split out to follow.
+for the greeter and the design `users/<user>/` will be split out to follow.
 
 ## What a user flake exports
 
@@ -68,7 +68,7 @@ paths ([ADR-0002](0002-user-confinement-manifest-greeter.md): one mechanism, opp
 
 - This makes the deferred slice-14 concrete: the user surface is a home-manager repo emitting
   `contract.requests`, harvested across the boundary by `bindUser` — no system slot.
-- `users/inkpotmonkey/` splits into a repo of this shape; `users/identity.nix`'s host glue
+- `users/<user>/` splits into a repo of this shape; `users/identity.nix`'s host glue
   becomes `bindUser`, and the home modules drop `useGlobalPkgs` + the host-applied overlays in
   favour of the user flake's own pkgs.
 - The contract gains a small surface: the `identity.json` convention (path + schema + a loader)

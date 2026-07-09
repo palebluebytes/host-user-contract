@@ -4,8 +4,8 @@
 
 The realization owns host-wide singletons so users don't fight over them (ADR-0001
 mechanic 5). But a user still has host-*affecting* preferences — most visibly, a
-gui user wants a **Wayland** session or an **X11** session. weedySeadragon makes
-this concrete: `inkpotmonkey` (Wayland) and `eyeofalligator` (X11) both log in, and
+gui user wants a **Wayland** session or an **X11** session. A two-user gui host makes
+this concrete: user A (Wayland) and user B (X11) both log in, and
 each had written a raw, conflicting `services.xserver.enable` (false vs true), so
 the host did not evaluate at all.
 
@@ -55,7 +55,7 @@ union the same way.
 ## Considered Options
 
 - **The host decides the display server** — rejected: it loses a user's exact
-  config. Forcing Wayland drops eyeofalligator's X11; forcing X11 drops inkpotmonkey's
+  config. Forcing Wayland drops user B's X11; forcing X11 drops user A's
   Wayland. The point is that each keeps *their* session.
 - **Confine users so the conflict is impossible (model C)** — deferred, not rejected
   (ADR-0001 mechanic 7 / the model-C meta issue). It is the stronger, bypass-proof
@@ -64,4 +64,4 @@ union the same way.
 - **Let users set the host singleton with priorities** (`mkForce`/`mkDefault`) —
   rejected: two `mkDefault`s of different values still conflict, and `mkForce` merely
   picks a winner, *silently dropping* the other user's choice. That is the
-  weedySeadragon bug papered over, not fixed.
+  two-users-different-sessions bug papered over, not fixed.

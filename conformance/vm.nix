@@ -1,7 +1,7 @@
 # Runtime VM smoke for the gui-session union (ADR-0003) — the one piece of the
 # contract's regression gate that genuinely needs a booted machine rather than a pure
 # eval (the eval-level decision lives in ./default.nix). Ported into the contract's own
-# suite from the fleet, where it lived at `parts/checks/host-user-contract-vm` (ADR-0004:
+# suite from its original in-repo location (ADR-0004:
 # the generic suite — including this VM — ships with the contract and gets independent CI).
 #
 # It boots ONE single-seat host that grants gui to two users whose chosen desktops have

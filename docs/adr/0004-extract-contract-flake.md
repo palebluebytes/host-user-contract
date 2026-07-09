@@ -37,7 +37,7 @@ display flags, insecure permits, safe set) must be **byte-identical** before and
   `privilegedGroups`, `safeSet`) the host reads where it wires grants and recipients.
   À-la-carte modules buy nothing — no host wants the schema without the realization.
 - **The contract depends only on nixpkgs `lib`.** The single package-ecosystem coupling —
-  the emacs overlay in `features/gui.nix` — is **moved out**: it is inkpotmonkey's package
+  the emacs overlay in `features/gui.nix` — is **moved out**: it is a user's package
   choice, not part of the neutral interface, and is reapplied host-side where a gui user
   actually wants it. The contract flake takes no `emacs-overlay` input.
 - **`lib` splits along intrinsic-vs-fleet.** The contract flake's `lib` holds
@@ -55,7 +55,7 @@ display flags, insecure permits, safe set) must be **byte-identical** before and
   suite supplies to render the otherwise backend-agnostic decision (the shipped contract
   names no display backend; the *test* picks one). It gains independent CI (testable with
   no host repo). The host keeps only a thin **coherence gate**: every *real* host's
-  trait-tuple is covered by an archetype, and the real inkpotmonkey manifest realizes.
+  trait-tuple is covered by an archetype, and the real user manifest realizes.
 - **The platform binding stays host-side.** The contract ships only the typed `platform`
   *interface*; the host supplies the *binding* (`config.custom.platform = …`, which reads
   `inputs.secrets`) via a small host-side module — one per eval-side. That keeps every

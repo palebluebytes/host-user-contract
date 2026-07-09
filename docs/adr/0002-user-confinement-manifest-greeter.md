@@ -57,11 +57,11 @@ grants, never a write the user performs.**
 This closes three leaks present in the in-tree "model A" posture today:
 
 1. **The clamp bypass.** The slice-04 clamp filters `identity.extraGroups`, but
-   `users/inkpotmonkey/nixos/default.nix` writes `users.users.inkpotmonkey.extraGroups`
+   `users/<user>/nixos/default.nix` writes `users.users.<user>.extraGroups`
    *directly* with `disk`, `qemu-libvirtd`, `libvirtd` — privileged groups — which
    list-merge in past the clamp. A home-manager config has no `users.users` to write.
 2. **The self-grant.** The `gui` variant sets
-   `custom.users.inkpotmonkey.granted.gui.enable = true` — a user module granting its
+   `custom.users.<user>.granted.gui.enable = true` — a user module granting its
    own feature. `granted.*` is **host-write-only**; a request can offer gui, never grant it.
 3. **The raw-`osConfig` read.** The home module reads the entire system config tree to
    adapt; it should see only a restricted projection (below).
@@ -91,7 +91,7 @@ It is **self-scoped** (this user's grants only — never another user's identity
 or secrets, and never a secret value). `hostName` is **deliberately excluded**: branching
 on host *identity* is the model-A coupling that defeats "works on any host," so the
 projection forces adaptation onto *semantic* facts. This converts the last identity
-branch — the signing key gated on `hostName ∈ {kelpy, stargazer, sawtoothShark}` — into a
+branch — the signing key gated on `hostName ∈ {a fixed host allow-list}` — into a
 `signing` **feature**: those hosts *grant signing* instead of being named in a list. If a
 genuine need for a stable build-time device name appears, a narrow `deviceName` fact is
 added deliberately, rather than re-opening raw `hostName`.
@@ -143,7 +143,7 @@ turns leak #1 into a structural boundary and makes the code-exec surface explici
 
 We also keep two host-side notions distinct, because only one carries security weight:
 
-- **Incapacity** — a *headless* host (kelpy, rk1a, a Pi) has no display, so no greeter,
+- **Incapacity** — a *headless* host (an agent node, an SBC, a Pi) has no display, so no greeter,
   so the runtime path simply does not exist there. This is not a "ban."
 - **Prohibition** — a host *forbidding* a feature it otherwise could run (the generalized
   exposed-host rule). This is the security verb; do not dilute it by modeling "no screen"
@@ -199,7 +199,7 @@ defer:
    user-domain config — the gui-session union already works that way today ([ADR-0003](0003-feature-configuration-aggregates.md)), so
    the prototype can start there and adopt session-as-request later.
 3. **home-manager version skew on the critical path** — because the user surface *is*
-   home-manager, ADR-0014's skew (e.g. `porcupineFish`) is central, not an edge.
+   home-manager, the version-skew case (e.g. a host pinned to an older nixpkgs) is central, not an edge.
    Mitigation: the contract's feature modules pin the *host's* home-manager; the prototype
    starts on hosts that share one HM and defers the multi-HM case.
 

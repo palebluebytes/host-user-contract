@@ -23,7 +23,7 @@ the term is stable, the code is pending (see the cited issue).
   **grants** features, and supplies **bindings**. Sovereign: it runs only what it grants.
 - **user** — a public identity + home config + the features it *offers*; host-agnostic (it
   never names a secrets backend or a host's `self`/inputs). Target shape: a home-manager
-  config repo consumed via `bindUser` (ADR-0007); today still in-repo in the fleet.
+  config repo consumed via `bindUser` (ADR-0007); today still in-repo in the consuming host repo.
 - **umbrella / kit** — the assembled shipped surface (`kit.nix`). `nixosModules.default` =
   the `custom.users` schema + `platform` interface + `custom.host.exposed` + the
   exposed-host ban + realization + the insecure-package aggregator. `nixosModules.greeter` =
@@ -345,8 +345,8 @@ the term is stable, the code is pending (see the cited issue).
   (provisioning crux), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
   `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
   `daemon-restricted-vm.nix` (hello on PATH, curl absent, daemon refused).
-- **coherence gate** — the thin host-side check (in the fleet) that every real host's
-  trait-tuple is archetype-covered and the real manifest realizes — the fleet's tie-back to
+- **coherence gate** — the thin host-side check (in the consuming repo) that every real host's
+  trait-tuple is archetype-covered and the real manifest realizes — the consuming repo's tie-back to
   the contract suite. (ADR-0004)
 
 ## Terms to keep distinct
