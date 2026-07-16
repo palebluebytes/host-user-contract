@@ -63,6 +63,12 @@ let
         homeGreeterDesktopModule
         ;
     })
+    (import ./confinement.nix {
+      inherit
+        lib
+        toolkit
+        ;
+    })
     (import ./bind.nix {
       inherit
         toolkit
