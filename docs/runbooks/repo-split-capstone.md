@@ -152,14 +152,104 @@ user on kelpy makes the build fail the exposed-host assertion.
 
 ---
 
+## Stage 7 — automated proof: the integration test rig (issue #1 T4)
+
+Criteria 3 and 6 are proven in CI **without touching any production host** by a two-node
+integration test, `~/code/nixos/parts/checks/prebuilt-bind-external/`
+(`nix build .#checks.<system>.prebuilt_bind_external`). It binds the **real** external user home via
+`bindContractPackage` on two synthetic seats:
+
+- **`exposed`** — `custom.host.exposed = true`, grants `workstation` only. Proves criterion 6: the
+  account materializes, the home activates, git falls back to `~/.ssh`, and **no** signing secret
+  is present.
+- **`trusted`** — grants `signing`, and holds a throwaway key so sops-nix decrypts at runtime.
+  Proves criterion 3 (runtime half): git's `signingkey` resolves to the sops-decrypted own-secrets
+  secret (a real, dummy key).
+
+Both seats bind a **generic test identity** (`tests/identity.json` — a throwaway `testuser` +
+password), built from the *real* home modules, so the rig never fabricates an account from the real
+user's credentials. The signing modules are keyed on `config.identity.username`, so the same module
+serves the real user and the test user.
+
+> **Contract fix surfaced by this rig.** `bindContractPackage`'s activation service originally ran
+> `activate` as `User=<u>` with only `HOME=` — enough for the synthetic conformance package, but a
+> real home-manager `activate` needs a login session (USER, PATH, a user systemd manager +
+> `XDG_RUNTIME_DIR`) for its `sd-switch` step. `lib.nix` now runs it via
+> `runuser -l <user> -c activate`; a seat should also **linger** the user so the home's user
+> services persist past activation.
+
+## The self-contained-user case — `signing` rides the USER's key, not a host recipient
+
+Stages 4–5 describe re-key/rotate for a feature whose secret has **host recipients**
+(`featureMeta.<f>.secretFiles`, driven by `mkFeatureRecipients`). The tracer feature `signing` is
+**not** one of these: it is `secretBearing` but declares **no** `secretFiles`. Its key rides the
+**user's own** home sops, decrypted by the user's own age key ([ADR-0019](../adr/0019-login-credential-travels-with-the-user.md),
+the self-contained-user invariant: no host may own a user credential, else the north star's *any
+host × any user* breaks).
+
+For such a feature:
+
+- **`mkFeatureRecipients` / `just sops-recipients` returns `{}`** — no host is ever a recipient, so
+  there is nothing to re-key on grant and nothing to remove on revoke. That empty set *is* the
+  criterion-6 guarantee in another form: the exposed host cannot hold what no host holds.
+- **"Revoke + rotate" (criterion 4) is a USER-repo operation:** rotate the key in the user repo's
+  own secrets (`sops secrets/users/<user>.yaml`), bump the public half in the home's `git.nix`,
+  re-publish the user flake, then `nix flake update <user-input>` in the fleet — the trusted seat
+  picks up the new key; the exposed seat is unaffected (it never had it).
+
+Both re-key models coexist: **host-recipient features** use stages 4–5 (`mkFeatureRecipients` +
+`sops updatekeys`); **user-key features** like `signing` rotate user-side. The capstone's tracer
+exercises the latter.
+
+---
+
+## Stage 8 — publish & lock-bump ordering (T7)
+
+**External/human, and ORDER-SENSITIVE.** During development the fleet's `prebuilt_bind_external`
+check (Stage 7) is green **only** with dev overrides:
+
+```
+nix build .#checks.<system>.prebuilt_bind_external \
+  --override-input contract path:/home/inkpotmonkey/code/host-user-contract \
+  --override-input users    path:/home/inkpotmonkey/code/users
+```
+
+That override is load-bearing, not a convenience: the committed `flake.lock` pins an **older
+contract rev that predates the `runuser -l` activation fix** (Stage 7), so binding it makes
+`contract-activate-<user>.service` time out; and `users` is a local `path:` input **absent in any
+clean CI checkout**. So the check is RED under the committed lock until the inputs are published.
+Do this in order — a later step depending on an earlier one:
+
+1. **Publish the contract** with the `runuser -l` fix committed (`host-user-contract` remote).
+2. **Bump the fleet's contract pin:** `nix flake update contract`. The lock now carries the fix, so
+   the activation service no longer times out.
+3. **Publish `users`** (`palebluebytes/users` remote) with everything committed.
+4. **Flip the fleet's `users` input** `path:` → `github:palebluebytes/users` and
+   `nix flake update users`.
+5. **Only now** does `nix build .#checks.<system>.prebuilt_bind_external` pass with **no** overrides
+   — that green-without-overrides is the gate that the cutover inputs are actually published and
+   pinned. Run it before relying on any production `bindContractPackage`.
+
+> Until step 5 passes clean, **no production host may bind via `bindContractPackage`** — it would
+> pin the same stale/absent inputs the check is guarding against.
+
+---
+
 ## Acceptance checklist
 
-- [ ] **1.** User lives in a separate repo of the ADR-0007 shape, consumed only via `bindUser`. *(stages 1, 3)*
-- [ ] **2.** Out-of-universe options are *unexpressible*, not merely rejected. *(stage 1; proven by `conformance/confinement.nix`)*
-- [ ] **3.** A host enables the user as an input and builds; granting a secret feature re-keys and the secret resolves at runtime. *(stages 3, 4)*
-- [ ] **4.** Revoking a feature removes the recipient and rotates. *(stage 5)*
-- [ ] **5.** `hashedPassword` handling matches the visibility decision; rationale recorded. *(stage 2)*
-- [ ] **6.** The exposed host (`kelpy`) is login-only and holds no feature secrets. *(stage 6)*
+- [x] **1.** User lives in a separate repo of the ADR-0007 shape, consumed via `bindContractPackage`. *(stages 1, 3; the `inkpotmonkey-home` repo + fleet input)*
+- [x] **2.** Out-of-universe options are *unexpressible*, not merely rejected. *(stage 1; proven by `conformance/confinement.nix` generically + the user repo's `home-confinement` check against its real modules)*
+- [x] **3.** A host enables the user as an input and builds; granting a secret feature resolves the secret at runtime. *(stage 7 `trusted` node; for `signing` there is no host re-key — see the self-contained-user case)*
+- [x] **4.** Revoking a feature removes the recipient and rotates — **reframed** for a user-key feature: no host recipient exists, so rotate is user-side. *(self-contained-user case)*
+- [x] **5.** `hashedPassword` handling matches the visibility decision (public → yescrypt in `identity.json`); rationale recorded. *(stage 2; [ADR-0019](../adr/0019-login-credential-travels-with-the-user.md), user repo `identity-yescrypt` check)*
+- [x] **6.** The exposed host is login-only and holds no feature secrets. *(stage 7 `exposed` node; production `kelpy` cutover deferred to post full-home migration)*
+
+> **Tracer status (issue #1).** The mechanism is proven end-to-end on a `base`+`git`+`signing`
+> tracer home + the two-node integration rig (green with the Stage 8 dev overrides). Rewiring the 8
+> **production** hosts to `bindContractPackage` is deferred until (a) the inputs are published and
+> the lock bumped so the check is green with **no** overrides (Stage 8), and (b) the full home
+> (gui/emacs/ai/git-annex) migrates into the user repo — binding the tracer home to a production
+> host would strip that environment.
 
 ## What the contract already guarantees (do not re-implement)
 

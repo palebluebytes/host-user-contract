@@ -26,10 +26,13 @@ contract ships).
 | [0015](0015-greeter-secret-provisioning.md) | Greeter secret provisioning is one seam with a staged strength spectrum (password-unlock v1; phone-escrow planned; hardware on-demand) |
 | [0016](0016-prebuilt-binding-mode.md) | Pre-built binding mode: user CI produces `contractPackage`; the host pins, reads, and activates it |
 | [0017](0017-daemon-restricted-user-package-policy.md) | Daemon-restricted users and host-built package profiles: the `nix-daemon` feature, package policy, and graceful degradation |
+| [0018](0018-session-type-derives-from-desktop.md) | Session type derives from the desktop; `gui.session` is retired as user-facing vocabulary |
+| [0019](0019-login-credential-travels-with-the-user.md) | The login credential travels with the user as public data; visibility picks the hash strength |
+| [0020](0020-multi-user-repo-shape.md) | The `users` repo: a multi-user grouping of the operator's own accounts (extends 0007) |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0017`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0020`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme
