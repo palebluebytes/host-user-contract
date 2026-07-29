@@ -63,7 +63,10 @@ let
   # as a flake input. `activationPackage` is the home-manager activation package (has
   # `$out/activate`); `requests` is the evaluated `contract.requests` attrset; `packages` is the
   # list of package derivations from `home.packages` — pname/name is extracted for the manifest
-  # (the host needs names, not store paths); `username` is the account name.
+  # (the host needs names, not store paths); `username` is the account name; `grants` is the grant
+  # set the home was BUILT with — its enabled feature names are baked into the manifest so a host
+  # `bindContractPackage` can prove its own grant matches the baked variant (the secret-bearing
+  # coupling, ADR-0016: "the grant baked into the home MUST match the grant the host passes").
   #
   # The manifest is serialized to a store path at EVAL TIME via `builtins.toFile` (pure, no IFD),
   # then copied into the derivation during the build. The derivation is content-addressed: the
@@ -75,14 +78,17 @@ let
       requests,
       packages,
       username,
+      grants ? { },
     }:
     let
       packageNames = map (p: p.pname or (builtins.parseDrvName p.name).name) packages;
       manifestFile = builtins.toFile "contract-requests-${username}.json" (
         builtins.toJSON {
-          version = 1;
+          version = 2;
           inherit username requests;
           packages = packageNames;
+          # The enabled feature names the home was baked with (ADR-0016 coupling guard).
+          granted = grantedNamesOf grants;
         }
       );
     in
@@ -119,9 +125,37 @@ let
       userPackages = manifest.packages or [ ];
       approvedNames = lib.filter (n: lib.elem n allowedPrograms) userPackages;
       approvedPkgs = lib.filter (p: p != null) (map (n: pkgs.${n} or null) approvedNames);
+
+      # Grant/variant coupling guard (ADR-0016): a pre-built home BAKES its secret declaration at
+      # the user's build time (e.g. `signing` names its sops secret only when granted). If the host
+      # grant and the baked variant disagree on a SECRET-BEARING feature, the account silently
+      # misbehaves — a host granting `signing` over a crypto-free package gets no secret (git falls
+      # back), and the inverse bakes a secret the host never powers. So assert the two agree on the
+      # secret-bearing subset. Non-secret host powers (workstation/gui) legitimately differ from the
+      # baked set — they don't change the home — so they are excluded from the comparison. Older
+      # packages (manifest v1, no `granted`) default to `[]`, correctly flagging a signing mismatch.
+      secretBearing = f: featureMeta.${f}.secretBearing or false;
+      hostSecretGrants = lib.sort (a: b: a < b) (lib.filter secretBearing (grantedNamesOf grants));
+      bakedSecretGrants = lib.sort (a: b: a < b) (lib.filter secretBearing (manifest.granted or [ ]));
     in
     {
+      assertions = [
+        {
+          assertion = hostSecretGrants == bakedSecretGrants;
+          message =
+            "bindContractPackage: ${username}'s host secret-bearing grants "
+            + "[${lib.concatStringsSep " " hostSecretGrants}] do not match the grants baked into the "
+            + "contract package [${lib.concatStringsSep " " bakedSecretGrants}]. Bind the package "
+            + "variant built for these grants (ADR-0016: the baked grant must match the host grant).";
+        }
+      ];
+
       custom.users.${username} = mkUserAccount { inherit identity grants requests; };
+      # A login session that PERSISTS past activation: the home's user systemd services (sd-switch,
+      # sops-nix) must keep running after the `runuser -l` activation exits, so the binding lingers
+      # the user itself rather than leaving it a per-seat "should" (issue #1 review: linger was
+      # unenforced — a production seat that forgot it silently degraded to non-persistent services).
+      users.users.${username}.linger = true;
       # A systemd oneshot service (not system.activationScripts) so it runs after PAM is
       # configured. activationScripts run during the initrd activation phase where runuser/su
       # cannot open /etc/pam.conf yet — a oneshot service executes post-boot under the full
@@ -135,9 +169,14 @@ let
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
-          User = username;
-          Environment = "HOME=/home/${username}";
-          ExecStart = "${contractPackage}/activate";
+          # Run the home activation inside a real LOGIN session for the user (root → `runuser -l`),
+          # NOT as `User=<u>` with a bare HOME. A REAL home-manager `activate` needs USER, a login
+          # PATH, and — for its sd-switch/reloadSystemd step — a running user systemd manager plus
+          # XDG_RUNTIME_DIR, all of which pam_systemd provisions on a login session. `User=<u>` +
+          # `HOME=` alone activates a TRIVIAL script but a real home's activation fails there
+          # (issue #1 integration: sd-switch could not reach the user manager). A seat that wants
+          # the home's user services to PERSIST past activation should also linger the user.
+          ExecStart = "${pkgs.util-linux}/bin/runuser -l ${username} -c ${contractPackage}/activate";
         }
         // (
           if allowedPrograms != [ ] then
@@ -150,8 +189,8 @@ let
             in
             {
               # After activate, replace ~/.nix-profile with the host-built policy profile
-              # (intersection of allowedPrograms and user's manifest packages).
-              ExecStartPost = "${pkgs.coreutils}/bin/ln -sfn ${profileEnv} /home/${username}/.nix-profile";
+              # (intersection of allowedPrograms and user's manifest packages), as the user.
+              ExecStartPost = "${pkgs.util-linux}/bin/runuser -l ${username} -c '${pkgs.coreutils}/bin/ln -sfn ${profileEnv} /home/${username}/.nix-profile'";
             }
           else
             { }
