@@ -1,6 +1,6 @@
-# Conformance domain: the cross-product proof — synthetic users (wayland / x11 / cli) × host
+# Conformance domain: the cross-product proof — synthetic users (two gui / one cli) × host
 # archetypes (workstation / exposed agent / headless). Every user realizes on every archetype with
-# no failing assertion, and the gui-session union/exposed-host behaviour holds per archetype.
+# no failing assertion, and the session-agnostic gui-surface/exposed-host behaviour holds per archetype.
 {
   lib,
   toolkit,
@@ -14,8 +14,8 @@ let
     ;
 
   users = {
-    alice = mkUser "alice" { session = "wayland"; };
-    bob = mkUser "bob" { session = "x11"; };
+    alice = mkUser "alice" { desktop = "plasma"; };
+    bob = mkUser "bob" { desktop = "gnome"; };
     carol = mkUser "carol" { gui = false; };
   };
   userNames = [
@@ -71,9 +71,10 @@ in
       ok = lib.all (sys: (accountsRealized sys) && (failing sys.config == [ ])) archetypes;
     }
     {
-      name = "matrix: the workstation archetype offers both sessions (alice wayland + bob x11)";
-      ok =
-        workstationArch.config.custom.gui.surface.wayland && workstationArch.config.custom.gui.surface.x11;
+      # Session-agnostic (ADR-0021): granting gui to the two gui users ⇒ the archetype needs a
+      # display surface. Which session type each desktop runs is the seat's concern, not asserted here.
+      name = "matrix: the workstation archetype needs a display surface (its gui users are granted)";
+      ok = workstationArch.config.custom.gui.surface.enabled;
     }
     {
       name = "matrix: the headless archetype needs no display surface";

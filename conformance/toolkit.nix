@@ -32,15 +32,6 @@ rec {
             secretFile = _: builtins.toFile "stub-secret" "";
             secretPath = _: builtins.toFile "stub-secret" "";
           };
-          # ADR-0018: the fixture host's desktop→type map. mkUser's `session` param selects a
-          # `<session>-de` desktop here, so the union derives that session type; "plasma" is the
-          # example user's desktop (a wayland session, as greeter-desktop-plasma launches
-          # startplasma-wayland).
-          custom.gui.desktops = {
-            "wayland-de" = "wayland";
-            "x11-de" = "x11";
-            plasma = "wayland";
-          };
         }
       ]
       ++ mods;
@@ -48,14 +39,14 @@ rec {
   eval = mods: (base mods).config;
 
   # A synthetic manifest — pure data, exactly as a real one: identity + (for gui) a chosen
-  # desktop, no grants (the host grants), no system config. `session` selects which fixture
-  # desktop the gui user picks (a `<session>-de` entry in the host's custom.gui.desktops map),
-  # so the derived session type is `session` (ADR-0018).
+  # desktop NAME, no grants (the host grants), no system config. `desktop` is a free-form name
+  # the user requests; the contract does not map it to a session type — that is the seat's
+  # concern (ADR-0021). It defaults to "plasma" (the example user's desktop).
   mkUser =
     name:
     {
       gui ? true,
-      session ? "wayland",
+      desktop ? "plasma",
     }:
     {
       custom.users.${name} = {
@@ -65,7 +56,7 @@ rec {
           username = name;
         };
       }
-      // lib.optionalAttrs gui { gui.desktop = "${session}-de"; };
+      // lib.optionalAttrs gui { gui.desktop = desktop; };
     };
   grant = name: features: { custom.users.${name}.granted = features; };
 

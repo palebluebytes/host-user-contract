@@ -12,10 +12,11 @@
 # NOTE on GNOME: gnome-shell/mutter standalone (no GDM) does not start-and-cleanly-exit when launched
 # as a bare greetd session command — a full DE expects a display manager + systemd user session, not
 # the greeter's bare session exec. So "a GNOME session then another" is a display-MANAGER scenario,
-# not a greeter-session-launch one; the greeter's job (decide the type, exec the host-bound backend)
-# is what this proves, with two compositors that DO launch+exit cleanly. A seat that wants GNOME binds
-# a GNOME launcher to custom.greeter.session.wayland; rendering a full DE is the host backend's concern
-# (the consumer-renders boundary), exactly as the gui-union VM renders Plasma via a host SDDM binding.
+# not a greeter-session-launch one; the greeter's job (select the desktop, exec the host-bound
+# self-contained command — the seat owns the session type, ADR-0021) is what this proves, with two
+# compositors that DO launch+exit cleanly. A seat that wants GNOME binds a GNOME launcher to
+# custom.greeter.desktops.<name>.command; rendering a full DE is the host backend's concern
+# (the consumer-renders boundary), exactly as the gui-surface VM renders Plasma via a host SDDM binding.
 {
   pkgs,
   system,
@@ -75,10 +76,8 @@ pkgs.testers.runNixOSTest {
       };
 
       custom.greeter.enable = true;
-      custom.greeter.desktops.sequence = {
-        type = "wayland";
-        command = "${sequence}";
-      };
+      # The desktop is a self-contained command; the seat owns the session type (ADR-0021).
+      custom.greeter.desktops.sequence.command = "${sequence}";
       custom.greeter.defaultDesktop = "sequence";
       services.greetd.settings.initial_session = lib.mkForce {
         user = "alice";

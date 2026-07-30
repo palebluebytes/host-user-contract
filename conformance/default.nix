@@ -4,8 +4,9 @@
 # what gives the contract independent CI and protects it for every consumer.
 #
 # Because the display *backend* is a host binding (the contract only decides), this suite
-# asserts the session-union DECISION (custom.gui.surface), not SDDM/Plasma. The rendering
-# test (the gui-union VM) and the real-fleet coherence gate stay in the host repo.
+# asserts the session-agnostic gui-surface DECISION (custom.gui.surface.enabled), not SDDM/Plasma;
+# the session type is the seat's concern (ADR-0021). The rendering test (the gui-surface VM) and
+# the real-fleet coherence gate stay in the host repo.
 #
 # Structure: ./toolkit.nix builds the shared synthetic-world fixtures once; each domain file
 # (./realization.nix, ./requests.nix, ./bind.nix, ./greeter.nix, ./matrix.nix) is a focused list

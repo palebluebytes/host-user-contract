@@ -58,10 +58,8 @@ pkgs.testers.runNixOSTest {
       # The seat offers the DE; the greeter launches its session entry as the user (greetd's seat
       # session gives it the systemd-user instance + D-Bus + DRM a full DE needs).
       custom.greeter.enable = true;
-      custom.greeter.desktops.${de.name} = {
-        type = "wayland";
-        command = de.command;
-      };
+      # The DE's session-entry command is self-contained (the seat owns the session type, ADR-0021).
+      custom.greeter.desktops.${de.name}.command = de.command;
       custom.greeter.defaultDesktop = de.name;
       services.greetd.settings.initial_session = lib.mkForce {
         user = "alice";

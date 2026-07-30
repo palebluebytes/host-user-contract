@@ -1,32 +1,31 @@
-# Runtime VM smoke for the gui-session union (ADR-0003) — the one piece of the
-# contract's regression gate that genuinely needs a booted machine rather than a pure
-# eval (the eval-level decision lives in ./default.nix). Ported into the contract's own
-# suite from its original in-repo location (ADR-0004:
-# the generic suite — including this VM — ships with the contract and gets independent CI).
+# Runtime VM for the gui-surface decision (session-agnostic, ADR-0021) — the one piece of the
+# contract's regression gate that genuinely needs a booted machine rather than a pure eval (the
+# eval-level decision lives in ./default.nix). Ported into the contract's own suite from its
+# original in-repo location (ADR-0004: the generic suite — including this VM — ships with the
+# contract and gets independent CI).
 #
-# It boots ONE single-seat host that grants gui to two users whose chosen desktops have
-# *different* session types (Wayland + X11, derived per ADR-0018) and proves the realization derived a display
-# surface offering BOTH sessions: the live system's session directory contains a plasma
-# Wayland session AND a plasma X11 session, and both user accounts activated. That is the
-# coexistence claim — two users log into their own session on one seat — observed on a
-# real machine, not just in the option tree.
+# It boots ONE single-seat host that grants gui to a user and proves the realization asked for a
+# display surface (custom.gui.surface.enabled) AND that a host-side binding, reading only that
+# neutral flag, renders a live session directory: the system's session directory contains a plasma
+# session and the user account activated. That is the contract's claim — a granted gui user brings
+# up a session on the seat — observed on a real machine, not just in the option tree.
 #
-# The contract is display-backend-agnostic (it decides `custom.gui.surface`; a host's
-# binding renders it — ADR-0005 review), so this suite supplies its OWN minimal test
-# binding (SDDM + Plasma 6) to render the decision, exactly the role a host's
-# gui-desktop binding plays in production. The shipped contract module stays neutral; the
-# *test* picks a backend, the same way ./default.nix stubs the platform interface.
+# The contract is display-server-AGNOSTIC (ADR-0021): it decides `custom.gui.surface.enabled` and
+# never knows or decides wayland vs x11 — the SESSION TYPE is wholly the seat's concern. So this
+# suite supplies its OWN minimal test binding (SDDM + Plasma 6) to render the decision, exactly the
+# role a host's gui-desktop binding plays in production. The shipped contract module stays neutral;
+# the *test* picks a backend, the same way ./default.nix stubs the platform interface.
 #
-# Lean by design: the display-manager unit is present but not pulled in at boot (we only
-# assert the assembled session *artifacts* + account activation), so the VM reaches
-# multi-user without starting a graphical greeter.
+# Lean by design: the display-manager unit is present but not pulled in at boot (we only assert the
+# assembled session *artifacts* + account activation), so the VM reaches multi-user without starting
+# a graphical greeter.
 {
   pkgs,
   contractModule,
   system,
 }:
 pkgs.testers.runNixOSTest {
-  name = "contract-gui-union";
+  name = "contract-gui-surface";
 
   # The contract umbrella imports insecure-packages.nix, which writes `nixpkgs.config`
   # (the single permittedInsecurePackages writer). That conflicts with the test driver's
@@ -43,9 +42,9 @@ pkgs.testers.runNixOSTest {
       surface = config.custom.gui.surface;
     in
     {
-      # Brings the `custom.users` schema + the host-invariant realization that derives
-      # the gui-session decision (custom.gui.surface). Depends only on lib — no `self`,
-      # no `inputs`, so (unlike the fleet original) the node needs no specialArgs.
+      # Brings the `custom.users` schema + the host-invariant realization that derives the
+      # session-agnostic gui-surface decision (custom.gui.surface.enabled). Depends only on lib —
+      # no `self`, no `inputs`, so (unlike the fleet original) the node needs no specialArgs.
       imports = [ contractModule ];
 
       config = {
@@ -70,45 +69,28 @@ pkgs.testers.runNixOSTest {
         # unit), so we reach multi-user without a graphical login.
         systemd.services.display-manager.wantedBy = lib.mkForce [ ];
 
-        # The suite's OWN test display binding — renders custom.gui.surface with SDDM +
-        # Plasma 6. This is NOT part of the shipped contract (a real host supplies its own
-        # gui-desktop binding); it lives here so the contract's runtime proof needs no
-        # host repo. Mirrors the rendering bits of a production gui-desktop binding.
+        # The suite's OWN test display binding — renders the neutral custom.gui.surface.enabled
+        # flag with SDDM + Plasma 6. This is NOT part of the shipped contract (a real host supplies
+        # its own gui-desktop binding); it lives here so the contract's runtime proof needs no host
+        # repo. The SEAT (this binding) picks the session type — Plasma's default Wayland session —
+        # not the contract (ADR-0021).
         services = lib.mkIf surface.enabled {
           displayManager.sddm.enable = lib.mkDefault true;
           displayManager.defaultSession = lib.mkDefault "plasma";
           desktopManager.plasma6.enable = lib.mkDefault true;
-          # Offer X11 iff some granted gui user wants it.
-          xserver.enable = lib.mkDefault surface.x11;
-          # plasma6 defaults the Wayland greeter on; keep it when the union includes a
-          # Wayland user, override it off when the union is X11-only (ADR-0003 priority).
-          displayManager.sddm.wayland.enable = lib.mkIf (!surface.wayland) (lib.mkOverride 900 false);
         };
 
-        # Two gui users on one seat, each choosing a desktop of a different session type. The
-        # host maps each offered desktop to its type (ADR-0018); the realization unions the
-        # derived types (ADR-0003), so the seat offers both.
-        custom.gui.desktops = {
-          "plasma-wayland" = "wayland";
-          "plasma-x11" = "x11";
-        };
+        # One gui user on the seat, choosing a desktop by its free-form NAME. The realization sees
+        # the grant and asks for a surface (custom.gui.surface.enabled); the session type its
+        # desktop runs as is the seat binding's concern (ADR-0021).
         custom.users.aurelia = {
           identity = {
-            name = "Aurelia Wayland";
+            name = "Aurelia Example";
             email = "aurelia@example.invalid";
             username = "aurelia";
           };
           granted.gui.enable = true;
-          gui.desktop = "plasma-wayland";
-        };
-        custom.users.borealis = {
-          identity = {
-            name = "Borealis X11";
-            email = "borealis@example.invalid";
-            username = "borealis";
-          };
-          granted.gui.enable = true;
-          gui.desktop = "plasma-x11";
+          gui.desktop = "plasma";
         };
       };
     };
@@ -124,15 +106,13 @@ pkgs.testers.runNixOSTest {
       machine.start()
       machine.wait_for_unit("multi-user.target")
 
-      # The union artifact: the host offers BOTH a Wayland and an X11 plasma session, so
-      # each granted gui user logs into their own on this single seat.
+      # The surface artifact: the seat binding rendered a live plasma session for the granted gui
+      # user (Plasma's default is Wayland — the seat's choice, not the contract's).
       machine.succeed("ls ${sessions}/share/wayland-sessions/ | grep -qi plasma")
-      machine.succeed("ls ${sessions}/share/xsessions/ | grep -qi plasma")
 
-      # Both gui users are realized as real accounts on the booted host.
+      # The gui user is realized as a real account on the booted host.
       machine.succeed("getent passwd aurelia")
-      machine.succeed("getent passwd borealis")
 
-      print(machine.succeed("ls ${sessions}/share/wayland-sessions/ ${sessions}/share/xsessions/"))
+      print(machine.succeed("ls ${sessions}/share/wayland-sessions/"))
     '';
 }

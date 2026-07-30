@@ -11,7 +11,7 @@ contract ships).
 | --- | --- |
 | [0001](0001-host-user-contract.md) | Hosts and users live in separate repos, bound by a shared contract |
 | [0002](0002-user-confinement-manifest-greeter.md) | A user is a home-manager module: requests, feature modules, and the anyHost greeter |
-| [0003](0003-feature-configuration-aggregates.md) | Host-affecting feature configuration aggregates across granted users (the gui-session union) |
+| [0003](0003-feature-configuration-aggregates.md) | Host-affecting feature configuration aggregates across granted users — the gui-session union (superseded by [0021](0021-contract-display-server-agnostic.md)) |
 | [0004](0004-extract-contract-flake.md) | The contract lives in its own flake, delivered as a registry-baked kit |
 | [0005](0005-platform-backend-agnostic-secrets.md) | The platform interface abstracts secret *provisioning*, not just file location |
 | [0006](0006-anyhost-greeter-runtime-binding.md) | The anyHost greeter: tiered runtime binding of a user from a flake URL |
@@ -26,13 +26,14 @@ contract ships).
 | [0015](0015-greeter-secret-provisioning.md) | Greeter secret provisioning is one seam with a staged strength spectrum (password-unlock v1; phone-escrow planned; hardware on-demand) |
 | [0016](0016-prebuilt-binding-mode.md) | Pre-built binding mode: user CI produces `contractPackage`; the host pins, reads, and activates it |
 | [0017](0017-daemon-restricted-user-package-policy.md) | Daemon-restricted users and host-built package profiles: the `nix-daemon` feature, package policy, and graceful degradation |
-| [0018](0018-session-type-derives-from-desktop.md) | Session type derives from the desktop; `gui.session` is retired as user-facing vocabulary |
+| [0018](0018-session-type-derives-from-desktop.md) | Session type derives from the desktop (superseded by [0021](0021-contract-display-server-agnostic.md) — session type is not a contract concern) |
 | [0019](0019-login-credential-travels-with-the-user.md) | The login credential travels with the user as public data; visibility picks the hash strength |
 | [0020](0020-multi-user-repo-shape.md) | The `users` repo: a multi-user grouping of the operator's own accounts (extends 0007) |
+| [0021](0021-contract-display-server-agnostic.md) | The contract is display-server-agnostic; the seat owns session type and launch (supersedes 0018 + the gui-session union of 0003) |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0020`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0021`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme

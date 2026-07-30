@@ -29,7 +29,7 @@ let
     {
       "version": 1,
       "username": "testuser",
-      "requests": { "gui": { "session": "x11", "desktop": "" } },
+      "requests": { "gui": { "desktop": "" } },
       "packages": ["hello", "curl"]
     }
     JSON

@@ -172,17 +172,9 @@ in
       type = lib.types.attrsOf (
         lib.types.submodule {
           options = {
-            type = lib.mkOption {
-              type = lib.types.enum [
-                "wayland"
-                "x11"
-              ];
-              default = "wayland";
-              description = "The session type of this desktop (sets XDG_SESSION_TYPE).";
-            };
             command = lib.mkOption {
               type = lib.types.str;
-              description = "The command that launches this desktop's session (its `wayland-sessions`/`xsessions` Exec).";
+              description = "The self-contained command that launches this desktop's session (its `wayland-sessions`/`xsessions` Exec). The SEAT owns the session type: if the desktop needs `XDG_SESSION_TYPE` or other session env, the command sets it itself — the contract does not know wayland vs x11 (ADR-0021).";
             };
           };
         }
@@ -191,7 +183,7 @@ in
       example = lib.literalExpression ''
         {
           gnome.command = "''${pkgs.gnome-session}/bin/gnome-session";
-          plasma = { type = "wayland"; command = "''${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland"; };
+          plasma.command = "''${pkgs.kdePackages.plasma-workspace}/bin/startplasma-wayland";
         }
       '';
       description = ''

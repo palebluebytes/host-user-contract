@@ -1,6 +1,6 @@
 # Host-affecting feature configuration aggregates across granted users (the gui-session union)
 
-**Status:** Accepted (implemented; proven by the conformance suite, eval + VM). The `gui.session` user-facing option is superseded by [ADR-0018](0018-session-type-derives-from-desktop.md) (session type derives from the desktop); the aggregation/union mechanic below stands, now unioning derived types.
+**Status:** The **gui-session union** described here is **superseded by [ADR-0021](0021-contract-display-server-agnostic.md)** — the contract no longer computes a session-type surface (`custom.gui.surface.{wayland,x11}`) at all; the seat owns display-server policy, and the contract carries only the gui grant + a desktop *name*. The **general** principle — host-affecting feature configuration aggregates across granted users as a union — stands as a design idea but currently has **no instance** (the gui session was its only one). The document below is **historical** for the gui-session union.
 
 The realization owns host-wide singletons so users don't fight over them (ADR-0001
 mechanic 5). But a user still has host-*affecting* preferences — most visibly, a

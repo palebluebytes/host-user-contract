@@ -52,7 +52,7 @@
       # promises against synthetic users on synthetic systems built from the umbrella —
       # no host repo. Independent CI; the host keeps only the thin coherence gate.
       checks = forAllSystems (system: {
-        # Eval-level proof: grant/deny, the gui-session union DECISION, the clamp, the
+        # Eval-level proof: grant/deny, the session-agnostic gui-surface DECISION, the clamp, the
         # exposed-host ban, and the users × archetypes matrix.
         conformance = import ./conformance {
           inherit system;
@@ -80,10 +80,11 @@
           nixosSystem = nixpkgs.lib.nixosSystem;
         };
 
-        # Runtime proof (a booted VM): the gui-session union RENDERS — one seat, two gui
-        # users with different sessions ⇒ both plasma session files live + both accounts
-        # activated. Uses a test-only SDDM/Plasma binding the suite supplies (the contract
-        # itself is display-backend-agnostic). Moved here from its original in-repo home (ADR-0004).
+        # Runtime proof (a booted VM): the session-agnostic gui-surface decision RENDERS — one seat,
+        # a granted gui user ⇒ custom.gui.surface.enabled, a test SDDM/Plasma binding renders a live
+        # plasma session + the account activated. The seat picks the session type, not the contract
+        # (ADR-0021). Uses a test-only SDDM/Plasma binding the suite supplies. Moved here from its
+        # original in-repo home (ADR-0004).
         conformance-vm = import ./conformance/vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
@@ -100,23 +101,16 @@
           inherit system;
         };
 
-        # Session RENDER (ADR-0013 step 8): the bound desktop brings up a LIVE session on real
-        # virtio-gpu DRM, via greetd-as-user. Wayland (cage) and X11 as separate boots, plus two
-        # different desktops one-after-another on one seat. Heavy (a real graphical boot) — the
+        # Session RENDER (ADR-0013 step 8): the bound desktop's self-contained command brings up a
+        # LIVE session on real virtio-gpu DRM, via greetd-as-user. The seat owns the session type
+        # (ADR-0021), so one Wayland (cage) boot exercises the render; the sequence VM below proves
+        # two different desktops one-after-another on one seat. Heavy (a real graphical boot) — the
         # render counterpart to greeter-vm's selection. A real GNOME/Plasma is the same shape with a
-        # heavier command (the consumer-renders boundary, like the gui-union VM's SDDM/Plasma).
-        greeter-session-wayland = import ./conformance/greeter-session-vm.nix {
+        # heavier command (the consumer-renders boundary, like the gui-surface VM's SDDM/Plasma).
+        greeter-session = import ./conformance/greeter-session-vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           greeterModule = self.nixosModules.greeter;
-          sessionType = "wayland";
-          inherit system;
-        };
-        greeter-session-x11 = import ./conformance/greeter-session-vm.nix {
-          pkgs = nixpkgs.legacyPackages.${system};
-          contractModule = self.nixosModules.default;
-          greeterModule = self.nixosModules.greeter;
-          sessionType = "x11";
           inherit system;
         };
         greeter-session-sequence = import ./conformance/greeter-session-sequence-vm.nix {

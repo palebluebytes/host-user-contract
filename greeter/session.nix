@@ -11,11 +11,11 @@
 }:
 let
   # The desktops this seat offers, baked into a shell `case` the launcher resolves the user's
-  # requested desktop against (ADR-0013). Each arm sets the session type + the launch command.
+  # requested desktop against (ADR-0013). Each arm sets the launch command; the command is
+  # self-contained — the seat owns the session type, not the contract (ADR-0021).
   desktopArms = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
-      name: d:
-      "        ${lib.escapeShellArg name}) dtype=${lib.escapeShellArg d.type}; dcmd=${lib.escapeShellArg d.command} ;;"
+      name: d: "        ${lib.escapeShellArg name}) dcmd=${lib.escapeShellArg d.command} ;;"
     ) desktops
   );
 in
@@ -31,7 +31,7 @@ pkgs.writeShellApplication {
           home=$2
           defaultDesktop=${lib.escapeShellArg defaultDesktop}
 
-          # Resolve a desktop NAME to its session type + launch command (the seat's offered desktops).
+          # Resolve a desktop NAME to its launch command (the seat's offered desktops).
           resolve() {
             case "$1" in
     ${desktopArms}
@@ -48,7 +48,7 @@ pkgs.writeShellApplication {
           fi
 
           # An un-offered/unknown desktop degrades to the seat default — never breaks the login (ADR-0013).
-          dtype=""; dcmd=""
+          dcmd=""
           if ! resolve "$want"; then
             echo "session: desktop '$want' not offered by this seat; using default '$defaultDesktop'" >&2
             resolve "$defaultDesktop" || { echo "session: no default desktop offered (custom.greeter.desktops/defaultDesktop)" >&2; exit 1; }
@@ -61,9 +61,9 @@ pkgs.writeShellApplication {
           # drop privs with runuser when invoked by the root orchestrator (which is NOT a seat session —
           # that path suits headless/marker backends, not a real GPU session). ADR-0010/0013 step 8.
           if [ "$(id -un)" = "$username" ]; then
-            exec env HOME="$home" XDG_SESSION_TYPE="$dtype" bash -c "$dcmd"
+            exec env HOME="$home" bash -c "$dcmd"
           else
-            exec runuser -u "$username" -- env HOME="$home" XDG_SESSION_TYPE="$dtype" bash -c "$dcmd"
+            exec runuser -u "$username" -- env HOME="$home" bash -c "$dcmd"
           fi
   '';
 }

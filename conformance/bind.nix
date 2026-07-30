@@ -94,8 +94,8 @@ in
         && boundHost.users.users.example.description == "Example User";
     }
     {
-      name = "bindUser: a safe-set grant bridges the gui request, feeding the union (wayland)";
-      ok = boundHost.custom.gui.surface.enabled && boundHost.custom.gui.surface.wayland;
+      name = "bindUser: a safe-set grant bridges the gui request, enabling the display surface";
+      ok = boundHost.custom.gui.surface.enabled;
     }
     {
       name = "bindUser: an ungranted request is inert (no system feature config bridged)";
@@ -116,14 +116,14 @@ in
         && realBoundRuntime.users.users.example.description == "Example User";
     }
     {
-      # The bridge is a CONFIG REFERENCE into the single home eval — the granted request feeds
-      # the union without a second harvest (ADR-0002 data-flow inversion).
-      name = "bindUserModule: a granted request bridges by config reference, feeding the union (wayland)";
-      ok = realBoundRuntime.custom.gui.surface.enabled && realBoundRuntime.custom.gui.surface.wayland;
+      # The bridge is a CONFIG REFERENCE into the single home eval — the granted request enables
+      # the surface without a second harvest (ADR-0002 data-flow inversion).
+      name = "bindUserModule: a granted request bridges by config reference, enabling the display surface";
+      ok = realBoundRuntime.custom.gui.surface.enabled;
     }
     {
       # Post-eval `custom.users.<u>.gui` always exists (it is a declared option), so inertness
-      # is proven by the observable effect: ungranted ⇒ the wayland request feeds NO surface.
+      # is proven by the observable effect: ungranted ⇒ the request feeds NO surface.
       name = "bindUserModule: an ungranted request is inert (the union offers no surface)";
       ok = !realBoundNone.custom.gui.surface.enabled;
     }

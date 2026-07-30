@@ -1,6 +1,6 @@
-# Conformance domain: the system-side realization — grant/deny, the gui-session union DECISION,
-# the privileged-group clamp, the exposed-host ban, the identity.json loader, and the safe-set /
-# feature-group projections. The contract's core "manifest + grant ⇒ account" promise.
+# Conformance domain: the system-side realization — grant/deny, the session-agnostic gui-surface
+# DECISION, the privileged-group clamp, the exposed-host ban, the identity.json loader, and the
+# safe-set / feature-group projections. The contract's core "manifest + grant ⇒ account" promise.
 {
   lib,
   toolkit,
@@ -24,22 +24,6 @@ let
     (grant "alice" { gui.enable = true; })
   ];
   denied = eval [ (mkUser "alice" { }) ];
-
-  # --- the gui-session union DECISION (the contract's output, not a display backend) ---
-  waylandOnly = eval [
-    (mkUser "alice" { session = "wayland"; })
-    (grant "alice" { gui.enable = true; })
-  ];
-  x11Only = eval [
-    (mkUser "bob" { session = "x11"; })
-    (grant "bob" { gui.enable = true; })
-  ];
-  bothSessions = eval [
-    (mkUser "alice" { session = "wayland"; })
-    (mkUser "bob" { session = "x11"; })
-    (grant "alice" { gui.enable = true; })
-    (grant "bob" { gui.enable = true; })
-  ];
 
   # --- the privileged-group clamp ---
   clampNoGrant = eval [
@@ -107,24 +91,15 @@ in
       ok = !(lib.elem "uinput" (groupsOf denied));
     }
     {
-      name = "grant: the gui surface decision is enabled";
+      # Session-agnostic: a granted gui user ⇒ the host needs a display surface. The session TYPE
+      # (wayland vs x11) is wholly the seat's concern now (ADR-0021) — the contract offers no
+      # desktop→type map and no per-type surface flags to assert.
+      name = "grant: a granted gui user ⇒ the display surface is enabled";
       ok = granted.custom.gui.surface.enabled;
     }
     {
-      name = "deny: the gui surface decision is off";
+      name = "deny: no granted gui user ⇒ the display surface is off";
       ok = !denied.custom.gui.surface.enabled;
-    }
-    {
-      name = "union: a wayland user ⇒ surface offers wayland, not x11";
-      ok = waylandOnly.custom.gui.surface.wayland && !waylandOnly.custom.gui.surface.x11;
-    }
-    {
-      name = "union: an x11 user ⇒ surface offers x11, not wayland";
-      ok = x11Only.custom.gui.surface.x11 && !x11Only.custom.gui.surface.wayland;
-    }
-    {
-      name = "union: wayland + x11 users ⇒ surface offers both";
-      ok = bothSessions.custom.gui.surface.wayland && bothSessions.custom.gui.surface.x11;
     }
     {
       name = "clamp: a privileged group in identity is dropped without a grant";

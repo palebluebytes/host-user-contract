@@ -1,7 +1,7 @@
 # Conformance domain: mkContractPackage (ADR-0016, issue #14) and bindContractPackage
 # (ADR-0016, issue #16). mkContractPackage is proven by an execution proof (the derivation
 # builds and has correct content). bindContractPackage is proven at eval level: the same
-# gui-session union and account that bindUserModule produces emerges from reading a pre-built
+# gui surface and account that bindUserModule produces emerges from reading a pre-built
 # contract-requests.json fixture — same `mkUserAccount` + `bridgeRequests` kernel, different
 # data source. The fixture is a plain repo path (no derivation, no IFD).
 {
@@ -45,7 +45,7 @@ let
         manifest=${contractPackage}/contract-requests.json
         jq . "$manifest"
 
-        jq -e '.version == 1'              "$manifest"
+        jq -e '.version == 2'              "$manifest"
         jq -e '.username == "testuser"'    "$manifest"
         jq -e '.packages | contains(["hello"])' "$manifest"
         jq -e '.requests.gui.desktop == "plasma"' "$manifest"
@@ -89,10 +89,10 @@ in
         && boundRuntime.users.users.example.description == "Example User";
     }
 
-    # bindContractPackage: granted request bridges to the gui union (parity with bindUserModule)
+    # bindContractPackage: granted request enables the gui surface (parity with bindUserModule)
     {
-      name = "bindContractPackage: a granted gui request bridges to the union (wayland)";
-      ok = boundRuntime.custom.gui.surface.enabled && boundRuntime.custom.gui.surface.wayland;
+      name = "bindContractPackage: a granted gui request enables the display surface";
+      ok = boundRuntime.custom.gui.surface.enabled;
     }
 
     # bindContractPackage: ungranted request is inert

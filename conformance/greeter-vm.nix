@@ -84,14 +84,10 @@ pkgs.testers.runNixOSTest {
       # SELECTION is observable, with `plasma` the seat default. Drive the helpers directly, so keep
       # boot lean by not pulling the interactive greetd login in (as gui-union does for its DM).
       custom.greeter.enable = true;
-      custom.greeter.desktops.gnome = {
-        type = "wayland";
-        command = "echo gnome > /tmp/desktop-launched";
-      };
-      custom.greeter.desktops.plasma = {
-        type = "wayland";
-        command = "echo plasma > /tmp/desktop-launched";
-      };
+      # Marker commands stand in for real desktops; each is self-contained (the seat owns the
+      # session type, ADR-0021) — here they just record which desktop was selected.
+      custom.greeter.desktops.gnome.command = "echo gnome > /tmp/desktop-launched";
+      custom.greeter.desktops.plasma.command = "echo plasma > /tmp/desktop-launched";
       custom.greeter.defaultDesktop = "plasma";
       systemd.services.greetd.wantedBy = lib.mkForce [ ];
 

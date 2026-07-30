@@ -26,11 +26,11 @@
 { lib }:
 {
   # gui: desktop environment. Its host effects are two contract-neutral things only —
-  # the session-union DECISION (realization → custom.gui.surface) and the non-privileged
-  # input groups below. Everything device/package/layout-specific (uinput, keyboard
-  # layout, app permits, the display backend) is a HOST binding (gui-desktop.nix + the
-  # user's glue), so the contract has no gui *module*. In the safe set: no secret, no
-  # privileged group.
+  # the display-surface-needed flag (realization → custom.gui.surface.enabled) and the
+  # non-privileged input groups below. Everything device/package/layout-specific (uinput,
+  # keyboard layout, app permits, the display backend AND the session type) is a HOST
+  # binding (gui-desktop.nix + the user's glue), so the contract has no gui *module* and is
+  # display-server-agnostic (ADR-0021). In the safe set: no secret, no privileged group.
   gui = {
     grant = "the GUI feature for this user (host grant)";
     groups = [
@@ -43,14 +43,14 @@
       # gui.desktop: which DESKTOP this user logs into (ADR-0013). FREE-FORM and DE-agnostic by
       # design — the contract carries the user's opaque preference (so it travels with the home:
       # same desktop on any seat that offers it, the portable-user north star); the SEAT maps the
-      # name to a real DE (custom.greeter.desktops at a greeter, custom.gui.desktops at build time)
-      # and an un-offered/empty name degrades to the seat default. NEVER names a system package.
-      # A user's session type (wayland/x11) is DERIVED from this desktop, never declared as a
-      # user preference — the gui-session union reads the desktop's mapped type (ADR-0018).
+      # name to a real DE and its launch (custom.greeter.desktops at a greeter), and an
+      # un-offered/empty name degrades to the seat default. NEVER names a system package. The
+      # session type (wayland/x11) is NOT a contract concern at all — the seat's launch owns it
+      # (ADR-0021); the contract carries only the desktop NAME.
       gui.desktop = lib.mkOption {
         type = lib.types.str;
         default = "";
-        description = "Desktop this user logs into; a free-form name the seat maps to an offered desktop and its session type (ADR-0013, ADR-0018). Empty ⇒ the seat default.";
+        description = "Desktop this user logs into; a free-form name the seat maps to an offered desktop and its launch (ADR-0013). Empty ⇒ the seat default. Session type is the seat's concern, not the contract's (ADR-0021).";
       };
     };
   };

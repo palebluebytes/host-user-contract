@@ -54,7 +54,7 @@ the term is stable, the code is pending (see the cited issue).
 - **deny** — the **absence of a grant**. Not a veto, not a default-open block — a host runs
   only what it explicitly grants.
 - **feature configuration** *(a feature's **parameters**)* — the **host-owned** parameters the
-  realization consumes (`custom.users.<u>.<feature>.*`, e.g. `gui.session`), distinct from the
+  realization consumes (`custom.users.<u>.<feature>.*`, e.g. `gui.desktop`), distinct from the
   grant (the yes/no). The **consumer** end of a producer→consumer pair with **request**:
   written only host-side — operator grant-data, or `bindUser` bridging a granted request —
   **never** by the user across the trust boundary. Host-affecting parameters **aggregate**
@@ -71,13 +71,11 @@ the term is stable, the code is pending (see the cited issue).
 - **clamp** — the realization filtering privileged groups out of a user's self-declared
   `identity.extraGroups` (untrusted input). Privileged groups come only from a grant — a
   user can never self-escalate by listing `docker`/`wheel` in its identity.
-- **gui-session union** — the realization deriving the host's display surface
-  (`custom.gui.surface`) as the union of every granted gui user's **session type**, so a
-  Wayland user and an X11 user coexist on one seat. The session type is a **derived property
-  of the user's chosen desktop** ([[desktop-choice]]), not a user-declared preference — a
-  protocol is a property of the desktop, not an independent want. **(the build-time derivation
-  is designed; not yet built — today the union still reads the `gui.session` enum)**
-  (ADR-0003, ADR-0018)
+- **gui-session union** *(REMOVED, ADR-0021)* — the realization used to derive the host's display
+  surface's session types (`custom.gui.surface.{wayland,x11}`) as the union of every granted gui
+  user's session type. **Removed:** the contract is now **display-server-agnostic** — it exposes only
+  `custom.gui.surface.enabled` (some gui user granted) and carries the desktop *name*; wayland-vs-x11
+  is wholly the seat's concern (its display binding / launch command). (ADR-0003 + ADR-0018 → ADR-0021)
 - **model A / B / C** — trust postures for the user surface (ADR-0001 mechanic 7): A = user
   exports arbitrary modules (in-repo migration only; "deny" cosmetic); B = flat data only
   (deny enforceable, expressiveness lost); C = restricted `evalModules` over a curated
@@ -234,7 +232,7 @@ the term is stable, the code is pending (see the cited issue).
   **per user** (ADR-0013). The user carries a **free-form** name in their home
   (`contract.requests.gui.desktop`) so it travels with the identity — same desktop on any seat that
   offers it (the [[portable-user]] north star); the **seat offers** desktops as a host binding
-  (`custom.greeter.desktops.<name> = { type; command; }`, reusing each DE's session-entry Exec, like
+  (`custom.greeter.desktops.<name> = { command; }`, reusing each DE's session-entry Exec, like
   a display manager). The greeter resolves the user's name against the offered set and launches it
   via greetd-as-user (a full DE needs that seat session); an un-offered name degrades to
   `defaultDesktop`. DE-agnostic: the contract carries an opaque name, the seat maps it. The choice
@@ -362,9 +360,9 @@ the term is stable, the code is pending (see the cited issue).
   feature configuration. Same shape, different owner and trust-side — never call a user's
   request "feature configuration," or a host-written value a "request."
 - **desktop** vs **session type** — **desktop** (`gui.desktop`) is the user's intent, an
-  experience that travels with the identity; **session type** (`wayland`/`x11`) is a *derived*
-  property of the chosen desktop, never a user preference. Don't treat `gui.session` as a
-  user-owned choice — it is retired as user-facing vocabulary (ADR-0018).
+  experience that travels with the identity, and the **only** thing the contract carries.
+  **Session type** (`wayland`/`x11`) is **not a contract concern at all** — the seat's display
+  binding / launch command owns it. The contract names no session type anywhere (ADR-0021).
 - **platform** names the secret-provisioning **interface**; don't conflate the interface
   (contract) with the **binding** (host).
 - **user secret** is ambiguous on its own — say *public identity*, *hashedPassword*, or

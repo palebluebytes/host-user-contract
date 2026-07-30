@@ -1,6 +1,6 @@
 # Session type derives from the desktop; `gui.session` is retired as user-facing vocabulary
 
-**Status:** Accepted; extends [ADR-0013](0013-per-user-desktop-choice-host-offered.md) to the build-time path and supersedes the user-facing `gui.session` option of [ADR-0003](0003-feature-configuration-aggregates.md). Implementation staged — the build-time desktop→type derivation is the pending slice; the ADR-0003 union mechanic itself stands.
+**Status:** **Superseded by [ADR-0021](0021-contract-display-server-agnostic.md).** The contract no longer *derives* — or carries — a session type at all; wayland-vs-x11 is wholly the seat's concern. The decision below (session type is a derived property of the desktop, expressed via a host `custom.gui.desktops` map) is **historical**: that map, and the build-time gui-session union it fed, were removed. A user still carries only `gui.desktop` (ADR-0013), but nothing maps it to a session type in the contract.
 
 A GUI user expresses two overlapping things today: `gui.desktop` (a free-form desktop name, ADR-0013) and `gui.session` (a `wayland`/`x11` enum, ADR-0003). But a session **protocol** is not something a user has an independent preference about — it is a property of the desktop they chose. GNOME is Wayland; i3 is X11; the user cares about the desktop, and the protocol follows.
 
