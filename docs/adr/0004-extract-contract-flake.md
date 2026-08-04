@@ -32,9 +32,10 @@ display flags, insecure permits, safe set) must be **byte-identical** before and
 - **One umbrella kit per eval-side.** `nixosModules.default` (the `custom.users` schema +
   `custom.platform` interface + `custom.host.exposed` + the exposed-host assertion +
   realization + the insecure-package aggregator + feature modules) and
-  `homeModules.default` (identity + home-profiles + platform interface). Plus `lib` (the
-  contract *functions*) and a data surface (`features`, `featureMeta`, `featureGroups`,
-  `privilegedGroups`, `safeSet`) the host reads where it wires grants and recipients.
+  `homeModules.default` (identity + home-profiles). Plus `lib` (the contract *functions*)
+  and a data surface (`features`, `featureGroups`, `privilegedGroups`, `safeSet`) the host
+  reads where it wires grants. (`featureMeta`, the platform interface, and the recipient
+  derivation were removed by [ADR-0023](0023-contract-handles-no-secrets.md).)
   À-la-carte modules buy nothing — no host wants the schema without the realization.
 - **The contract depends only on nixpkgs `lib`.** The single package-ecosystem coupling —
   the emacs overlay in `features/gui.nix` — is **moved out**: it is a user's package
@@ -56,9 +57,9 @@ display flags, insecure permits, safe set) must be **byte-identical** before and
   names no display backend; the *test* picks one). It gains independent CI (testable with
   no host repo). The host keeps only a thin **coherence gate**: every *real* host's
   trait-tuple is covered by an archetype, and the real user manifest realizes.
-- **The platform binding stays host-side.** The contract ships only the typed `platform`
-  *interface*; the host supplies the *binding* (`config.custom.platform = …`, which reads
-  `inputs.secrets`) via a small host-side module — one per eval-side. That keeps every
+- **The platform binding stays host-side.** *(Retired by [ADR-0023](0023-contract-handles-no-secrets.md): the contract handles no secrets, so the platform secret interface was removed. Read this bullet as history.)* The contract shipped only the typed `platform`
+  *interface*; the host supplied the *binding* (`config.custom.platform = …`, which reads
+  `inputs.secrets`) via a small host-side module — one per eval-side. That kept every
   secret path out of the contract, and is a second litmus test: the contract must evaluate
   with the platform *unbound*. The interface itself is made backend-agnostic first — see
   [ADR-0005](0005-platform-backend-agnostic-secrets.md).

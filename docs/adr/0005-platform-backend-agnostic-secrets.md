@@ -1,6 +1,6 @@
 # The platform interface abstracts secret *provisioning*, not just file location
 
-**Status:** Accepted (landed with the extraction, [ADR-0004](0004-extract-contract-flake.md)).
+**Status:** Superseded by [ADR-0023](0023-contract-handles-no-secrets.md) — the contract handles no secrets, so the platform secret-provisioning interface was removed (it was consumed by nothing). Read this ADR as history. (Originally: Accepted, landed with the extraction, [ADR-0004](0004-extract-contract-flake.md).)
 
 The contract's `platform` interface ([ADR-0001](0001-host-user-contract.md) mechanic 6)
 was meant to keep a feature from naming the host's secrets backend. It only half does:

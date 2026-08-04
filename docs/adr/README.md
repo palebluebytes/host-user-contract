@@ -13,7 +13,7 @@ contract ships).
 | [0002](0002-user-confinement-manifest-greeter.md) | A user is a home-manager module: requests, feature modules, and the anyHost greeter |
 | [0003](0003-feature-configuration-aggregates.md) | Host-affecting feature configuration aggregates across granted users — the gui-session union (superseded by [0021](0021-contract-display-server-agnostic.md)) |
 | [0004](0004-extract-contract-flake.md) | The contract lives in its own flake, delivered as a registry-baked kit |
-| [0005](0005-platform-backend-agnostic-secrets.md) | The platform interface abstracts secret *provisioning*, not just file location |
+| [0005](0005-platform-backend-agnostic-secrets.md) | The platform interface abstracts secret *provisioning*, not just file location (superseded by [0023](0023-contract-handles-no-secrets.md) — the contract handles no secrets) |
 | [0006](0006-anyhost-greeter-runtime-binding.md) | The anyHost greeter: tiered runtime binding of a user from a flake URL |
 | [0007](0007-user-flake-shape.md) | The user flake shape and `bindUser` |
 | [0008](0008-greeter-is-a-contract-deliverable.md) | The greeter is a contract deliverable: `bindUser` in `lib` + a reusable greeter module |
@@ -23,7 +23,7 @@ contract ships).
 | [0012](0012-runtime-provisioning-is-shell-side-realization.md) | Runtime provisioning is the shell-side realization: fully realize the account before the session |
 | [0013](0013-per-user-desktop-choice-host-offered.md) | A greeter login is a per-user desktop choice; the seat offers desktops, the contract carries the name |
 | [0014](0014-tier1-restricted-eval-posture.md) | The contract pins the Tier-1 restricted-eval posture; the greeter applies it, the repo cannot widen it |
-| [0015](0015-greeter-secret-provisioning.md) | Greeter secret provisioning is one seam with a staged strength spectrum (password-unlock v1; phone-escrow planned; hardware on-demand) |
+| [0015](0015-greeter-secret-provisioning.md) | Greeter secret provisioning is one seam with a staged strength spectrum (superseded by [0023](0023-contract-handles-no-secrets.md) — the greeter activates secret-free) |
 | [0016](0016-prebuilt-binding-mode.md) | Pre-built binding mode: user CI produces `contractPackage`; the host pins, reads, and activates it |
 | [0017](0017-daemon-restricted-user-package-policy.md) | Daemon-restricted users and host-built package profiles: the `nix-daemon` feature, package policy, and graceful degradation |
 | [0018](0018-session-type-derives-from-desktop.md) | Session type derives from the desktop (superseded by [0021](0021-contract-display-server-agnostic.md) — session type is not a contract concern) |
@@ -31,10 +31,11 @@ contract ships).
 | [0020](0020-multi-user-repo-shape.md) | The `users` repo: a multi-user grouping of the operator's own accounts (extends 0007) |
 | [0021](0021-contract-display-server-agnostic.md) | The contract is display-server-agnostic; the seat owns session type and launch (supersedes 0018 + the gui-session union of 0003) |
 | [0022](0022-reference-fleets-and-the-test-split.md) | Reference user + host fleets as sibling flakes; the synthetic suite is the adversarial oracle, the fleet a positive-space reference that borrows atoms one-way |
+| [0023](0023-contract-handles-no-secrets.md) | The contract handles no secrets beyond the login credential (supersedes 0005 + 0015; retires ADR-0001's secret-bearing mechanisms) |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0022`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0023`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme

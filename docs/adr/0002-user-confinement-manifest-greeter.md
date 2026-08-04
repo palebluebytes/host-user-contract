@@ -115,8 +115,10 @@ contract, and the opposite defaults are correct:
 confers no privileged group, bears no secret, **and its request payload is inert**:
 
 ```
-runtimeEligible(f)  ⟺  ¬featureMeta.f.secretBearing  ∧  featureGroups.f == []  ∧  inertPayload(f)
+runtimeEligible(f)  ⟺  featureGroups.f == []  ∧  inertPayload(f)
 ```
+
+(The `¬secretBearing` term was dropped by [ADR-0023](0023-contract-handles-no-secrets.md): the contract carries no secret-bearing features.)
 
 The first two inputs already exist (`privilegedGroups`/`featureGroups`, `secretBearing`).
 The third is what the **request model surfaces**: a request payload the host *executes with

@@ -1,6 +1,6 @@
 # Greeter secret provisioning is one seam — "make the user's key available for the session" — with a staged strength spectrum
 
-**Status:** Accepted (the scope, the seam, and the v1 mechanism); the phone-gated upgrade is planned and the hardware binding is recorded **on-demand only**. Implements issue #4; Tier-1-only refinement of [ADR-0006](0006-anyhost-greeter-runtime-binding.md), gated by [ADR-0001](0001-host-user-contract.md)'s exposed-host ban and built on the [ADR-0005](0005-platform-backend-agnostic-secrets.md) platform seam.
+**Status:** Superseded by [ADR-0023](0023-contract-handles-no-secrets.md) — the contract handles no secrets beyond the login credential, so greeter secret provisioning was removed; the greeter now authenticates on the password and activates an always-secret-free session. Read this ADR as history. (Originally: Accepted — the scope, the seam, and the v1 mechanism; implements issue #4; a Tier-1-only refinement of [ADR-0006](0006-anyhost-greeter-runtime-binding.md).)
 
 The greeter authenticates on a **password, not a key** (ADR-0006 "data before code"). So a roaming user's **own home secrets** (their sops — API keys, git-annex, a self-managed signing key) cannot decrypt at a greeter login: they need the user's **private key**, which a host the user has never provisioned does not have. Today the greeter degrades gracefully (ADR-0006 Q4) — secret-bearing parts go dormant, the user gets a clean secret-free baseline. This ADR records how a Tier-1 user gets their secrets **back** without weakening the model.
 
