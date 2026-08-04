@@ -1,16 +1,22 @@
 # Runbook — repo-split capstone (issue #1)
 
 Operator guide for the model-A → model-C cutover: moving a real user (`inkpotmonkey`)
-into its **own repo** consumed by the fleet via `bindUser`, with per-feature re-key on
-grant and rotate on revoke.
+into its **own repo** consumed by the fleet via `bindUser`.
+
+> **⚠️ Superseded stages (ADR-0023 — "the contract handles no secrets").** The contract
+> now handles no secrets beyond the login credential. The secret-specific stages below are
+> **obsolete** and retained only as historical context: **Stage 4** (grant a secret feature →
+> per-feature re-key) and **Stage 5** (revoke → remove recipient + rotate) do not apply —
+> there are no secret-bearing features, no `mkFeatureRecipients`, and no host recipients. In
+> **Stage 6**, `custom.host.exposed` is now a plain host *fact* with no enforced ban (the
+> `exposedHostOffenders` assertion was removed). A user's own home secrets, if any, ride the
+> user's own key, provisioned by the user's own home module — never through the contract.
 
 > **Why this is a runbook, not code.** The contract side this capstone consumes is already
-> built and CI-proven here (`bindUser`/`bindUserModule`/`bindContractPackage`,
-> `mkFeatureRecipients`, the `custom.host.exposed` ban, the example user flake, and — for
-> acceptance criterion 2 — `conformance/confinement.nix`). What remains is **operational,
-> cross-repo, and human-only**: creating a new repo, editing the fleet, and running
-> **admin-key re-key operations on a trusted machine — never on an agent host**. Each step
-> below marks whether it is an edit (AFK-safe) or a **🔑 trusted-machine** action.
+> built and CI-proven here (`bindUser`/`bindUserModule`/`bindContractPackage`, the example
+> user flake, and — for acceptance criterion 2 — `conformance/confinement.nix`). What remains
+> is **operational, cross-repo, and human-only**: creating a new repo and editing the fleet.
+> Each step below marks whether it is an edit (AFK-safe) or a **🔑 trusted-machine** action.
 
 ADR numbers below are this repo's contiguous set (`docs/adr/`). The originating issue cites
 the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
@@ -21,7 +27,7 @@ the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
 
 | Repo | Role | Touched here |
 | --- | --- | --- |
-| `host-user-contract` (this) | The shared schema + `lib` (`bindUser`, `mkFeatureRecipients`, …). | Input only — do not fork it into the user or fleet. |
+| `host-user-contract` (this) | The shared schema + `lib` (`bindUser`, `bindContractPackage`, `mkHostFacts`, …). | Input only — do not fork it into the user or fleet. |
 | `user-inkpotmonkey` (**new**) | The user's home config, ADR-0007 shape. | Created in stage 1. |
 | the fleet (`~/code/nixos`) | The hosts (`kelpy`, workstations) that consume the user. | Edited in stages 3–6. |
 

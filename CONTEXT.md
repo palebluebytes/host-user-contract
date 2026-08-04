@@ -17,32 +17,31 @@ the term is stable, the code is pending (see the cited issue).
 
 - **the contract** — the shared schema + host-invariant realization + derivation logic both
   sides agree on. Ships as `nixosModules.default` / `homeModules.default` (the umbrella),
-  `lib` (the functions), and a data surface (`features`, `featureMeta`, `featureGroups`,
+  `lib` (the functions), and a data surface (`features`, `featureGroups`,
   `privilegedGroups`, `safeSet`). Neither host nor user. (ADR-0001, ADR-0004)
 - **host** — a machine config that imports the contract, materializes user accounts,
   **grants** features, and supplies **bindings**. Sovereign: it runs only what it grants.
 - **user** — a public identity + home config + the features it *offers*; host-agnostic (it
-  never names a secrets backend or a host's `self`/inputs). Target shape: a home-manager
-  config repo consumed via `bindUser` (ADR-0007); today still in-repo in the consuming host repo.
+  never names a host's `self`/inputs). Its own home secrets (if any) ride its own key,
+  provisioned by its own home module — never through the contract. Target shape: a
+  home-manager config repo consumed via `bindUser` (ADR-0007); today still in-repo in the consuming host repo.
 - **umbrella / kit** — the assembled shipped surface (`kit.nix`). `nixosModules.default` =
-  the `custom.users` schema + `platform` interface + `custom.host.exposed` + the
-  exposed-host ban + realization + the insecure-package aggregator. `nixosModules.greeter` =
-  the opt-in reference runtime greeter (a seat host enables it). `homeModules.default` =
-  identity + home profiles + the `platform` interface.
+  the `custom.users` schema + `custom.host.exposed` + realization + the insecure-package
+  aggregator. `nixosModules.greeter` = the opt-in reference runtime greeter (a seat host
+  enables it). `homeModules.default` = identity + home profiles.
 - **mechanism vs binding** — the contract ships generic **mechanism**; the host supplies
-  only **bindings** (the `platform` secrets binding, the display/theme, *which* hosts, the
-  trust-tier policy). The split keeps every fleet from re-implementing — and drifting on —
-  the security-critical parts. (ADR-0008)
+  only **bindings** (the display/theme, *which* hosts, the trust-tier policy). The split
+  keeps every fleet from re-implementing — and drifting on — the security-critical parts. (ADR-0008)
 
 ## Features and the registry
 
 - **feature** — one entry in the registry: the unit of capability a host grants or denies,
-  and the shared name "deny" keys on. Per-entry fields: `grant`, `groups`, `secretBearing`,
-  `secretFiles`, `config`. (`features.nix`)
+  and the shared name "deny" keys on. Per-entry fields: `grant`, `groups`,
+  `privilegedGroups`, `config`. (`features.nix`)
 - **registry** — `features.nix`, the **single source of truth** for the feature vocabulary.
-- **projection** — any surface *derived* from the registry (`featureMeta`, `featureGroups`,
-  `grantedOptions`, `featureConfigOptions`, `safeSet`, the sops recipients). Keys can't
-  drift across projections because there is one set of keys. (`kit.nix`)
+- **projection** — any surface *derived* from the registry (`featureGroups`,
+  `grantedOptions`, `featureConfigOptions`, `safeSet`). Keys can't drift across projections
+  because there is one set of keys. (`kit.nix`)
 - **offer** — *implicit*: a user emitting a `contract.requests` entry for a feature is
   offering it. No formal `offers` field exists until the separate-repo future needs one. (ADR-0002)
 
@@ -82,36 +81,28 @@ the term is stable, the code is pending (see the cited issue).
   catalog — the old target, **superseded** by the request channel (home-manager *is* a
   restricted universe, so no catalog). (ADR-0002)
 
-## Secrets and the platform
+## Secrets
 
-- **platform — interface vs binding** — the backend-neutral secret-provisioning seam
-  (`platform.nix`). A feature declares a *logical* secret and reads a resolved **runtime
-  path**; the host **binding** owns the backend (sops/agenix) and is the only place a
-  backend is named. The contract ships the **interface**; the host supplies the **binding**.
-  (ADR-0005)
-- **secret-bearing** — a feature that pulls a secret onto a host (`secretBearing = true`).
-  Excluded from the safe set; an exposed host may not be granted it.
+- **the contract handles no secrets beyond the login credential** — the only secret it
+  touches is the **hashedPassword** (the greeter authenticates on it; the realization installs
+  it). It carries no secret-bearing features, re-keys nothing, and is never a recipient of a
+  user's secret. (ADR-0023, supersedes ADR-0005 + ADR-0015)
 - **user secret (three tiers)** — *public identity* (`authorizedKeys`, name, email,
   username — not secret); *`hashedPassword`* (a one-way hash; handling depends on repo
-  visibility); *feature secrets* (the real secrets — private keys, tokens). Keep these
-  distinct; "user secret" alone is ambiguous. (ADR-0001 mechanic 1)
-- **recipients-from-grants** — `mkFeatureRecipients`: for each secret-bearing feature's sops
-  file, the set of hosts that *grant* it — the single source of truth for `.sops.yaml`
-  recipients, making recipients ≡ grants. (`lib.nix`, ADR-0001)
-- **revocation = remove recipient + rotate** — un-granting a secret-bearing feature is not
-  enough: a host that ever held it saw cleartext, so revocation removes the host as a sops
-  recipient **and** rotates the secret. (ADR-0001 threat model)
+  visibility); *feature secrets* (the real secrets — private keys, tokens). The contract
+  handles the first two; **feature secrets are the user's own home concern** — they ride the
+  user's own key, provisioned by the user's own home module, and never pass through the
+  contract. Keep the tiers distinct; "user secret" alone is ambiguous. (ADR-0001 mechanic 1, ADR-0023)
 
 ## Hosts and trust
 
-- **exposed host / the exposed-host ban** — a host marked `custom.host.exposed` (an
-  agent/code-executing or otherwise exposed box) may not be granted *any* secret-bearing
-  feature; enforced as a NixOS assertion (`exposedHostOffenders`). The hosts most likely to
-  be compromised then hold no cleartext. (ADR-0001 threat model)
+- **exposed host** — a host marked `custom.host.exposed` (an agent/code-executing or otherwise
+  exposed box). A **plain host fact** a user's home may read via [[hostFacts]] and adapt to; the
+  contract enforces nothing on it. (The former exposed-host *ban* on secret-bearing features is
+  retired — the contract carries none. ADR-0023.)
 - **incapacity vs prohibition** — a *headless* host has no greeter because it has no display:
-  **incapacity**, not a ban. **Prohibition** (the exposed-host rule) is the security verb;
-  don't model "no screen" as a ban or you dilute the one word that carries security weight.
-  (ADR-0002)
+  **incapacity**, not a ban. Keep "ban"/"prohibition" reserved for a real security *rule* so
+  the word keeps its weight; don't model "no screen" as a ban. (ADR-0002)
 - **hostFacts** — the restricted, read-only, **self-scoped** projection of host state a
   user's home module may read: `{ exposed, platform, granted }`. Deliberately excludes
   `hostName` so adaptation keys on *semantic* facts, not host identity. (`mkHostFacts`,
@@ -170,8 +161,8 @@ the term is stable, the code is pending (see the cited issue).
 - **homeBuilder** — the greeter's one **host binding** (`custom.greeter.homeBuilder`, null by
   default): the command that evaluates + builds a user's home *through the contract* under the
   [[tier1-eval-posture]] and prints the activation package. It is host-side because building a real
-  home needs home-manager, which the contract does not depend on — exactly as the platform/display
-  bindings are host-side. The greeter hands it the posture as `NIX_CONFIG`, so a naive `nix build`
+  home needs home-manager, which the contract does not depend on — exactly as the display
+  binding is host-side. The greeter hands it the posture as `NIX_CONFIG`, so a naive `nix build`
   binding inherits the floor for free. Everything else in the greeter is package-free at the flake level.
   The whole orchestrator is exercised end-to-end by the [[bind-loop]] VM.
 - **bind-loop** — the FULL real runtime path the greeter performs at a login (`greeter-bind-loop` check,
@@ -184,25 +175,11 @@ the term is stable, the code is pending (see the cited issue).
   build (that is `home-build`). One concession, documented in-file: a *nested test VM* cannot realize a
   fresh sandboxed `nix build`, so the reference homeBuilder there resolves to a home built at test-build
   time; its real-seat form is the `nix build "$src#…activationPackage"` one-liner. (issue #2; ADR-0006)
-- **greeter-secret-provisioning** — how a roaming Tier-1 user gets their **own home secrets** back at a
-  greeter, which holds a **password, not a key** (issue #4, ADR-0015). It is ONE seam — "make the user's
-  age identity available to home activation for the session" — so every strength is a different SOURCE
-  feeding the same unlock + placement path (`contract-greeter-unlock` → `provision` writes the key to
-  `~/.config/sops/age/keys.txt` before activation, so the user's sops decrypt). Sources:
-  **(a) passphrase** (issue #10, BUILT): a passphrase-wrapped age key in the repo (openssl AES-256-CBC +
-  PBKDF2 + a magic header; a SEPARATE unlock passphrase by default). **(b) escrow** (issue #11): the
-  wrapped key lives on the user's server, fetched after a **phone** approval — the fetch is a **host-bound
-  `keyFetcher` command** (the contract ships the seam, not the wire protocol, exactly like [[homeBuilder]];
-  the request/poll HTTP loop is the **reference example**, #13, which composes **OpenBao** one-time
-  wrapping + **ntfy** push, approval = number-match (default) / tap / passkey). **FIDO2/YubiKey** stays
-  **on-demand only** (issue #12). Hard gates, any source: **Tier-1 only**, **trusted (non-[[exposed]]) seat
-  only** (the seat sees the plaintext while it activates the home — ADR-0001), never Tier-2 — refused in
-  `bind` and as eval assertions. Escrow **fails closed on secrets**: server unreachable ⇒ degrade to a
-  secret-free session (never blocks the login; can't leak), **no in-repo passphrase fallback** (that would
-  be a downgrade attack), optional `requireSecrets` to hard-fail for workloads that must not run
-  secret-free. Distinct from contract secret-features (`signing`), which stay build-time via the
-  [[safe-set]]. Tested without a real phone: the [[bind-loop]] VM proves passphrase end-to-end, and a stub
-  release server + a keypair-controlled challenge-signer proves the escrow gate. (issues #4/#10/#11/#13; ADR-0015)
+- **greeter session is secret-free** — the greeter authenticates on a **password, not a key**
+  (ADR-0006) and activates the user's home with no secret step: it never unlocks or places a
+  user key. Recovering a roaming user's own home secrets at a foreign seat is out of scope for
+  the contract — a user who needs it provisions their key by their own means. (Greeter secret
+  provisioning, ADR-0015, was removed by ADR-0023.)
 - **tier1-eval-posture** — the **contract-pinned** Nix settings a host-signed home is evaluated +
   built under (`tier1EvalConfig`, a projection beside [[safe-set]]/[[greeterGrants]]; ADR-0014):
   `accept-flake-config = false` (**the un-widenable linchpin** — the repo's own `nixConfig` is
@@ -249,7 +226,7 @@ the term is stable, the code is pending (see the cited issue).
   single-sourced value, so escalation is impossible by construction, not by a deny rule.
   (`lib.nix`; ADR-0006, ADR-0008)
 - **runtime-eligible** — *derived*, not declared (`runtimeEligibleFeature`): a feature is in
-  the safe set iff it bears no secret and confers no privileged group. Deriving it keeps
+  the safe set iff it confers no privileged group. Deriving it keeps
   "what a stranger may have" tied to "what confers no privilege." The exec-payload clause
   (features where the host executes user-supplied code) is deferred — no feature uses it yet;
   it re-enters the derivation when a concrete feature requires it. (ADR-0002, ADR-0016)
@@ -311,7 +288,7 @@ the term is stable, the code is pending (see the cited issue).
   (see *daemon-restricted user*). This is why the pre-built binding mode is the coherent
   choice: since packages were never enforceable from the host side anyway, the user should
   bring exactly the versions they have tested against. The contract governs *system effects*
-  (privilege, secrets, services); program scope is the user's sovereign concern.
+  (privilege, services, groups); program scope is the user's sovereign concern.
 - **nix-daemon feature** — the registry entry (`features.nix`) that grants a user membership
   in the `nix-users` group and thereby access to the Nix daemon
   (`nix.settings.allowed-users = ["@nix-users"]`). `nix-users` is in `privilegedGroups`, so
@@ -337,7 +314,7 @@ the term is stable, the code is pending (see the cited issue).
 
 - **conformance suite** — the contract's own tests (`conformance/`): synthetic users × the
   umbrella, no host repo. **Eval** (`default.nix`) proves grant/deny, the gui-union
-  *decision*, the clamp, the exposed-host ban, the safe set, the users × archetypes matrix,
+  *decision*, the clamp, the safe set, the users × archetypes matrix,
   `mkContractPackage` content, and `bindContractPackage` parity with `bindUserModule`. **VM
   tests** (each a `runNixOSTest` boot): `vm.nix` (gui-union renders), `greeter-vm.nix`
   (provisioning crux), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
@@ -350,8 +327,10 @@ the term is stable, the code is pending (see the cited issue).
 ## Terms to keep distinct
 
 - **deny** is the *absence of a grant*, never a "veto" or a default-open block.
-- **ban** is only for **prohibition** (the exposed-host rule). A headless host lacking a
-  greeter is **incapacity**, not a ban.
+- **ban / prohibition** is reserved for a real security *rule*. A headless host lacking a
+  greeter is **incapacity**, not a ban. (The contract has no active ban today — the
+  exposed-host ban was retired with the secret-bearing features it guarded, ADR-0023 — but
+  keep the word disciplined for when one returns.)
 - a feature's **grant** (the yes/no) vs its **configuration / parameters** (the knobs):
   never call configuration a "grant."
 - **request** (user-emitted, home-side) and **feature configuration** (host-owned,
@@ -363,12 +342,11 @@ the term is stable, the code is pending (see the cited issue).
   experience that travels with the identity, and the **only** thing the contract carries.
   **Session type** (`wayland`/`x11`) is **not a contract concern at all** — the seat's display
   binding / launch command owns it. The contract names no session type anywhere (ADR-0021).
-- **platform** names the secret-provisioning **interface**; don't conflate the interface
-  (contract) with the **binding** (host).
 - **user secret** is ambiguous on its own — say *public identity*, *hashedPassword*, or
-  *feature secret*.
+  *feature secret* (and note the contract handles only the first two; feature secrets are the
+  user's own home concern).
 - **program scope vs system effects** — the contract governs system effects (privilege,
-  secrets, services, groups); program scope (what applications a user runs) is the user's
+  services, groups); program scope (what applications a user runs) is the user's
   sovereign concern and always advisory when daemon access is present. Do not conflate
   "host controls feature grants" with "host controls what programs can run."
 - **`contractPackage` vs `activationPackage`** — `contractPackage` is the contract-level

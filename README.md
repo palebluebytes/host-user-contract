@@ -12,12 +12,11 @@ user-flake shape that consume it).
 ## What it ships
 
 - `nixosModules.default` / `homeModules.default` — the umbrella kit (the `custom.users`
-  schema, the host-invariant **realization**, the `platform` interface, the exposed-host
-  ban). A host imports these and supplies only the `platform` *binding* (its secrets
-  backend) and its display/package bindings.
-- `lib` — the derivation functions a host applies to its own fleet
-  (`mkFeatureRecipients`, `mkHostFacts`).
-- data surface — `features` (the single registry), `featureMeta`, `featureGroups`,
+  schema, the host-invariant **realization**, the `custom.host.exposed` fact). A host imports
+  these and supplies only its display/package bindings. The contract handles no secrets
+  beyond the login credential (ADR-0023).
+- `lib` — the derivation functions a host applies to its own fleet (`mkHostFacts`, …).
+- data surface — `features` (the single registry), `featureGroups`,
   `privilegedGroups`, `safeSet`.
 - `checks.<system>.conformance` — the contract's own conformance suite (synthetic users ×
   the umbrella, no host repo).
@@ -31,7 +30,6 @@ inputs.contract = {
 };
 # then, host-side:
 imports = [ inputs.contract.nixosModules.default ];
-config.custom.platform = { secretFile = …; secretPath = …; };  # the host's binding
 ```
 
 A feature is one entry in `features.nix`; everything else is a projection of it.
@@ -43,7 +41,7 @@ counterpart to the synthetic conformance suite (ADR-0022):
 
 - [`examples/users/`](examples/users/) — the reference **user fleet** (ADR-0020): the operator's
   own accounts in one flake, each exported as a per-user `<u>-contractPackage` output. Users:
-  `ada` (portable — gui on one host, cli on another), `ben` (secret-bearing signing), `cleo`
+  `ada` (portable — gui on one host, cli on another), `ben` (cli-only), `cleo`
   (privileged-group clamp), `svc` (cli-only automation), `admin` (break-glass — the minimal
   `sudo`/wheel grant, login password `password`).
 - [`examples/fleet/`](examples/fleet/) — the reference **host fleet**: `nixosConfigurations`
