@@ -90,6 +90,60 @@ let
   loadedHost = eval [ { custom.users.dana.identity = loadedIdentity; } ];
   danaKeys = loadedHost.users.users.dana.openssh.authorizedKeys.keys;
   danaGroups = loadedHost.users.users.dana.extraGroups;
+
+  # --- the sudo feature: the MINIMAL privileged grant (wheel only) ---
+  # sudo confers wheel and ONLY wheel — no docker/podman (the contrast that distinguishes it
+  # from workstation). Real production accounts ship it (admin/eyeofalligator on weedySeadragon,
+  # admin in examples/fleet). Mirror the clamp→grant→restore cycle workstation already has.
+  sudoClampNoGrant = eval [
+    (mkUser "alice" { })
+    { custom.users.alice.identity.extraGroups = [ "wheel" ]; }
+  ];
+  sudoGranted = eval [
+    (mkUser "alice" { })
+    (grant "alice" { sudo.enable = true; })
+    # self-declare wheel too, so this proves the full clamp→grant→RESTORE cycle in one eval
+    # (as workstation's clampWithGrant does), not merely a conferral.
+    { custom.users.alice.identity.extraGroups = [ "wheel" ]; }
+  ];
+
+  # --- loadIdentity reject paths: the data-side typo-net (cf. requests' malformedRequest) ---
+  # loadIdentity loudly asserts on an unknown key and on a missing required field, but conformance
+  # only ever calls it on a well-formed fixture. tryEval proves both reject rather than silently
+  # producing a wrong account.
+  unknownKeyIdentity = builtins.toFile "identity-unknown.json" (
+    builtins.toJSON {
+      name = "Typo Example";
+      email = "typo@example.invalid";
+      username = "typo";
+      bogusField = "not a real identity field"; # unknown key ⇒ loud reject
+    }
+  );
+  loadUnknownKey = builtins.tryEval (loadIdentity unknownKeyIdentity);
+  missingFieldIdentity = builtins.toFile "identity-missing.json" (
+    builtins.toJSON {
+      name = "No Username";
+      email = "nousername@example.invalid";
+      # username omitted — a required (no-default) identity field ⇒ loud reject
+    }
+  );
+  loadMissingField = builtins.tryEval (loadIdentity missingFieldIdentity);
+
+  # --- empty sshKey: a real user (eyeofalligator) ships sshKey: "" ---
+  # realization guards authorizedKeys with `lib.optional (sshKey != "")`; the identity fixture always
+  # sets a non-empty key, so the empty path went unexercised. Prove no "" is injected while trustedKeys
+  # still land.
+  emptyKeyIdentity = builtins.toFile "identity-emptykey.json" (
+    builtins.toJSON {
+      name = "Empty Key";
+      email = "emptykey@example.invalid";
+      username = "emptykey";
+      sshKey = "";
+      trustedKeys = [ "ssh-ed25519 AAAAtrusted" ];
+    }
+  );
+  emptyKeyHost = eval [ { custom.users.emptykey.identity = loadIdentity emptyKeyIdentity; } ];
+  emptyKeys = emptyKeyHost.users.users.emptykey.openssh.authorizedKeys.keys;
 in
 {
   assertions = [
@@ -125,6 +179,23 @@ in
     {
       name = "grant: the workstation grant confers the privileged group";
       ok = lib.elem "docker" (groupsOf clampWithGrant);
+    }
+
+    # --- the sudo feature (issue #18): wheel-only privileged grant ---
+    {
+      name = "sudo: a self-declared wheel in identity is clamped out without the grant";
+      ok = !(lib.elem "wheel" (groupsOf sudoClampNoGrant));
+    }
+    {
+      name = "sudo: the grant restores wheel and confers it ONLY (no docker/podman, unlike workstation)";
+      ok =
+        lib.elem "wheel" (groupsOf sudoGranted)
+        && !(lib.elem "docker" (groupsOf sudoGranted))
+        && !(lib.elem "podman" (groupsOf sudoGranted));
+    }
+    {
+      name = "sudo: excluded from safeSet (privileged, build-time-only, never a greeter auto-grant)";
+      ok = !(lib.elem "sudo" safeSet);
     }
     {
       name = "exposed host granting a secret-bearing feature (signing) fails an assertion";
@@ -166,6 +237,18 @@ in
     {
       name = "identity.json: a non-privileged extraGroup passes, a privileged one is clamped";
       ok = lib.elem "audio" danaGroups && !(lib.elem "docker" danaGroups);
+    }
+    {
+      name = "loadIdentity: an identity.json with an unknown key fails to evaluate";
+      ok = !loadUnknownKey.success;
+    }
+    {
+      name = "loadIdentity: an identity.json missing a required field (username) fails to evaluate";
+      ok = !loadMissingField.success;
+    }
+    {
+      name = "identity.json: an empty sshKey injects no authorizedKeys entry, while trustedKeys still land";
+      ok = !(lib.elem "" emptyKeys) && lib.elem "ssh-ed25519 AAAAtrusted" emptyKeys;
     }
 
     # --- mkHostFacts (ADR-0002): the self-scoped, secret-free host projection ---
