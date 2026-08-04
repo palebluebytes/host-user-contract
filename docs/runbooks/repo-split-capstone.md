@@ -55,7 +55,9 @@ the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
 - `flake.nix` — inputs `contract` + `home-manager` (with `nixpkgs.follows` so there is ONE
   nixpkgs, ADR-0004); a `checks.home-build` that builds the real home (this is the home-manager
   build the contract's own package-free suite cannot host); optionally a `contractPackage`
-  output via `contract.lib.mkContractPackage` for the pre-built path (ADR-0016).
+  output via `contract.lib.mkContractPackageForHome { home; grants; pkgs }` — the home-manager
+  producer adapter (issue #23) over the generic `mkContractPackage` — for the pre-built path
+  (ADR-0016).
 
 > **Confinement is structural (acceptance criterion 2), and it is now regression-proven** in
 > `conformance/confinement.nix`: the home umbrella declares no `users.users`, `security.sudo`,

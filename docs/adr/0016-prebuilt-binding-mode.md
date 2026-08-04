@@ -132,6 +132,16 @@ safe-set-eligible) remains in the model — only the flag and its derivation ste
 - The contract `lib` gains `mkContractPackage`. No new NixOS module or package dependency —
   the function is a pure derivation wrapper over an already-evaluated home. The package-free
   invariant (ADR-0004) holds.
+- **(issue #23)** The contract `lib` also gains `mkContractPackageForHome`, an *optional*
+  home-manager producer adapter: `mkContractPackageForHome { home; grants ? { }; pkgs }` reads
+  `mkContractPackage`'s four primitives off an already-evaluated home and forwards them. Since
+  ~every producer builds its home with home-manager, each was otherwise hand-rolling this
+  identical disassembly; the adapter makes the producer side turnkey, mirroring the host-side
+  `bindContractPackage`. The generic `mkContractPackage` is unchanged — it stays builder-agnostic
+  for hand-rolled or future nix-darwin homes. The adapter does not import home-manager (it only
+  *reads* attributes, exactly as `bindUserModule` references `config.home-manager.users.<u>`), so
+  the package-free invariant (ADR-0004) still holds. `pkgs` remains a parameter so one call emits
+  multi-arch variants. `examples/users` uses it at each `packages.*` output.
 - The user flake shape (ADR-0007) grows one required output. User repos must add it; the
   contract documents the `mkContractPackage` call as the standard wiring.
 - The conformance suite gains a test for the pre-built path: pin a minimal `contractPackage`,

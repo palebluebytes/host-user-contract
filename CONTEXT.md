@@ -269,6 +269,16 @@ the term is stable, the code is pending (see the cited issue).
   (via `builtins.toFile` at eval time, no IFD) and wraps both into a single derivation. The
   home is evaluated once by the user's flake; the contract supplies only the wrapper.
   **(built — issue #14)** (ADR-0016)
+- **`mkContractPackageForHome`** — the optional **home-manager producer adapter**:
+  `mkContractPackageForHome { home; grants ? { }; pkgs }`. Reads `mkContractPackage`'s four
+  primitives off an already-evaluated home (`home.activationPackage`,
+  `home.config.contract.requests`, `home.config.home.{packages,username}`) and forwards them,
+  so a home-manager producer passes one `home` instead of hand-rolling the disassembly — turnkey
+  on the **producer** side exactly as `bindContractPackage` is on the **consumer** side. It does
+  **not** import home-manager (it only *reads* attributes, like `bindUserModule` references
+  `config.home-manager.users.<u>`), so the package-free invariant (ADR-0004) holds; the generic
+  `mkContractPackage` stays builder-agnostic. `pkgs` is a parameter so one call emits multi-arch
+  variants. **(built — issue #23)** (ADR-0016)
 - **`bindContractPackage`** — the host-side binding for the pre-built path:
   `bindContractPackage { contractPackage; identity; grants }`. Returns a NixOS module that
   reads `contract-requests.json` at eval time, bridges granted requests via the same
@@ -315,7 +325,9 @@ the term is stable, the code is pending (see the cited issue).
 - **conformance suite** — the contract's own tests (`conformance/`): synthetic users × the
   umbrella, no host repo. **Eval** (`default.nix`) proves grant/deny, the gui-union
   *decision*, the clamp, the safe set, the users × archetypes matrix,
-  `mkContractPackage` content, and `bindContractPackage` parity with `bindUserModule`. **VM
+  `mkContractPackage` content, `mkContractPackageForHome`'s home-attribute projection (same
+  content-addressed store path as the direct call), and `bindContractPackage` parity with
+  `bindUserModule`. **VM
   tests** (each a `runNixOSTest` boot): `vm.nix` (gui-union renders), `greeter-vm.nix`
   (provisioning crux), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
   `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
