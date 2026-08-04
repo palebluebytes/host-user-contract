@@ -1,0 +1,33 @@
+# workstation — a SEAT host (non-exposed) with the reference greeter enabled.
+#
+# It DECLARATIVELY binds two users by their contractPackage outputs:
+#   - ada, GRANTED gui: her gui.desktop request bridges into the account, the display surface
+#     turns on, and she gets the gui input groups. This is ada-as-gui-user (contrast agent, where
+#     the SAME ada output is bound cli-only).
+#   - cleo, GRANTED workstation: the privileged-group grant confers `docker` — the ONLY way cleo
+#     obtains it, since her self-declared `docker` in identity.extraGroups is clamped out otherwise.
+#
+# It also enables the reference greeter (a seat concern): the runtime login path. The greeter's
+# end-to-end provisioning is exercised by the fleet-integration VM, which consumes the same ada
+# output at runtime — declarative here, runtime there, one convention.
+{ contract, bindUserPkg }:
+{
+  imports = [
+    contract.nixosModules.greeter
+    (bindUserPkg {
+      name = "ada";
+      grants = {
+        gui.enable = true;
+      };
+    })
+    (bindUserPkg {
+      name = "cleo";
+      grants = {
+        workstation.enable = true;
+      };
+    })
+  ];
+
+  networking.hostName = "workstation";
+  custom.greeter.enable = true;
+}
