@@ -14,7 +14,7 @@
 # never knows or decides wayland vs x11 — the SESSION TYPE is wholly the seat's concern. So this
 # suite supplies its OWN minimal test binding (SDDM + Plasma 6) to render the decision, exactly the
 # role a host's gui-desktop binding plays in production. The shipped contract module stays neutral;
-# the *test* picks a backend, the same way ./default.nix stubs the platform interface.
+# the *test* picks a backend.
 #
 # Lean by design: the display-manager unit is present but not pulled in at boot (we only assert the
 # assembled session *artifacts* + account activation), so the VM reaches multi-user without starting
@@ -54,14 +54,6 @@ pkgs.testers.runNixOSTest {
         fileSystems."/" = {
           device = "tmpfs";
           fsType = "tmpfs";
-        };
-
-        # Stub the platform interface (as ./default.nix does): the contract's own CI binds
-        # no real secrets backend; a no-op keeps the suite robust if a future system-side
-        # secret feature reads custom.platform.secretFile during eval.
-        custom.platform = {
-          secretFile = _: builtins.toFile "stub-secret" "";
-          secretPath = _: builtins.toFile "stub-secret" "";
         };
 
         # Keep the boot lean: the greeter need not run for the session files to be

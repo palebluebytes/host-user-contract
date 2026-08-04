@@ -39,8 +39,7 @@
         };
 
       # Host boilerplate shared by every machine (not part of any "example" — just enough to boot
-      # an eval): a stubbed platform binding (this reference fleet binds no real secrets backend,
-      # exactly as the contract's own suite stubs it), tmpfs root, no bootloader.
+      # an eval): tmpfs root, no bootloader.
       commonBase = {
         system.stateVersion = "25.11";
         nixpkgs.hostPlatform = system;
@@ -48,10 +47,6 @@
         fileSystems."/" = {
           device = "tmpfs";
           fsType = "tmpfs";
-        };
-        custom.platform = {
-          secretFile = _: builtins.toFile "stub-secret" "";
-          secretPath = _: builtins.toFile "stub-secret" "";
         };
       };
 

@@ -66,10 +66,6 @@ pkgs.testers.runNixOSTest {
         device = "tmpfs";
         fsType = "tmpfs";
       };
-      custom.platform = {
-        secretFile = _: builtins.toFile "stub-secret" "";
-        secretPath = _: builtins.toFile "stub-secret" "";
-      };
 
       # Package policy: only hello is approved.
       custom.host.packagePolicy.allowedPrograms = [ "hello" ];

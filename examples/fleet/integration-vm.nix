@@ -41,11 +41,6 @@ pkgs.testers.runNixOSTest {
         fsType = "tmpfs";
       };
 
-      custom.platform = {
-        secretFile = _: builtins.toFile "stub-secret" "";
-        secretPath = _: builtins.toFile "stub-secret" "";
-      };
-
       # Enable the reference greeter (puts the provisioning helper on PATH, fixes the grant to the
       # safe set). We drive the helper directly, so keep boot lean by not pulling the interactive
       # greetd login in at boot — the same move the contract's greeter tests make.

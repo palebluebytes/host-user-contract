@@ -6,15 +6,13 @@
   lib,
   realization,
   identityOptions,
-  platformOptions,
   homeProfileOptions,
   grantedOptions,
   featureConfigOptions,
 }:
 {
-  # System kit: the custom.users schema, the platform INTERFACE (host binds it), the
-  # exposed-host marker, and the realization + insecure aggregator. The host imports
-  # this and supplies the platform binding.
+  # System kit: the custom.users schema, the exposed-host marker, and the realization +
+  # insecure aggregator. The host imports this.
   nixosModule =
     { ... }:
     {
@@ -36,7 +34,6 @@
         default = { };
         description = "Per-user identity, grants, and feature configuration.";
       };
-      options.custom.platform = platformOptions;
       options.custom.host.exposed = lib.mkEnableOption "an exposed/agent-facing host — a plain fact a user's home may read (via hostFacts) and adapt to; the contract enforces nothing on it";
       # Package policy inclusion list (ADR-0017, issue #17): after contractPackage activation,
       # bindContractPackage replaces ~/.nix-profile with a host-built profile containing the
@@ -53,13 +50,11 @@
       };
     };
 
-  # Home kit: the identity + home-profile vocabulary + the platform INTERFACE (host
-  # binds it) + the contract.requests namespace the user emits. The home identity value
-  # is populated from the system identity by the host.
+  # Home kit: the identity + home-profile vocabulary + the contract.requests namespace the
+  # user emits. The home identity value is populated from the system identity by the host.
   homeModule = _: {
     options.identity = identityOptions;
     options.custom.home.profiles = homeProfileOptions;
-    options.custom.platform = platformOptions;
 
     # contract.requests (ADR-0002/0007, issue #5): the typed, read-only namespace a user's
     # home module POPULATES to describe host-affecting parameters of the features it

@@ -177,10 +177,6 @@ pkgs.testers.runNixOSTest {
         device = "tmpfs";
         fsType = "tmpfs";
       };
-      custom.platform = {
-        secretFile = _: builtins.toFile "stub-secret" "";
-        secretPath = _: builtins.toFile "stub-secret" "";
-      };
 
       # Runtime nix needs flakes; force offline so the loop proves it runs with no network (the fixture
       # closure is pre-seeded below).

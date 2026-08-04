@@ -28,7 +28,6 @@ let
   realization = import ./realization.nix { inherit privilegedGroups featureGroups; };
   identityOptions = import ./identity.nix { inherit lib; };
   identityJson = import ./identity-json.nix { inherit lib identityOptions; };
-  platformOptions = import ./platform.nix { inherit lib; };
   homeProfileOptions = import ./home-profiles.nix { inherit lib; };
 
   # --- the two substantial pieces, split out for focus ---
@@ -43,7 +42,6 @@ let
       lib
       realization
       identityOptions
-      platformOptions
       homeProfileOptions
       grantedOptions
       featureConfigOptions

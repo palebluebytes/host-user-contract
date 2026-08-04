@@ -75,11 +75,6 @@ pkgs.testers.runNixOSTest {
         fsType = "tmpfs";
       };
 
-      custom.platform = {
-        secretFile = _: builtins.toFile "stub-secret" "";
-        secretPath = _: builtins.toFile "stub-secret" "";
-      };
-
       # Enable the reference greeter. Offer two desktops as marker commands so per-user desktop
       # SELECTION is observable, with `plasma` the seat default. Drive the helpers directly, so keep
       # boot lean by not pulling the interactive greetd login in (as gui-union does for its DM).

@@ -7,7 +7,7 @@
 # *unexpressible* in the user's world, not merely rejected or `mkIf`-denied downstream.
 #
 # The proof is that these paths are UNDECLARED in the contract home umbrella (modules.nix's
-# `homeModule` declares only `identity`, `custom.home.profiles`, `custom.platform`, and the
+# `homeModule` declares only `identity`, `custom.home.profiles`, and the
 # freeform-INSIDE-`contract.requests` namespace — no top-level freeformType). So a home that
 # sets one throws "option does not exist" at eval, exactly as a stray `home.packages` does in
 # the headless bindUser tracer. This is the SAME universe bindUser harvests in (../lib.nix),
@@ -23,9 +23,8 @@ let
   # Does a one-module home evaluate against the contract umbrella? Force a declared attr
   # (`contract.requests.gui.desktop`, always present via its "" default): building `config`
   # runs the module system's unmatched-definition check across ALL definitions, so an
-  # UNDECLARED system option makes this throw — caught as `success = false`. Forcing only
-  # `contract.requests` (not the whole config) avoids the required `custom.platform` options,
-  # so a `false` means "this path is unexpressible", never an unrelated eval error.
+  # UNDECLARED system option makes this throw — caught as `success = false`. A `false` therefore
+  # means "this path is unexpressible", never an unrelated eval error.
   evaluates = mod: (builtins.tryEval ((evalHome [ mod ]).contract.requests.gui.desktop)).success;
 
   # The system options ADR-0002 names as out-of-universe. Each is a real NixOS/sops option a

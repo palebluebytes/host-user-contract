@@ -25,13 +25,6 @@ rec {
             fsType = "tmpfs";
           };
           system.stateVersion = "25.11";
-          # Stub the platform interface (ADR-0004 review F3). The contract's own CI binds
-          # no real secrets backend; a no-op keeps the suite robust if a future system-side
-          # secret feature reads custom.platform.secretFile during eval.
-          custom.platform = {
-            secretFile = _: builtins.toFile "stub-secret" "";
-            secretPath = _: builtins.toFile "stub-secret" "";
-          };
         }
       ]
       ++ mods;

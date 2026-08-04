@@ -25,10 +25,6 @@ pkgs.testers.runNixOSTest {
         device = "tmpfs";
         fsType = "tmpfs";
       };
-      custom.platform = {
-        secretFile = _: builtins.toFile "stub-secret" "";
-        secretPath = _: builtins.toFile "stub-secret" "";
-      };
 
       # alice: granted nix-daemon → in nix-users → can use the daemon.
       custom.users.alice = {

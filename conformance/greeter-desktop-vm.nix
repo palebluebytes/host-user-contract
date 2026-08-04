@@ -38,10 +38,6 @@ pkgs.testers.runNixOSTest {
         device = "tmpfs";
         fsType = "tmpfs";
       };
-      custom.platform = {
-        secretFile = _: builtins.toFile "stub-secret" "";
-        secretPath = _: builtins.toFile "stub-secret" "";
-      };
 
       # A full DE needs real RAM + GPU. virtio-gpu gives software-rendered DRM/KMS.
       virtualisation.memorySize = 4096;

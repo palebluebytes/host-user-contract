@@ -58,10 +58,6 @@ pkgs.testers.runNixOSTest {
         device = "tmpfs";
         fsType = "tmpfs";
       };
-      custom.platform = {
-        secretFile = _: builtins.toFile "stub-secret" "";
-        secretPath = _: builtins.toFile "stub-secret" "";
-      };
 
       hardware.graphics.enable = true;
       fonts.packages = [ pkgs.dejavu_fonts ];

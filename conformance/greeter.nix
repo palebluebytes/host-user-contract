@@ -451,8 +451,8 @@ in
         && !(lib.elem "virtualization" (lib.attrNames greeterGrants));
     }
     {
-      # ADR-0008 litmus (mirrors the platform interface): the greeter ships in the eval but a
-      # host that does not enable it gets nothing — greetd stays off, no seat is bound.
+      # ADR-0008 litmus: the greeter ships in the eval but a host that does not enable it gets
+      # nothing — greetd stays off, no seat is bound.
       name = "greeter: present-but-unbound turns nothing on (greetd disabled)";
       ok = !greeterUnbound.services.greetd.enable;
     }
