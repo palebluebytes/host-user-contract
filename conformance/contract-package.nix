@@ -69,6 +69,23 @@ let
     home = syntheticHome;
   };
 
+  # Grants forward through the adapter too (not just the default `{ }`). A home assembled WITH
+  # grants must match the direct call fed the same grants — so the baked `granted` feature names
+  # (the ADR-0016 coupling guard `bindContractPackage` proves against) survive the adapter. Paired
+  # with a non-vacuity check below (a non-empty grant CHANGES the artifact), this proves the
+  # adapter neither drops nor mangles `grants`.
+  contractPackageFromHomeGranted = mkContractPackageForHome {
+    inherit pkgs;
+    home = syntheticHome;
+    grants = greeterGrants;
+  };
+  contractPackageGranted = mkContractPackage {
+    inherit pkgs;
+    activationPackage = activationStub;
+    inherit (primitives) requests packages username;
+    grants = greeterGrants;
+  };
+
   # Execution proof: build the derivation and verify its content.
   contentCheck =
     pkgs.runCommand "contract-package-content-check" { nativeBuildInputs = [ pkgs.jq ]; }
@@ -121,6 +138,19 @@ in
     {
       name = "mkContractPackageForHome: reads home primitives into an identical contractPackage";
       ok = contractPackageFromHome.outPath == contractPackage.outPath;
+    }
+
+    # mkContractPackageForHome: grants forward identically — the baked `granted` names survive.
+    {
+      name = "mkContractPackageForHome: forwards grants identically to the direct call";
+      ok = contractPackageFromHomeGranted.outPath == contractPackageGranted.outPath;
+    }
+
+    # ...and non-vacuously: a non-empty grant actually changes the artifact, so the check above
+    # is proving forwarding, not that grants are inert.
+    {
+      name = "mkContractPackageForHome: a non-empty grant changes the artifact (forwarding is real)";
+      ok = contractPackageFromHomeGranted.outPath != contractPackageFromHome.outPath;
     }
 
     # bindContractPackage: account materializes from identity
