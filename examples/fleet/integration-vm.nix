@@ -7,7 +7,7 @@
 # It lives here, in the fleet flake that legitimately has home-manager (via the users input), for
 # the reason the contract's own suite cannot host it: building a real home needs home-manager, and
 # the contract depends only on nixpkgs `lib` (ADR-0004). It is a FOCUSED seat node (like the
-# contract's greeter-vm), not the full workstation config — so the runtime-provisioned account
+# contract's greeter-vm), not the full desk host config — so the runtime-provisioned account
 # never collides with a declarative one, and the boot stays lean.
 {
   pkgs,

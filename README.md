@@ -47,7 +47,7 @@ counterpart to the synthetic conformance suite (ADR-0022):
   (privileged-group clamp), `svc` (cli-only automation), `admin` (break-glass — the minimal
   `sudo`/wheel grant, login password `password`).
 - [`examples/fleet/`](examples/fleet/) — the reference **host fleet**: `nixosConfigurations`
-  (`workstation`, `vault`, `agent`) that bind those user outputs via `bindContractPackage`, showing
+  (`desk`, `vault`, `agent`) that bind those user outputs via `bindContractPackage`, showing
   the two-repo world meeting at the binding. Its `checks` prove the fleet evaluates coherently,
   `ada` diverges gui↔cli across hosts, and the greeter provisions a real home end-to-end.
 

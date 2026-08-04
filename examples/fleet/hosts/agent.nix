@@ -3,7 +3,7 @@
 # Exposure is the security-critical case: an exposed host may NEVER be granted a secret-bearing
 # feature (the exposed-host ban, ADR-0001 threat model). So this host binds only users it can grant
 # safely, and deliberately does NOT run ben (whose signing grant would trip the ban):
-#   - ada, GRANTED nothing (cli-only): the SAME ada output that is gui on workstation, here bound
+#   - ada, GRANTED nothing (cli-only): the SAME ada output that is gui on desk, here bound
 #     with no gui grant — her gui.desktop request is not bridged, the surface stays off, no input
 #     groups. One identity, one output, opposite session because the HOST decided (ADR-0002 silent
 #     degradation).

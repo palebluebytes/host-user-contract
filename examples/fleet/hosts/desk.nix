@@ -1,4 +1,5 @@
-# workstation — a SEAT host (non-exposed) with the reference greeter enabled.
+# desk — a SEAT host (non-exposed) with the reference greeter enabled. (Named `desk`, not
+# `workstation`, so it never collides with the `workstation` FEATURE it grants below.)
 #
 # It DECLARATIVELY binds two users by their contractPackage outputs:
 #   - ada, GRANTED gui: her gui.desktop request bridges into the account, the display surface
@@ -37,6 +38,6 @@
     })
   ];
 
-  networking.hostName = "workstation";
+  networking.hostName = "desk";
   custom.greeter.enable = true;
 }

@@ -69,7 +69,7 @@
         };
 
       nixosConfigurations = {
-        workstation = mkHost ./hosts/workstation.nix;
+        desk = mkHost ./hosts/desk.nix;
         vault = mkHost ./hosts/vault.nix;
         agent = mkHost ./hosts/agent.nix;
       };
@@ -93,7 +93,7 @@
         # flake-output consumption convention (declarative binds the contractPackage, the greeter
         # builds the greeter home), the
         # counterpart to the declarative binds above. Focused seat node (like the contract's own
-        # greeter-vm), not the full workstation, so the provisioned account never collides with a
+        # greeter-vm), not the full desk host, so the provisioned account never collides with a
         # declarative one.
         fleet-integration = import ./integration-vm.nix {
           inherit pkgs system;

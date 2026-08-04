@@ -29,7 +29,7 @@ never a replacement for it.**
    another), `ben` (secret-bearing signing), `cleo` (privileged-group clamp), `svc` (cli-only
    automation), `admin` (break-glass — the minimal `sudo`/wheel grant).
 
-2. **`examples/fleet/`** — the reference **host fleet**: `nixosConfigurations` (`workstation` seat,
+2. **`examples/fleet/`** — the reference **host fleet**: `nixosConfigurations` (`desk` seat,
    `vault` non-exposed, `agent` exposed) that bind the user fleet's outputs. It shows the contract's
    reason to exist — two independently-owned repos meeting at `bindContractPackage`.
 
@@ -70,7 +70,7 @@ never a replacement for it.**
   up the moment one does. `mkHostFacts` — the other previously-uncovered helper — gains a conformance
   assertion proving its projection is self-scoped and secret-free (no `hostName`, no secret; ADR-0002).
 - **Silent degradation is shown positively, on both sides.** The *same* `ada-contractPackage`, bound
-  with gui on `workstation` and without on `agent`, yields opposite account realizations (bind-level);
+  with gui on `desk` and without on `agent`, yields opposite account realizations (bind-level);
   and `ben`'s home reaction wires a signing marker only where granted (home-side) — together the
   positive face of [ADR-0002](0002-user-confinement-manifest-greeter.md)'s silent-degradation promise,
   which the adversarial suite proves only from the deny side.

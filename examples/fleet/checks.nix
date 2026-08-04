@@ -31,8 +31,8 @@ let
     {
       name = "fleet-eval: every bound account realizes as a normal user";
       ok = lib.all (x: x) [
-        (acct "workstation" "ada").isNormalUser
-        (acct "workstation" "cleo").isNormalUser
+        (acct "desk" "ada").isNormalUser
+        (acct "desk" "cleo").isNormalUser
         (acct "vault" "ben").isNormalUser
         (acct "vault" "svc").isNormalUser
         (acct "agent" "ada").isNormalUser
@@ -40,10 +40,8 @@ let
       ];
     }
     {
-      name = "grant-divergence: ada is a GUI user on workstation (uinput group + display surface)";
-      ok =
-        (lib.elem "uinput" (acct "workstation" "ada").extraGroups)
-        && cfgs.workstation.custom.gui.surface.enabled;
+      name = "grant-divergence: ada is a GUI user on desk (uinput group + display surface)";
+      ok = (lib.elem "uinput" (acct "desk" "ada").extraGroups) && cfgs.desk.custom.gui.surface.enabled;
     }
     {
       name = "grant-divergence: the SAME ada output is CLI-only on agent (no uinput, no surface) — silent degradation";
@@ -52,15 +50,15 @@ let
     }
     {
       name = "clamp: cleo receives the privileged 'docker' group ONLY via the workstation grant";
-      ok = lib.elem "docker" (acct "workstation" "cleo").extraGroups;
+      ok = lib.elem "docker" (acct "desk" "cleo").extraGroups;
     }
     {
       name = "sudo: admin gets wheel and NOTHING more (the minimal grant — no docker, unlike workstation)";
       ok =
         let
-          g = (acct "workstation" "admin").extraGroups;
+          g = (acct "desk" "admin").extraGroups;
         in
-        (acct "workstation" "admin").isNormalUser && lib.elem "wheel" g && !(lib.elem "docker" g);
+        (acct "desk" "admin").isNormalUser && lib.elem "wheel" g && !(lib.elem "docker" g);
     }
     {
       name = "grant: ben is granted signing on the non-exposed vault (baked variant matches, ADR-0016)";
