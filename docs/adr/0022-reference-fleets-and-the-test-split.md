@@ -1,6 +1,6 @@
 # Reference fleets, and the oracle/reference test split
 
-**Status:** Accepted. **Builds on** [ADR-0004](0004-extract-contract-flake.md) (the contract's
+**Status:** Accepted; **partially overtaken by [ADR-0023](0023-contract-handles-no-secrets.md)** — the contract now handles no secrets, so `mkFeatureRecipients` and the `secretBearing`/`signing` coverage this ADR describes no longer exist; `ben` is now a plain cli reference user. The reference-fleet *split* (oracle vs positive-space reference) stands; read the secret-coverage details as history. **Builds on** [ADR-0004](0004-extract-contract-flake.md) (the contract's
 synthetic, host-repo-free conformance suite), [ADR-0007](0007-user-flake-shape.md) /
 [ADR-0020](0020-multi-user-repo-shape.md) (the user-flake and multi-user shapes), and
 [ADR-0016](0016-prebuilt-binding-mode.md) (the per-user `contractPackage` output).
