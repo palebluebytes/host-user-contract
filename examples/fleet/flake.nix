@@ -87,9 +87,11 @@
           inherit (contract.lib) mkFeatureRecipients;
         };
 
-        # The runtime greeter path END-TO-END: a booted seat greeter-provisions ada from the SAME
-        # ada flake output (her -greeter home, granted the safe set) and observes her real home
-        # activate — the runtime half of the uniform flake-output consumption convention, the
+        # The runtime greeter path END-TO-END: a booted seat greeter-provisions ada from her
+        # `-greeter` home output (a sibling of `ada-contractPackage`, built from the same user with
+        # the safe-set grant) and observes her real home activate — the runtime half of the uniform
+        # flake-output consumption convention (declarative binds the contractPackage, the greeter
+        # builds the greeter home), the
         # counterpart to the declarative binds above. Focused seat node (like the contract's own
         # greeter-vm), not the full workstation, so the provisioned account never collides with a
         # declarative one.

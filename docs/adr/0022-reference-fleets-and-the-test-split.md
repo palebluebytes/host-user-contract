@@ -44,9 +44,12 @@ never a replacement for it.**
    imports `ada`'s contract-pure home + her `identity.json` as fixture atoms), never the reverse —
    oracle borrows from reference, reference never defers to oracle.
 
-5. **One consumption convention.** Every user is consumed only as its `<u>-contractPackage` output —
-   both **declaratively** (`bindContractPackage` at eval) and at **runtime** (the greeter at login).
-   The roaming stranger is not a bespoke standalone flake; it is the same output consumed at runtime.
+5. **One consumption convention.** Every user is consumed only as a **flake output of the user
+   fleet**, never a bespoke standalone flake — **declaratively** via its `<u>-contractPackage`
+   (`bindContractPackage` at eval), and at **runtime** via its greeter-home output (the greeter
+   builds/activates `<u>-greeter` at login, a sibling output built from the same user). The tool and
+   the specific output differ between the two paths; what is uniform is that both consume the user
+   fleet's per-user outputs. The roaming stranger is the same user fleet's output consumed at runtime.
 
 ## Consequences
 
@@ -62,9 +65,12 @@ never a replacement for it.**
   which also keeps it a clean standalone teaching artifact. (This does not contradict
   [ADR-0020](0020-multi-user-repo-shape.md)'s "shared code, per-user data": that is a real operator
   repo's *ergonomics*; a reference example's job is to demonstrate the *contract*.)
-- **`mkFeatureRecipients` is now exercised over a real fleet** — vacuous today (no feature declares
-  `secretFiles`; `signing` rides the user's own home sops), lighting up the moment one does.
-- **Silent degradation is shown positively.** The *same* `ada-contractPackage`, bound with gui on
-  `workstation` and without on `agent`, yields opposite realizations — the home-side of
-  [ADR-0002](0002-user-confinement-manifest-greeter.md)'s silent-degradation promise, which the
-  adversarial suite proves only from the deny side.
+- **The fleet-facing helpers gain coverage.** `mkFeatureRecipients` is exercised over a real fleet —
+  vacuous today (no feature declares `secretFiles`; `signing` rides the user's own home sops), lighting
+  up the moment one does. `mkHostFacts` — the other previously-uncovered helper — gains a conformance
+  assertion proving its projection is self-scoped and secret-free (no `hostName`, no secret; ADR-0002).
+- **Silent degradation is shown positively, on both sides.** The *same* `ada-contractPackage`, bound
+  with gui on `workstation` and without on `agent`, yields opposite account realizations (bind-level);
+  and `ben`'s home reaction wires a signing marker only where granted (home-side) — together the
+  positive face of [ADR-0002](0002-user-confinement-manifest-greeter.md)'s silent-degradation promise,
+  which the adversarial suite proves only from the deny side.

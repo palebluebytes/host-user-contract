@@ -1,7 +1,8 @@
 # Greeter path END-TO-END with a REAL home (ADR-0006, issue #2), fleet edition — the runtime half
 # of the uniform flake-output consumption convention. The declarative binds (hosts/*.nix) consume
-# each user's contractPackage at EVAL; here a booted seat consumes the SAME user output (ada's
-# -greeter home) at RUNTIME through the greeter, and observes her real home activate.
+# each user's `<u>-contractPackage` at EVAL; here a booted seat consumes a SIBLING output of the same
+# user (ada's `-greeter` home, built from the same user with the safe-set grant) at RUNTIME through
+# the greeter, and observes her real home activate. Same user fleet, sibling outputs, two paths.
 #
 # It lives here, in the fleet flake that legitimately has home-manager (via the users input), for
 # the reason the contract's own suite cannot host it: building a real home needs home-manager, and
@@ -64,7 +65,7 @@ pkgs.testers.runNixOSTest {
     # The roaming user does not exist at build time — this seat never declared ${username}.
     machine.fail("getent passwd ${username}")
 
-    # Runtime provision the REAL greeter-bound home from the SAME user flake output: fully realize
+    # Runtime provision the REAL greeter-bound home from ada's greeter-home flake output: fully realize
     # the account from identity.json (shell-side realization, ADR-0012) and activate the actual
     # home-manager generation as that user.
     machine.succeed("contract-greeter-provision ${username} ${identityJson} ${homeActivation} tier1")
