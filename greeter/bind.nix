@@ -1,9 +1,8 @@
 # The orchestrator greetd runs: ties the eval-free ordering together (the replaceable UI half).
 # The prompt loop here is the reference UI; a host may swap regreet/its own front end as long as it
 # preserves the ordering. The home BUILD (step 5/6) is delegated to the host's `homeBuilder` binding —
-# it needs home-manager, which the contract does not ship (ADR-0004). Secret key acquisition (step
-# 4b) is delegated to contract-greeter-secret-key, which encapsulates the full passphrase/escrow
-# protocol and the exposed-host guard; this script has no knowledge of secret-provisioning config.
+# it needs home-manager, which the contract does not ship (ADR-0004). The session it activates is
+# always secret-free: the contract handles no secrets beyond the login credential.
 {
   pkgs,
   lib,
@@ -15,7 +14,6 @@
   authScript,
   provisionScript,
   sessionScript,
-  secretKeyScript,
 }:
 pkgs.writeShellApplication {
   name = "contract-greeter-bind";
@@ -26,7 +24,6 @@ pkgs.writeShellApplication {
     authScript
     provisionScript
     sessionScript
-    secretKeyScript
   ];
   text = ''
     tier=${lib.escapeShellArg tier}
@@ -71,20 +68,13 @@ pkgs.writeShellApplication {
     # 3. authenticate EVAL-FREE (jq + crypt + Tier-1 signature) before any user Nix.
     printf '%s\n' "$password" | contract-greeter-auth "$src" "$username" "$tier" "$signers"
 
-    # 4b. acquire the session age key (ADR-0015): contract-greeter-secret-key encapsulates the full
-    # passphrase/escrow protocol, the exposed-host guard, and the fail-closed/degrade logic. It emits
-    # the temp-file path on success, nothing on graceful degradation, and exits non-zero on refusal.
-    # CONTRACT_LOGIN_PASS carries the password for seats configured with separatePassphrase=false.
-    sessionKey=$(CONTRACT_LOGIN_PASS="$password" contract-greeter-secret-key "$username" "$src")
-
     # 5/6. evaluate + build the home THROUGH the contract, under the contract-pinned restricted-eval
     # posture (ADR-0014) — handed to the host's homeBuilder as NIX_CONFIG so a naive `nix build`
     # binding inherits the floor; it augments the seat's nix.conf (experimental-features survive).
     activation=$(env NIX_CONFIG="$evalConfig" "$homeBuilder" "$src" "$username")
 
-    # 7. FULLY realize the account (shell-side realization.nix), place the unlocked key, activate.
-    contract-greeter-provision "$username" "$src/${identityFile}" "$activation" "$tier" "$sessionKey"
-    [ -n "$sessionKey" ] && rm -f "$sessionKey"
+    # 7. FULLY realize the account (shell-side realization.nix) and activate the (secret-free) home.
+    contract-greeter-provision "$username" "$src/${identityFile}" "$activation" "$tier"
 
     # 8. launch the session (the desktop is selected here; the host-bound backend renders it).
     exec contract-greeter-session "$username" "/home/$username"

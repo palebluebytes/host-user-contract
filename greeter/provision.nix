@@ -1,5 +1,5 @@
 # (7) the privileged runtime-provisioning helper: the shell-side realization.nix (ADR-0012).
-# Usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier> [session-key]
+# Usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier>
 # NixOS users are declarative, and a greeter user is never built into the system (ADR-0010), so
 # realization.nix never runs for them — this IS their realization, run at login. It materializes
 # the (Tier-1 persisted) account and FULLY realizes it from identity.json + the safe-set grant:
@@ -7,17 +7,13 @@
 # declared groups — reproducing realization.nix's privileged-group CLAMP so a hostile identity.json
 # still cannot smuggle a privileged group at runtime — plus enrollment in the greeter-seat
 # baseline. Then it activates the built home AS the user. Tier-2 (ephemeral) is deferred. Runs as
-# root (greetd's pre-session context); it drops to the user for activation.
-#
-# keyFile is baked at module-eval time (from custom.greeter.secretProvisioning.keyFile) — the
-# home-relative path the unlocked age identity is installed to before activation. Baked here so
-# the caller (bind) needs no knowledge of secret-provisioning config.
+# root (greetd's pre-session context); it drops to the user for activation. The activated session
+# is secret-free: the contract handles no secrets beyond the login credential.
 {
   pkgs,
   lib,
   privilegedGroups,
   enrolledGroups,
-  keyFile,
 }:
 pkgs.writeShellApplication {
   name = "contract-greeter-provision";
@@ -32,11 +28,6 @@ pkgs.writeShellApplication {
     identity=$2
     activation=$3
     tier=$4
-    # Optional (ADR-0015, issue #10): a decrypted session age identity to install for the user.
-    # Empty ⇒ no secret provisioning (the default). The destination path is baked from the seat's
-    # secretProvisioning.keyFile config so the orchestrator needs no knowledge of it.
-    sessionKey=''${5:-}
-    keyRel=${lib.escapeShellArg keyFile}
 
     [ "$(id -u)" = 0 ] || { echo "provision: must run as root" >&2; exit 1; }
     [ -f "$identity" ] || { echo "provision: no identity.json at '$identity'" >&2; exit 1; }
@@ -91,16 +82,7 @@ pkgs.writeShellApplication {
     chown "$username:$username" "$ssh_dir/authorized_keys"
     chmod 600 "$ssh_dir/authorized_keys"
 
-    # Secret provisioning (ADR-0015): if the greeter unlocked a session age identity, install it at the
-    # user's sops key path BEFORE activation, so the user's OWN home sops decrypt for this session. The
-    # key is the user's (unlocked from their repo by their passphrase); the seat only places it.
     install -d -o "$username" -g "$username" "$home"
-    if [ -n "$sessionKey" ] && [ -f "$sessionKey" ]; then
-      dest="$home/$keyRel"
-      install -d -o "$username" -g "$username" -m 700 "$(dirname "$dest")"
-      install -o "$username" -g "$username" -m 600 "$sessionKey" "$dest"
-      echo "provision: session age identity placed at $dest" >&2
-    fi
 
     # Activate the built home AS the user — the runtime equivalent of the declarative
     # home-manager activation a build-time user gets, run now instead of at switch time.

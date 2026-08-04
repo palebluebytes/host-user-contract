@@ -21,7 +21,4 @@ deadnix --fail .
 echo "• ruff — Python lint"
 ruff check .
 
-echo "• shellcheck — example shell"
-shellcheck examples/escrow-keyserver/key-fetcher
-
 echo "pre-commit OK"

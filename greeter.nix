@@ -62,7 +62,6 @@ let
   # The shipped programs, one per file (the canonical mechanism + the replaceable UI). Each is
   # a writeShellApplication closed over only what it needs; bind orchestrates the rest.
   authScript = import ./greeter/auth.nix { inherit pkgs identityFile; };
-  unlockScript = import ./greeter/unlock.nix { inherit pkgs; };
   provisionScript = import ./greeter/provision.nix {
     inherit
       pkgs
@@ -70,16 +69,10 @@ let
       privilegedGroups
       enrolledGroups
       ;
-    keyFile = cfg.secretProvisioning.keyFile;
   };
   sessionScript = import ./greeter/session.nix {
     inherit pkgs lib;
     inherit (cfg) desktops defaultDesktop;
-  };
-  secretKeyScript = import ./greeter/secret-key.nix {
-    inherit pkgs lib unlockScript;
-    inherit (cfg) secretProvisioning tier;
-    exposed = config.custom.host.exposed;
   };
   bindScript = import ./greeter/bind.nix {
     inherit
@@ -90,7 +83,6 @@ let
       authScript
       provisionScript
       sessionScript
-      secretKeyScript
       ;
     inherit (cfg)
       tier
@@ -200,84 +192,6 @@ in
       description = "The `desktops` name to launch when the user requests none, or requests one this seat does not offer (ADR-0013).";
     };
 
-    secretProvisioning = lib.mkOption {
-      description = ''
-        Greeter secret provisioning (ADR-0015, issue #10): on a TRUSTED Tier-1 seat, unlock the user's
-        OWN age key from their repo with a passphrase so their home sops decrypt at a roaming login.
-        Off by default and a host BINDING (the seat asserts it is trusted to hold the user's plaintext
-        for the session). REFUSED on an exposed host (ADR-0001) and at tier2 (secret-free). Distinct
-        from contract secret-features (`signing`), which stay build-time via the safe set.
-      '';
-      default = { };
-      type = lib.types.submodule {
-        options = {
-          enable = lib.mkEnableOption "unlocking the user's age key at a greeter login (trusted Tier-1 seats only)";
-          method = lib.mkOption {
-            type = lib.types.enum [
-              "passphrase"
-              "escrow"
-            ];
-            default = "passphrase";
-            description = ''
-              Where the wrapped age key comes from (ADR-0015). `passphrase` (issue #10): a key wrapped in
-              the user's repo, unlocked by a passphrase — portable, no infra. `escrow` (issue #11): the
-              wrapped key lives off-repo and is obtained via the host's `keyFetcher` binding (e.g. fetched
-              from the user's server after a PHONE approval), removing the public offline-brute-forceable
-              blob; the fetched key is still passphrase-unlocked (two factors: gate + passphrase).
-            '';
-          };
-          keyFetcher = lib.mkOption {
-            type = lib.types.nullOr (
-              lib.types.oneOf [
-                lib.types.str
-                lib.types.path
-                lib.types.package
-              ]
-            );
-            default = null;
-            description = ''
-              Host BINDING for method = "escrow" (ADR-0015 update, issue #11): a command invoked as
-              `keyFetcher <username>` that obtains the user's wrapped age key and prints it to STDOUT
-              (bind captures it to a private file — binary-safe). The contract ships the SEAM, never a
-              wire protocol — exactly like `homeBuilder` — so the host binds whatever release mechanism it
-              runs (the reference example composes OpenBao one-time wrapping + an ntfy phone approval, #13;
-              it must use a confidential channel and stream bytes, not a shell var). Null ⇒ no fetcher.
-            '';
-          };
-          requireSecrets = lib.mkOption {
-            type = lib.types.bool;
-            default = false;
-            description = ''
-              If true, FAIL the login when secret provisioning is enabled but no key could be obtained
-              (escrow server unreachable, no wrapped key, …) — for workloads that must not run secret-free.
-              Default false: fail CLOSED on secrets but never on the login (ADR-0015 update) — a missing
-              key degrades to a secret-free session, which cannot leak. There is deliberately NO in-repo
-              passphrase fallback for escrow (that would be a downgrade attack).
-            '';
-          };
-          separatePassphrase = lib.mkOption {
-            type = lib.types.bool;
-            default = true;
-            description = ''
-              Prompt a SEPARATE unlock passphrase (recommended) rather than reusing the login password.
-              The login password also backs `hashedPassword` and the wrapped key is public/offline-
-              brute-forceable, so decoupling lets the key be stronger than the login secret.
-            '';
-          };
-          wrappedKeyName = lib.mkOption {
-            type = lib.types.str;
-            default = "contract-key.enc";
-            description = "Filename in the user repo of the passphrase-wrapped age identity (see contract-greeter-unlock for the wrapping).";
-          };
-          keyFile = lib.mkOption {
-            type = lib.types.str;
-            default = ".config/sops/age/keys.txt";
-            description = "Home-relative path the unlocked age identity is installed to (sops-nix's default age key path).";
-          };
-        };
-      };
-    };
-
     grants = lib.mkOption {
       type = lib.types.attrsOf (lib.types.attrsOf lib.types.bool);
       readOnly = true;
@@ -291,22 +205,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    # Secret provisioning is indefensible on an exposed host — the seat sees the user's decrypted
-    # secrets while it activates the home (ADR-0015, gated on the ADR-0001 exposed-host ban). bind
-    # also refuses at runtime; this makes a misconfigured seat a clear eval error, not a login surprise.
-    assertions = [
-      {
-        assertion = cfg.secretProvisioning.enable -> !config.custom.host.exposed;
-        message = "custom.greeter.secretProvisioning is enabled on exposed host '${config.networking.hostName}' — an exposed/agent host must never hold the user's key material (ADR-0001, ADR-0015)";
-      }
-      {
-        assertion =
-          (cfg.secretProvisioning.enable && cfg.secretProvisioning.method == "escrow")
-          -> cfg.secretProvisioning.keyFetcher != null;
-        message = "custom.greeter.secretProvisioning.method = \"escrow\" needs a keyFetcher host binding (ADR-0015 issue #11)";
-      }
-    ];
-
     # greetd runs the bind orchestrator as the seat's login program. The default_session command
     # is mkDefault so a host can substitute regreet/its own UI (the replaceable half) while the
     # binding scripts below stay canonical.
@@ -321,15 +219,13 @@ in
     # may set a gid) merges cleanly.
     users.groups = lib.genAttrs enrolledGroups (_: { });
 
-    # The bind/auth/provision/session/unlock/secret-key scripts are on PATH so the helpers (and a
-    # host's own greeter UI) can call them; provision is the privileged crux greetd invokes pre-session.
+    # The bind/auth/provision/session scripts are on PATH so the helpers (and a host's own greeter
+    # UI) can call them; provision is the privileged crux greetd invokes pre-session.
     environment.systemPackages = [
       bindScript
       authScript
       provisionScript
       sessionScript
-      unlockScript
-      secretKeyScript
     ];
   };
 }
