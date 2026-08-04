@@ -1,0 +1,29 @@
+# CI — walk the three `nix flake check` targets that make up "all of it": the contract flake (the
+# synthetic conformance oracle + its VMs) and the two reference fleets (docs/adr/0022). The fleet
+# checks cannot live under the contract flake's checks — they need home-manager, which the contract
+# does not input (ADR-0004) — so nothing but this matrix catches drift between the three.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  flake-check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - "." # the contract: synthetic conformance (host-repo-free) + the runtime VMs
+          - "examples/users" # the reference user fleet: per-user real home builds
+          - "examples/fleet" # the reference host fleet: fleet-eval + the greeter integration VM
+    name: nix flake check ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      # Nix with flakes enabled; the installer also enables /dev/kvm on the Linux runner, which the
+      # NixOS VM checks (conformance-vm, greeter-*, fleet-integration) need.
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix flake check "./${{ matrix.target }}" -L

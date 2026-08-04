@@ -30,10 +30,11 @@ contract ships).
 | [0019](0019-login-credential-travels-with-the-user.md) | The login credential travels with the user as public data; visibility picks the hash strength |
 | [0020](0020-multi-user-repo-shape.md) | The `users` repo: a multi-user grouping of the operator's own accounts (extends 0007) |
 | [0021](0021-contract-display-server-agnostic.md) | The contract is display-server-agnostic; the seat owns session type and launch (supersedes 0018 + the gui-session union of 0003) |
+| [0022](0022-reference-fleets-and-the-test-split.md) | Reference user + host fleets as sibling flakes; the synthetic suite is the adversarial oracle, the fleet a positive-space reference that borrows atoms one-way |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0021`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0022`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme

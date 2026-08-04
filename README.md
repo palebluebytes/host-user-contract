@@ -35,3 +35,20 @@ config.custom.platform = { secretFile = …; secretPath = …; };  # the host's 
 ```
 
 A feature is one entry in `features.nix`; everything else is a projection of it.
+
+## Reference implementations
+
+Two sibling flakes show a canonical implementation of the contract — the positive-space
+counterpart to the synthetic conformance suite (ADR-0022):
+
+- [`examples/users/`](examples/users/) — the reference **user fleet** (ADR-0020): the operator's
+  own accounts in one flake, each exported as a per-user `<u>-contractPackage` output. Users:
+  `ada` (portable — gui on one host, cli on another), `ben` (secret-bearing signing), `cleo`
+  (privileged-group clamp), `svc` (cli-only automation).
+- [`examples/fleet/`](examples/fleet/) — the reference **host fleet**: `nixosConfigurations`
+  (`workstation`, `vault`, `agent`) that bind those user outputs via `bindContractPackage`, showing
+  the two-repo world meeting at the binding. Its `checks` prove the fleet evaluates coherently,
+  `ada` diverges gui↔cli across hosts, and the greeter provisions a real home end-to-end.
+
+Each fleet carries its own `checks` (they need home-manager, which the contract does not input), so
+"run everything" is `nix flake check` in three targets: `.`, `examples/users`, `examples/fleet`.

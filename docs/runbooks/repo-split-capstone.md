@@ -37,8 +37,9 @@ the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
 
 ## Stage 1 — create the user repo (ADR-0007 shape)
 
-**Edit.** Model the new `user-inkpotmonkey` repo on `examples/user/` in this repo — it is the
-canonical reference for the shape:
+**Edit.** Model the new `user-inkpotmonkey` repo on a member of `examples/users/` in this repo (e.g.
+`examples/users/users/ada/`) — the reference user fleet is the canonical reference for the shape
+(ADR-0020/0022):
 
 - `identity.json` — pure data (`name`, `email`, `username`). Loaded by the *binding*, never
   by the home (ADR-0009); the home reads `config.identity.{name,email}` for its dotfiles.
@@ -257,4 +258,4 @@ Do this in order — a later step depending on an earlier one:
 - `mkFeatureRecipients` — the per-feature recipient map for re-key/rotate (`lib.nix`).
 - `custom.host.exposed` + `exposedHostOffenders` — the exposed-host secret ban (`modules.nix`).
 - `conformance/confinement.nix` — the structural-confinement proof (criterion 2).
-- `examples/user/` — the reference user repo shape.
+- `examples/users/` — the reference user fleet (per-user shape); `examples/fleet/` — the reference host fleet.
