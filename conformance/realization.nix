@@ -144,6 +144,40 @@ let
   );
   emptyKeyHost = eval [ { custom.users.emptykey.identity = loadIdentity emptyKeyIdentity; } ];
   emptyKeys = emptyKeyHost.users.users.emptykey.openssh.authorizedKeys.keys;
+
+  # --- grant ISOLATION between co-resident users (issue #19) ---
+  # Every clamp/grant assertion above is single-user (alice alone), so none proves a grant to one
+  # account stays off another. Real fleet host weedySeadragon binds THREE users with divergent grant
+  # sets on ONE system, and users self-declare wheel in their identity. Model a synthetic co-resident
+  # host and prove per-account confinement: a privileged grant confers its groups ONLY to the granted
+  # account, and a user self-declaring wheel escalates neither itself nor a neighbour.
+  #
+  #   alice — gui + workstation + virtualization (docker/podman/wheel + libvirtd); self-declares wheel
+  #   bob   — gui only, NO privileged grant; self-declares wheel  → must be clamped
+  #   carol — sudo (wheel only), no gui
+  isolationHost = eval [
+    (mkUser "alice" { })
+    (mkUser "bob" { })
+    (mkUser "carol" { gui = false; })
+    (grant "alice" {
+      gui.enable = true;
+      workstation.enable = true;
+      virtualization.enable = true;
+    })
+    (grant "bob" { gui.enable = true; })
+    (grant "carol" { sudo.enable = true; })
+    {
+      # two co-residents self-declare wheel: alice (restored by her grant) and bob (no grant ⇒ clamped)
+      custom.users.alice.identity.extraGroups = [ "wheel" ];
+      custom.users.bob.identity.extraGroups = [ "wheel" ];
+    }
+  ];
+  isoGroups = name: isolationHost.users.users.${name}.extraGroups;
+  isoNames = [
+    "alice"
+    "bob"
+    "carol"
+  ];
 in
 {
   assertions = [
@@ -196,6 +230,52 @@ in
     {
       name = "sudo: excluded from safeSet (privileged, build-time-only, never a greeter auto-grant)";
       ok = !(lib.elem "sudo" safeSet);
+    }
+    # --- grant isolation between co-resident users (issue #19) ---
+    {
+      name = "isolation: three co-resident users with divergent grants all realize, no failing assertion";
+      ok =
+        lib.all (n: isolationHost.users.users.${n}.isNormalUser or false) isoNames
+        && failing isolationHost == [ ];
+    }
+    {
+      # criterion 2: the granted user receives the feature's privileged groups; the ungranted
+      # co-residents do NOT. workstation's docker/podman reach alice alone.
+      name = "isolation: workstation's docker/podman reach ONLY the granted account, not its ungranted co-residents";
+      ok =
+        lib.elem "docker" (isoGroups "alice")
+        && lib.elem "podman" (isoGroups "alice")
+        && !(lib.any (n: lib.elem "docker" (isoGroups n) || lib.elem "podman" (isoGroups n)) [
+          "bob"
+          "carol"
+        ]);
+    }
+    {
+      name = "isolation: virtualization's libvirtd reaches ONLY alice, the sole granted account";
+      ok =
+        lib.elem "libvirtd" (isoGroups "alice")
+        && !(lib.elem "libvirtd" (isoGroups "bob"))
+        && !(lib.elem "libvirtd" (isoGroups "carol"));
+    }
+    {
+      # criterion 3: a user self-declaring wheel escalates neither itself nor a neighbour. bob
+      # self-declares wheel with no wheel-conferring grant ⇒ clamped, even though BOTH his
+      # co-residents legitimately hold wheel (alice via workstation, carol via sudo). Their grants
+      # do not leak to him, and his self-declaration confers nothing on anyone.
+      name = "isolation: a self-declared wheel is clamped for the ungranted user, and neighbours' wheel grants do not leak to him";
+      ok =
+        lib.elem "wheel" (isoGroups "alice") # workstation grant restores her self-declared wheel
+        && lib.elem "wheel" (isoGroups "carol") # sudo grant confers wheel
+        && !(lib.elem "wheel" (isoGroups "bob")); # gui-only + self-declared wheel ⇒ clamped, no leak in
+    }
+    {
+      # the grant is per-account for NON-privileged groups too: gui's uinput reaches its two
+      # gui-granted accounts and not the cli co-resident (carol, granted sudo only).
+      name = "isolation: gui's uinput reaches the gui-granted accounts (alice, bob) but not the cli co-resident (carol)";
+      ok =
+        lib.elem "uinput" (isoGroups "alice")
+        && lib.elem "uinput" (isoGroups "bob")
+        && !(lib.elem "uinput" (isoGroups "carol"));
     }
     {
       name = "exposed host granting a secret-bearing feature (signing) fails an assertion";
