@@ -1,26 +1,25 @@
 # The contract's derivation logic — pure functions over the registry and its projections,
 # plus the binding module factories (bindUser, bindUserModule, bindContractPackage) that
 # return NixOS module closures and depend on host config at module-eval time. Split out of
-# kit.nix (thermo-nuclear review). `runtimeEligibleFeature` and `exposedHostOffenders` are
-# internal (the kit's `safeSet` and the umbrella's exposed-host assertion close over them);
-# `mkFeatureRecipients` / `mkHostFacts` are the public functions hosts consume (ADR-0004 Q4);
+# kit.nix (thermo-nuclear review). `runtimeEligibleFeature` is internal (the kit's `safeSet`
+# closes over it); `mkHostFacts` is the public function hosts consume (ADR-0004 Q4);
 # `safeSet` is the derived value.
 {
   lib,
   registry,
-  featureMeta,
 }:
 let
-  # A feature is runtime/greeter-eligible iff it bears no secret and declares no
-  # privilegedGroups (ADR-0002, slice 15). The feature is self-describing: checking
-  # `f.privilegedGroups == []` replaces the cross-list intersection that was needed
-  # when `privilegedGroups` was a separate, hand-maintained list in kit.nix.
+  # A feature is runtime/greeter-eligible iff it declares no privilegedGroups (ADR-0002,
+  # slice 15). The feature is self-describing: checking `f.privilegedGroups == []` replaces
+  # the cross-list intersection that was needed when `privilegedGroups` was a separate,
+  # hand-maintained list in kit.nix. (The contract carries no secret-bearing features, so
+  # there is no secret dimension to this predicate.)
   runtimeEligibleFeature =
     feature:
     let
       f = registry.${feature} or { };
     in
-    !(f.secretBearing or false) && (f.privilegedGroups or [ ]) == [ ];
+    (f.privilegedGroups or [ ]) == [ ];
 
   # The runtime-eligible feature names — the safe set (ADR-0002, slice 15).
   safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
@@ -125,31 +124,8 @@ let
       userPackages = manifest.packages or [ ];
       approvedNames = lib.filter (n: lib.elem n allowedPrograms) userPackages;
       approvedPkgs = lib.filter (p: p != null) (map (n: pkgs.${n} or null) approvedNames);
-
-      # Grant/variant coupling guard (ADR-0016): a pre-built home BAKES its secret declaration at
-      # the user's build time (e.g. `signing` names its sops secret only when granted). If the host
-      # grant and the baked variant disagree on a SECRET-BEARING feature, the account silently
-      # misbehaves — a host granting `signing` over a crypto-free package gets no secret (git falls
-      # back), and the inverse bakes a secret the host never powers. So assert the two agree on the
-      # secret-bearing subset. Non-secret host powers (workstation/gui) legitimately differ from the
-      # baked set — they don't change the home — so they are excluded from the comparison. Older
-      # packages (manifest v1, no `granted`) default to `[]`, correctly flagging a signing mismatch.
-      secretBearing = f: featureMeta.${f}.secretBearing or false;
-      hostSecretGrants = lib.sort (a: b: a < b) (lib.filter secretBearing (grantedNamesOf grants));
-      bakedSecretGrants = lib.sort (a: b: a < b) (lib.filter secretBearing (manifest.granted or [ ]));
     in
     {
-      assertions = [
-        {
-          assertion = hostSecretGrants == bakedSecretGrants;
-          message =
-            "bindContractPackage: ${username}'s host secret-bearing grants "
-            + "[${lib.concatStringsSep " " hostSecretGrants}] do not match the grants baked into the "
-            + "contract package [${lib.concatStringsSep " " bakedSecretGrants}]. Bind the package "
-            + "variant built for these grants (ADR-0016: the baked grant must match the host grant).";
-        }
-      ];
-
       custom.users.${username} = mkUserAccount { inherit identity grants requests; };
       # A login session that PERSISTS past activation: the home's user systemd services (sd-switch,
       # sops-nix) must keep running after the `runuser -l` activation exits, so the binding lingers
@@ -248,56 +224,9 @@ in
       ) settings
     );
 
-  # Recipients-from-grants (ADR-0001, slice 06): for each secret-bearing feature's sops
-  # file, the set of hosts that GRANT it — the single source of truth for .sops.yaml
-  # recipients. Applied to a fleet's nixosConfigurations by the host (it reads the fleet).
-  #
-  # NOTE: no SHIPPED feature declares `secretFiles` — the one secret-bearing feature (`signing`)
-  # rides the USER's own home sops, decrypted by the user's own key, with no host re-key (see
-  # features.nix). So this returns `{}` over any real fleet today. It is the forward-facing plumbing
-  # for a host-re-keyed SHARED-secret feature, and lights up the moment one declares `secretFiles`.
-  # The derivation ALGORITHM below is nonetheless covered: conformance/recipients.nix re-instantiates
-  # this file over a SYNTHETIC `secretFiles`-bearing feature and proves the recipient set equals
-  # exactly the granting hosts (issue #20).
-  mkFeatureRecipients =
-    nixosConfigurations:
-    let
-      secretFeatures = lib.filter (f: featureMeta.${f}.secretBearing or false) (
-        lib.attrNames featureMeta
-      );
-      hostNames = lib.attrNames nixosConfigurations;
-      hostGrants =
-        host: feature:
-        lib.any (u: u.granted.${feature}.enable or false) (
-          lib.attrValues nixosConfigurations.${host}.config.custom.users
-        );
-    in
-    lib.foldl' (
-      acc: feature:
-      let
-        hosts = lib.filter (h: hostGrants h feature) hostNames;
-      in
-      lib.foldl' (a: file: a // { ${file} = lib.unique ((a.${file} or [ ]) ++ hosts); }) acc (
-        featureMeta.${feature}.secretFiles or [ ]
-      )
-    ) { } secretFeatures;
-
-  # The secret-bearing features an exposed host has been (wrongly) granted — the
-  # exposed-host ban (ADR-0001 threat model). Must be empty.
-  exposedHostOffenders =
-    config:
-    lib.concatMap (
-      uname:
-      let
-        granted = config.custom.users.${uname}.granted;
-      in
-      lib.filter (
-        fname: (granted.${fname}.enable or false) && (featureMeta.${fname}.secretBearing or false)
-      ) (lib.attrNames featureMeta)
-    ) (lib.attrNames config.custom.users);
-
   # The restricted projection of host state a user's home modules may read (ADR-0002,
-  # slice 12): self-scoped, no hostName, no secret value.
+  # slice 12): self-scoped, no hostName. `exposed` is a plain host fact a home may adapt to;
+  # the contract enforces nothing on it (it carries no secret-bearing features).
   mkHostFacts = config: userName: {
     exposed = config.custom.host.exposed;
     platform = config.nixpkgs.hostPlatform.system;

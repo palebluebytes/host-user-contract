@@ -443,13 +443,12 @@ in
     }
     {
       # ADR-0008 conformance condition (3): a greeter grants AT MOST the safe set, so a
-      # runtime-bound user can never receive a privileged-group or secret-bearing feature —
-      # escalation is impossible by construction, not by a deny rule.
-      name = "greeterGrants: grants no privileged-group or secret-bearing feature (no escalation)";
+      # runtime-bound user can never receive a privileged-group feature — escalation is
+      # impossible by construction, not by a deny rule.
+      name = "greeterGrants: grants no privileged-group feature (no escalation)";
       ok =
         !(lib.elem "workstation" (lib.attrNames greeterGrants))
-        && !(lib.elem "virtualization" (lib.attrNames greeterGrants))
-        && !(lib.elem "signing" (lib.attrNames greeterGrants));
+        && !(lib.elem "virtualization" (lib.attrNames greeterGrants));
     }
     {
       # ADR-0008 litmus (mirrors the platform interface): the greeter ships in the eval but a

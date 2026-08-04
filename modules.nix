@@ -10,14 +10,13 @@
   homeProfileOptions,
   grantedOptions,
   featureConfigOptions,
-  exposedHostOffenders,
 }:
 {
   # System kit: the custom.users schema, the platform INTERFACE (host binds it), the
-  # exposed-host marker + ban, and the realization + insecure aggregator. The host
-  # imports this and supplies the platform binding.
+  # exposed-host marker, and the realization + insecure aggregator. The host imports
+  # this and supplies the platform binding.
   nixosModule =
-    { config, ... }:
+    { ... }:
     {
       imports = [
         realization
@@ -38,7 +37,7 @@
         description = "Per-user identity, grants, and feature configuration.";
       };
       options.custom.platform = platformOptions;
-      options.custom.host.exposed = lib.mkEnableOption "an exposed/agent-facing host that may not be granted secret-bearing features";
+      options.custom.host.exposed = lib.mkEnableOption "an exposed/agent-facing host — a plain fact a user's home may read (via hostFacts) and adapt to; the contract enforces nothing on it";
       # Package policy inclusion list (ADR-0017, issue #17): after contractPackage activation,
       # bindContractPackage replaces ~/.nix-profile with a host-built profile containing the
       # INTERSECTION of this list and the user's package manifest. Programs the user declared
@@ -52,16 +51,6 @@
         default = [ ];
         description = "Programs the host allows in user sessions (ADR-0017). Each entry resolves to pkgs.<name> from the host's nixpkgs pin. Non-empty enables profile replacement after contractPackage activation.";
       };
-
-      config.assertions = lib.optional config.custom.host.exposed (
-        let
-          offending = exposedHostOffenders config;
-        in
-        {
-          assertion = offending == [ ];
-          message = "exposed host '${config.networking.hostName}' must not be granted secret-bearing feature(s): ${lib.concatStringsSep ", " offending}";
-        }
-      );
     };
 
   # Home kit: the identity + home-profile vocabulary + the platform INTERFACE (host

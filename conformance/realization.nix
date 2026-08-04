@@ -1,6 +1,6 @@
 # Conformance domain: the system-side realization — grant/deny, the session-agnostic gui-surface
-# DECISION, the privileged-group clamp, the exposed-host ban, the identity.json loader, and the
-# safe-set / feature-group projections. The contract's core "manifest + grant ⇒ account" promise.
+# DECISION, the privileged-group clamp, the identity.json loader, and the safe-set / feature-group
+# projections. The contract's core "manifest + grant ⇒ account" promise.
 {
   lib,
   toolkit,
@@ -21,9 +21,9 @@ let
 
   # --- mkHostFacts: the read-only, self-scoped host projection a home may read (ADR-0002) ---
   # The host builds this per-user for the inline-eval bind path; a home branches on it (e.g.
-  # hostFacts.granted.signing.enable) but must never see the hostName or a secret value. Build a
-  # host that HAS a hostName and a grant, then prove the projection carries the grant + platform
-  # and NOTHING else — the confinement the home relies on.
+  # hostFacts.granted.gui.enable) but must never see the hostName. Build a host that HAS a hostName
+  # and a grant, then prove the projection carries the grant + platform and NOTHING else — the
+  # confinement the home relies on.
   factsHostConfig = eval [
     (mkUser "alice" { })
     (grant "alice" { gui.enable = true; })
@@ -52,21 +52,6 @@ let
     (mkUser "alice" { })
     (grant "alice" { workstation.enable = true; })
     { custom.users.alice.identity.extraGroups = [ "docker" ]; }
-  ];
-
-  # --- the exposed-host ban (signing is the secret-bearing feature) ---
-  exposedSecret = eval [
-    (mkUser "alice" { })
-    (grant "alice" { signing.enable = true; })
-    {
-      custom.host.exposed = true;
-      networking.hostName = "agent";
-    }
-  ];
-  normalSecret = eval [
-    (mkUser "alice" { })
-    (grant "alice" { signing.enable = true; })
-    { networking.hostName = "box"; }
   ];
 
   # --- the identity.json loader (ADR-0007, issue #5): lossless over identity.nix ---
@@ -278,23 +263,12 @@ in
         && !(lib.elem "uinput" (isoGroups "carol"));
     }
     {
-      name = "exposed host granting a secret-bearing feature (signing) fails an assertion";
-      ok = lib.any (a: lib.hasInfix "signing" a.message) (failing exposedSecret);
-    }
-    {
-      name = "non-exposed host granting the same feature raises no exposed-host failure";
-      ok = !(lib.any (a: lib.hasInfix "exposed host" a.message) (failing normalSecret));
-    }
-    {
       name = "safe set: gui is runtime-eligible";
       ok = lib.elem "gui" safeSet;
     }
     {
-      name = "safe set: privileged + secret-bearing features are excluded";
-      ok =
-        !(lib.elem "workstation" safeSet)
-        && !(lib.elem "virtualization" safeSet)
-        && !(lib.elem "signing" safeSet);
+      name = "safe set: privileged-group features are excluded";
+      ok = !(lib.elem "workstation" safeSet) && !(lib.elem "virtualization" safeSet);
     }
     {
       name = "gui confers no privileged group";

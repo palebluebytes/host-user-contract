@@ -1,10 +1,14 @@
 # The feature registry — the SINGLE source of truth for the contract's feature
 # vocabulary (ADR-0001, mechanic 2). One entry per feature; every other feature
-# surface the contract exposes (the `granted.*` grant options, `featureMeta`,
-# `featureGroups`, the user-owned `featureConfig` options, the imported feature
-# modules, the derived safe set, and the sops recipients) is a PROJECTION of this
-# map — see contract/default.nix. Adding a feature is a single edit here, and the
-# keys can never drift across the projections because there is only one set of keys.
+# surface the contract exposes (the `granted.*` grant options, `featureGroups`, the
+# user-owned `featureConfig` options, the imported feature modules, and the derived
+# safe set) is a PROJECTION of this map — see contract/default.nix. Adding a feature
+# is a single edit here, and the keys can never drift across the projections because
+# there is only one set of keys.
+#
+# The contract handles NO secrets beyond the login credential: a feature never pulls a
+# secret onto a host and the contract never re-keys or owns user key material (a user's
+# own home secrets ride the user's own key, provisioned by the user's own home module).
 #
 # Per-entry shape (all fields optional except `grant`):
 #   grant            : mkEnableOption description for `custom.users.<u>.granted.<f>`
@@ -17,10 +21,6 @@
 #   groups           : NON-PRIVILEGED groups the grant confers — self-declaration in
 #                      identity.extraGroups is safe, but the grant is still the canonical
 #                      path. Features with only these may be runtime-eligible (safe set).
-#   secretBearing    : the feature pulls a secret onto a host ⇒ an exposed host may not
-#                      be granted it, and it is excluded from the runtime safe set.
-#   secretFiles      : stash-relative sops files whose recipient set is DERIVED from the
-#                      hosts that grant this feature (self.lib.featureRecipients).
 #   config           : user-owned option fragment merged into `custom.users.<u>` — the
 #                      feature's *parameters* (host-affecting ones aggregate, ADR-0003).
 { lib }:
@@ -87,15 +87,6 @@
       "qemu-libvirtd"
       "libvirtd"
     ];
-  };
-
-  # signing: the user's dedicated NON-admin commit-signing key. Secret-bearing (so the
-  # exposed-host ban applies and a greeter never auto-grants it), but the secret rides
-  # the USER's home sops decrypted by the user's own key — no host re-key, no host
-  # recipients (no secretFiles), so the user repo's home module owns its provisioning.
-  signing = {
-    grant = "the commit-signing key for this user (host grant)";
-    secretBearing = true;
   };
 
   # nix-daemon: access to the Nix daemon socket for this user. Confers `nix-users` group

@@ -30,15 +30,13 @@
       # tracer-pure — evaluable with no home-manager, ADR-0008).
       homeModules.greeterDesktop = kit.homeGreeterDesktopModule;
 
-      # The contract derivation functions (ADR-0004 Q4). The host applies the
-      # fleet-bound ones (e.g. mkFeatureRecipients self.nixosConfigurations) itself.
+      # The contract derivation functions (ADR-0004 Q4).
       inherit (kit) lib;
 
-      # Data surface the host reads where it wires grants, recipients, and the safe set,
-      # plus the identity.json convention (filename + schema) a greeter authenticates on.
+      # Data surface the host reads where it wires grants and the safe set, plus the
+      # identity.json convention (filename + schema) a greeter authenticates on.
       inherit (kit)
         features
-        featureMeta
         featureGroups
         privilegedGroups
         safeSet

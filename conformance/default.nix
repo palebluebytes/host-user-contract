@@ -93,7 +93,6 @@ let
         ;
     })
     (import ./matrix.nix { inherit lib toolkit; })
-    (import ./recipients.nix { inherit lib; })
     (import ./contract-package.nix {
       inherit
         pkgs

@@ -23,13 +23,6 @@ let
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (
     map (f: f.config or { }) (lib.attrValues registry)
   );
-  featureMeta = lib.mapAttrs (
-    _: f:
-    {
-      secretBearing = f.secretBearing or false;
-    }
-    // lib.optionalAttrs (f ? secretFiles) { inherit (f) secretFiles; }
-  ) registry;
 
   # --- closed-over modules + option fragments ---
   realization = import ./realization.nix { inherit privilegedGroups featureGroups; };
@@ -43,7 +36,6 @@ let
     inherit
       lib
       registry
-      featureMeta
       ;
   };
   modules = import ./modules.nix {
@@ -56,7 +48,6 @@ let
       grantedOptions
       featureConfigOptions
       ;
-    inherit (contractLib) exposedHostOffenders;
   };
 
   # The opt-in reference greeter (ADR-0008, issue #2): a SEPARATE nixosModule a seat host
@@ -80,7 +71,6 @@ in
   # greeter reading the safe set).
   features = registry;
   inherit
-    featureMeta
     featureGroups
     privilegedGroups
     ;
@@ -90,10 +80,10 @@ in
   # shape it authenticates against before any eval (ADR-0007, issue #5).
   inherit (identityJson) identityFile identitySchema;
 
-  # Public derivation functions hosts consume (ADR-0004 Q4). The internal predicates
-  # (runtimeEligibleFeature, exposedHostOffenders) stay internal to ./lib.nix.
+  # Public derivation functions hosts consume (ADR-0004 Q4). The internal predicate
+  # (runtimeEligibleFeature) stays internal to ./lib.nix.
   lib = {
-    inherit (contractLib) mkFeatureRecipients mkHostFacts renderNixConfig;
+    inherit (contractLib) mkHostFacts renderNixConfig;
     # The identity.json loader (ADR-0007): lossless over identity.nix, used by both the
     # user's home module and host-side bindUser.
     inherit (identityJson) loadIdentity;
