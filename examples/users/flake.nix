@@ -147,8 +147,10 @@
       # that reads mkContractPackage's four primitives off the already-evaluated home, so this
       # home-manager producer passes `{ home; grants; pkgs; }` instead of hand-rolling the
       # disassembly. Turnkey on the producer side, exactly as `bindContractPackage` is on the host.
-      # The manifest's `username` now comes from `home.config.home.username` (what the adapter
-      # reads), not the roster key — coherent here because `mkHome` sets `home.username = name`.
+      # The manifest's `username` is now sourced from the home itself (`home.config.home.username`)
+      # rather than the roster key, which BINDS the manifest to the identity the home activates for:
+      # the account `bindContractPackage` creates can never diverge from the user the `activate`
+      # script expects. (Here `mkHome` sets `home.username = name`, so the two agree by construction.)
       packages.${system} = lib.mapAttrs' (
         name: u:
         lib.nameValuePair "${name}-contractPackage" (
