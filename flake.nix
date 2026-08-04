@@ -72,6 +72,7 @@
             bindUser
             bindUserModule
             mkContractPackage
+            mkContractPackageForHome
             bindContractPackage
             mkHostFacts
             renderNixConfig

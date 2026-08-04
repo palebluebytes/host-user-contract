@@ -29,6 +29,7 @@
   bindUser,
   bindUserModule,
   mkContractPackage,
+  mkContractPackageForHome,
   bindContractPackage,
   mkHostFacts,
   nixosSystem,
@@ -98,6 +99,7 @@ let
         pkgs
         toolkit
         mkContractPackage
+        mkContractPackageForHome
         bindContractPackage
         greeterGrants
         ;
