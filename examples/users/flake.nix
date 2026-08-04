@@ -48,6 +48,9 @@
           bakedGrants = {
             signing.enable = true;
           };
+          # ben's real-home reaction to the signing grant (the one home-side pattern the contract
+          # documents). Real-build-only, so it lives beside home.nix, not in it — see signing.nix.
+          homeModules = [ ./users/ben/signing.nix ];
         };
         # cleo — the privileged-group user: declares `docker` in identity.extraGroups and receives
         # it ONLY via the `workstation` grant (the clamp, positive direction). workstation is
@@ -123,6 +126,16 @@
             }
           ];
         };
+
+      # ben's home built WITHOUT the signing grant — the denied side of the home-side degradation
+      # proof (its reaction, ben/signing.nix, must produce no marker). The granted side is the
+      # standalone homeConfigurations.ben (built with ben's bakedGrants = signing).
+      benDenied = mkHome {
+        name = "ben";
+        granted = { };
+        extra = roster.ben.homeModules;
+      };
+      hasSigningMarker = home: home.config.home.file ? ".signing-key-configured";
     in
     {
       # Standalone homes (`nix build .#homeConfigurations.<u>.activationPackage`): each user's
@@ -134,6 +147,7 @@
           mkHome {
             inherit name;
             granted = u.bakedGrants;
+            extra = u.homeModules or [ ];
           }
         ) roster)
         // (lib.mapAttrs' (name: _: lib.nameValuePair "${name}-greeter" (mkGreeterHome name)) roster);
@@ -162,8 +176,24 @@
       # contract does not depend on (ADR-0004) — so it lives HERE, in the fleet that legitimately
       # has home-manager. The greeter-path end-to-end lives in examples/fleet (it needs a booted
       # host), pointed at these same outputs.
-      checks.${system} = lib.mapAttrs' (
-        name: _: lib.nameValuePair "home-build-${name}" self.homeConfigurations.${name}.activationPackage
-      ) roster;
+      checks.${system} =
+        (lib.mapAttrs' (
+          name: _: lib.nameValuePair "home-build-${name}" self.homeConfigurations.${name}.activationPackage
+        ) roster)
+        // {
+          # Home-side silent degradation (ADR-0002), proven on the REAL ben home: his signing
+          # reaction (ben/signing.nix) wires the marker where the host granted signing and produces
+          # NOTHING where it did not — the home-side counterpart to the fleet's bind-level divergence.
+          signing-degradation =
+            let
+              ok = hasSigningMarker self.homeConfigurations.ben && !(hasSigningMarker benDenied);
+            in
+            pkgs.runCommand "ben-signing-degradation" { } (
+              if ok then
+                "echo 'ben signing reaction: granted -> marker, denied -> none'; touch $out"
+              else
+                "echo 'FAIL: ben signing reaction did not degrade (granted must set the marker, denied must not)' >&2; exit 1"
+            );
+        };
     };
 }
