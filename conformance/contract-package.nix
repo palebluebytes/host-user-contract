@@ -12,7 +12,7 @@
   greeterGrants,
 }:
 let
-  inherit (toolkit) eval exampleIdentity;
+  inherit (toolkit) eval referenceIdentity;
 
   # --- mkContractPackage execution proof (issue #14) ---
   # A minimal activationPackage stub: just an `activate` script at the root.
@@ -56,19 +56,19 @@ let
   # --- bindContractPackage eval proof (issue #16) ---
   # Use a plain repo-path fixture (no derivation build needed, no IFD) so the eval assertions
   # stay pure. The fixture mirrors the reference user ada's request: gui.desktop = "plasma".
-  fixturePackage = ./fixtures/example-contract-package;
+  fixturePackage = ./fixtures/reference-contract-package;
 
   boundRuntime = eval [
     (bindContractPackage {
       contractPackage = fixturePackage;
-      identity = exampleIdentity;
+      identity = referenceIdentity;
       grants = greeterGrants;
     })
   ];
   boundNone = eval [
     (bindContractPackage {
       contractPackage = fixturePackage;
-      identity = exampleIdentity;
+      identity = referenceIdentity;
       grants = { };
     })
   ];

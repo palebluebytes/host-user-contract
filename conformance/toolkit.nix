@@ -70,10 +70,10 @@ rec {
   # A real atom borrowed from the reference user fleet (ADR-0020, docs/adr/0022): ada's contract-pure
   # home + her identity.json, bound by the tracer and the real bindUserModule. This is the one-way
   # oracle→reference seam — the synthetic suite consumes realistic atoms from the reference fleet,
-  # never the reverse. exampleIdentity has username "ada", name "Ada Reference".
-  exampleHome = import ../examples/users/users/ada/home.nix;
-  exampleIdentity = loadIdentity ../examples/users/users/ada/identity.json;
-  exampleHostFacts = {
+  # never the reverse. referenceIdentity has username "ada", name "Ada Reference".
+  referenceHome = import ../examples/users/users/ada/home.nix;
+  referenceIdentity = loadIdentity ../examples/users/users/ada/identity.json;
+  referenceHostFacts = {
     exposed = false;
     platform = system;
     granted = { };

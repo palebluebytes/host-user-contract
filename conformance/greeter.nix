@@ -38,7 +38,7 @@ let
     lib.findFirst (p: lib.hasInfix "contract-greeter-auth" (p.name or ""))
       (throw "conformance: contract-greeter-auth not found in the greeter's systemPackages")
       greeterBound.environment.systemPackages;
-  exampleSrc = ../examples/users/users/ada;
+  referenceSrc = ../examples/users/users/ada;
   authFlowTest =
     pkgs.runCommand "contract-greeter-auth-flow"
       {
@@ -49,7 +49,7 @@ let
       }
       ''
         export HOME=$PWD
-        src=${exampleSrc}
+        src=${referenceSrc}
 
         echo "# right password ⇒ accepts"
         printf '%s\n' 'correct-horse-battery-staple' \

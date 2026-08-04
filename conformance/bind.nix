@@ -11,25 +11,25 @@
 let
   inherit (toolkit)
     eval
-    exampleHome
-    exampleIdentity
-    exampleHostFacts
+    referenceHome
+    referenceIdentity
+    referenceHostFacts
     ;
 
   # --- the headless bindUser tracer (ADR-0007/0008, issue #5) ---
   # Runtime path: the canonical greeter grant — default-open over the safe set (greeterGrants).
   boundRuntime = bindUser {
-    userModule = exampleHome;
-    identity = exampleIdentity;
+    userModule = referenceHome;
+    identity = referenceIdentity;
     grants = greeterGrants;
-    hostFacts = exampleHostFacts;
+    hostFacts = referenceHostFacts;
   };
   # No grants: the same gui.desktop request must be inert (never bridged).
   boundNone = bindUser {
-    userModule = exampleHome;
-    identity = exampleIdentity;
+    userModule = referenceHome;
+    identity = referenceIdentity;
     grants = { };
-    hostFacts = exampleHostFacts;
+    hostFacts = referenceHostFacts;
   };
   # Realize bindUser's system fragment on a synthetic host ⇒ exercises realization + union.
   boundHost = eval [ boundRuntime.system ];
@@ -69,9 +69,9 @@ let
       hmStub
       (bindUserModule {
         userModule = realHome;
-        identity = exampleIdentity; # username "ada", name "Ada Reference"
+        identity = referenceIdentity; # username "ada", name "Ada Reference"
         inherit grants;
-        hostFacts = exampleHostFacts;
+        hostFacts = referenceHostFacts;
       })
     ];
   realBoundRuntime = realBound greeterGrants;
