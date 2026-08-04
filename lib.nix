@@ -251,6 +251,11 @@ in
   # Recipients-from-grants (ADR-0001, slice 06): for each secret-bearing feature's sops
   # file, the set of hosts that GRANT it — the single source of truth for .sops.yaml
   # recipients. Applied to a fleet's nixosConfigurations by the host (it reads the fleet).
+  #
+  # NOTE: no current feature declares `secretFiles` — the one secret-bearing feature (`signing`)
+  # rides the USER's own home sops, decrypted by the user's own key, with no host re-key (see
+  # features.nix). So this returns `{}` over any fleet today. It is the forward-facing plumbing for
+  # a host-re-keyed SHARED-secret feature, and lights up the moment one declares `secretFiles`.
   mkFeatureRecipients =
     nixosConfigurations:
     let
