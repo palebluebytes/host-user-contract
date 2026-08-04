@@ -1,0 +1,9 @@
+{
+  "name": "Svc Reference",
+  "email": "svc@example.invalid",
+  "username": "svc",
+  "sshKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIADAexamplekeysvc svc@example.invalid",
+  "hashedPassword": "",
+  "extraGroups": [],
+  "trustedKeys": []
+}
