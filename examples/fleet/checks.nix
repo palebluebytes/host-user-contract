@@ -55,6 +55,14 @@ let
       ok = lib.elem "docker" (acct "workstation" "cleo").extraGroups;
     }
     {
+      name = "sudo: admin gets wheel and NOTHING more (the minimal grant — no docker, unlike workstation)";
+      ok =
+        let
+          g = (acct "workstation" "admin").extraGroups;
+        in
+        (acct "workstation" "admin").isNormalUser && lib.elem "wheel" g && !(lib.elem "docker" g);
+    }
+    {
       name = "grant: ben is granted signing on the non-exposed vault (baked variant matches, ADR-0016)";
       ok = (acct "vault" "ben").isNormalUser && cfgs.vault.custom.users.ben.granted.signing.enable;
     }

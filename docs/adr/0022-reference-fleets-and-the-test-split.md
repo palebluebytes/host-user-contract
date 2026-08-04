@@ -27,7 +27,7 @@ never a replacement for it.**
    `<u>-contractPackage` output ([ADR-0016](0016-prebuilt-binding-mode.md)). The former single
    `examples/user/` is folded in as one member. Roster: `ada` (portable — gui on one host, cli on
    another), `ben` (secret-bearing signing), `cleo` (privileged-group clamp), `svc` (cli-only
-   automation).
+   automation), `admin` (break-glass — the minimal `sudo`/wheel grant).
 
 2. **`examples/fleet/`** — the reference **host fleet**: `nixosConfigurations` (`workstation` seat,
    `vault` non-exposed, `agent` exposed) that bind the user fleet's outputs. It shows the contract's

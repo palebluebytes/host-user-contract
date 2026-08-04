@@ -26,6 +26,15 @@
         workstation.enable = true;
       };
     })
+    # admin, GRANTED sudo: the MINIMAL privileged grant — `wheel` and nothing more. Contrast cleo
+    # above, whose `workstation` grant also confers docker/podman. A break-glass account whose
+    # login password is the well-known "password".
+    (bindUserPkg {
+      name = "admin";
+      grants = {
+        sudo.enable = true;
+      };
+    })
   ];
 
   networking.hostName = "workstation";

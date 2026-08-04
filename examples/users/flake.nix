@@ -60,6 +60,13 @@
         svc = {
           bakedGrants = { };
         };
+        # admin — a break-glass administrative account: bound with the `sudo` feature it gets
+        # `wheel` and nothing more (the minimal privileged grant, ADR-0020). Its login password is
+        # the well-known "password" (ADR-0019: the credential travels with the user). sudo is
+        # privileged but non-secret, so nothing is baked.
+        admin = {
+          bakedGrants = { };
+        };
       };
 
       identityOf = name: contract.lib.loadIdentity ./users/${name}/identity.json;
