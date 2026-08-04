@@ -142,15 +142,19 @@
       # flake input and binds each user with `contract.lib.bindContractPackage` — the ONE
       # consumption convention, whether the host owns the account (declarative) or a greeter
       # provisions it at login (runtime). `grants` bakes the secret-bearing coupling (ADR-0016).
+      #
+      # Assembled with `mkContractPackageForHome` (issue #23) — the home-manager producer adapter
+      # that reads mkContractPackage's four primitives off the already-evaluated home, so this
+      # home-manager producer passes `{ home; grants; pkgs; }` instead of hand-rolling the
+      # disassembly. Turnkey on the producer side, exactly as `bindContractPackage` is on the host.
+      # The manifest's `username` now comes from `home.config.home.username` (what the adapter
+      # reads), not the roster key — coherent here because `mkHome` sets `home.username = name`.
       packages.${system} = lib.mapAttrs' (
         name: u:
         lib.nameValuePair "${name}-contractPackage" (
-          contract.lib.mkContractPackage {
+          contract.lib.mkContractPackageForHome {
             inherit pkgs;
-            activationPackage = self.homeConfigurations.${name}.activationPackage;
-            requests = self.homeConfigurations.${name}.config.contract.requests;
-            packages = self.homeConfigurations.${name}.config.home.packages;
-            username = name;
+            home = self.homeConfigurations.${name};
             grants = u.bakedGrants;
           }
         )
