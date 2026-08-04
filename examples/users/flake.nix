@@ -31,26 +31,20 @@
       # (deliberately thin, contract-pure) but what the FLEET grants each of them per host.
       #
       # `bakedGrants` is the ONLY per-user knob here: the grants the contractPackage is BUILT with.
-      # Only SECRET-BEARING grants must match the host's later bindContractPackage (ADR-0016
-      # coupling guard), so only `ben` (signing) bakes one; gui/workstation are non-secret and a
-      # host may grant or deny them over the SAME package freely — that freedom is exactly what
-      # lets one `ada-contractPackage` be gui on one seat and cli-only on another.
+      # No grant is secret-bearing (the contract handles no secrets), so a host may grant or deny
+      # ANY feature over the SAME package freely — that freedom is exactly what lets one
+      # `ada-contractPackage` be gui on one seat and cli-only on another.
       roster = {
         # ada — the multi-machine user (the contract's portable-user north star): ONE identity,
         # ONE home, granted a gui session on the seat and cli-only on a headless host. Whether she
-        # gets gui or cli is a per-host GRANT, never a user trait. Bakes no secret grant.
+        # gets gui or cli is a per-host GRANT, never a user trait.
         ada = {
           bakedGrants = { };
         };
-        # ben — the secret-bearing user: granted `signing` on a non-exposed host, ungrantable on an
-        # exposed one (the ban). Bakes signing so the host's signing bind matches (ADR-0016).
+        # ben — a second cli reference user (a plain, contract-pure home): distinct identity, no
+        # privileged or gui grant. Useful as a co-resident on the same host as a privileged account.
         ben = {
-          bakedGrants = {
-            signing.enable = true;
-          };
-          # ben's real-home reaction to the signing grant (the one home-side pattern the contract
-          # documents). Real-build-only, so it lives beside home.nix, not in it — see signing.nix.
-          homeModules = [ ./users/ben/signing.nix ];
+          bakedGrants = { };
         };
         # cleo — the privileged-group user: declares `docker` in identity.extraGroups and receives
         # it ONLY via the `workstation` grant (the clamp, positive direction). workstation is
@@ -127,15 +121,6 @@
           ];
         };
 
-      # ben's home built WITHOUT the signing grant — the denied side of the home-side degradation
-      # proof (its reaction, ben/signing.nix, must produce no marker). The granted side is the
-      # standalone homeConfigurations.ben (built with ben's bakedGrants = signing).
-      benDenied = mkHome {
-        name = "ben";
-        granted = { };
-        extra = roster.ben.homeModules;
-      };
-      hasSigningMarker = home: home.config.home.file ? ".signing-key-configured";
     in
     {
       # Standalone homes (`nix build .#homeConfigurations.<u>.activationPackage`): each user's
@@ -176,24 +161,8 @@
       # contract does not depend on (ADR-0004) — so it lives HERE, in the fleet that legitimately
       # has home-manager. The greeter-path end-to-end lives in examples/fleet (it needs a booted
       # host), pointed at these same outputs.
-      checks.${system} =
-        (lib.mapAttrs' (
-          name: _: lib.nameValuePair "home-build-${name}" self.homeConfigurations.${name}.activationPackage
-        ) roster)
-        // {
-          # Home-side silent degradation (ADR-0002), proven on the REAL ben home: his signing
-          # reaction (ben/signing.nix) wires the marker where the host granted signing and produces
-          # NOTHING where it did not — the home-side counterpart to the fleet's bind-level divergence.
-          signing-degradation =
-            let
-              ok = hasSigningMarker self.homeConfigurations.ben && !(hasSigningMarker benDenied);
-            in
-            pkgs.runCommand "ben-signing-degradation" { } (
-              if ok then
-                "echo 'ben signing reaction: granted -> marker, denied -> none'; touch $out"
-              else
-                "echo 'FAIL: ben signing reaction did not degrade (granted must set the marker, denied must not)' >&2; exit 1"
-            );
-        };
+      checks.${system} = lib.mapAttrs' (
+        name: _: lib.nameValuePair "home-build-${name}" self.homeConfigurations.${name}.activationPackage
+      ) roster;
     };
 }

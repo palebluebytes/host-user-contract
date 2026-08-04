@@ -8,20 +8,11 @@
   lib,
   pkgs,
   nixosConfigurations,
-  mkFeatureRecipients,
 }:
 let
   cfgs = lib.mapAttrs (_: c: c.config) nixosConfigurations;
   acct = host: user: cfgs.${host}.users.users.${user};
   failing = c: builtins.filter (a: !a.assertion) c.assertions;
-
-  # mkFeatureRecipients over the REAL multi-host fleet — the fleet-only contract function the
-  # synthetic suite (single systems) cannot exercise. Vacuous under the current registry: no
-  # feature declares `secretFiles` (signing rides the user's own home sops, no host recipients),
-  # so the correct result is the empty map. The value here is proving the function runs over a
-  # genuine `nixosConfigurations` without error — it lights up the moment a secretFiles-bearing
-  # feature is added.
-  recipients = mkFeatureRecipients nixosConfigurations;
 
   assertions = [
     {
@@ -61,16 +52,8 @@ let
         (acct "desk" "admin").isNormalUser && lib.elem "wheel" g && !(lib.elem "docker" g);
     }
     {
-      name = "grant: ben is granted signing on the non-exposed vault (baked variant matches, ADR-0016)";
-      ok = (acct "vault" "ben").isNormalUser && cfgs.vault.custom.users.ben.granted.signing.enable;
-    }
-    {
-      name = "exposed-host ban: agent is exposed yet grants no secret-bearing feature — no ban failure";
+      name = "agent (exposed) evaluates coherently — exposure is a plain host fact, no ban";
       ok = cfgs.agent.custom.host.exposed && (failing cfgs.agent == [ ]);
-    }
-    {
-      name = "recipients: mkFeatureRecipients evaluates over the real fleet (vacuous — no feature declares secretFiles)";
-      ok = recipients == { };
     }
   ];
 

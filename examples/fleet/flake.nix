@@ -79,12 +79,11 @@
 
       checks.${system} = {
         # Eval-level smoke/coherence: every host evaluates, every bound account realizes, ada's
-        # gui↔cli divergence across hosts holds, cleo's docker comes only via the grant, the
-        # exposed-host ban stays clean on the real exposed host, and mkFeatureRecipients runs over
-        # the real fleet. The positive-space counterpart to the synthetic suite's adversarial probes.
+        # gui↔cli divergence across hosts holds, cleo's docker comes only via the grant, and the
+        # exposed agent evaluates coherently (exposure is a plain host fact). The positive-space
+        # counterpart to the synthetic suite's adversarial probes.
         fleet-eval = import ./checks.nix {
           inherit lib pkgs nixosConfigurations;
-          inherit (contract.lib) mkFeatureRecipients;
         };
 
         # The runtime greeter path END-TO-END: a booted seat greeter-provisions ada from her

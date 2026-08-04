@@ -1,9 +1,7 @@
-# vault — a headless, NON-exposed host that runs the secret-bearing user.
+# vault — a headless, NON-exposed host.
 #
 # It binds:
-#   - ben, GRANTED signing (secret-bearing): safe here precisely because the host is not exposed,
-#     so the exposed-host ban does not apply. The grant matches the variant ben's contractPackage
-#     was baked with (ADR-0016 coupling guard), and ben's signing secret rides his own home sops.
+#   - ben, GRANTED nothing: a cli-only reference account.
 #   - svc, GRANTED nothing: a cli-only automation account.
 #
 # Non-exposed and headless: no gui grants, so no display surface.
@@ -12,9 +10,7 @@
   imports = [
     (bindUserPkg {
       name = "ben";
-      grants = {
-        signing.enable = true;
-      };
+      grants = { };
     })
     (bindUserPkg {
       name = "svc";
