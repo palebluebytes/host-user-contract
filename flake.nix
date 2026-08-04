@@ -75,6 +75,7 @@
             bindUserModule
             mkContractPackage
             bindContractPackage
+            mkHostFacts
             renderNixConfig
             ;
           nixosSystem = nixpkgs.lib.nixosSystem;

@@ -5,6 +5,7 @@
   lib,
   toolkit,
   loadIdentity,
+  mkHostFacts,
   safeSet,
   featureGroups,
   privilegedGroups,
@@ -17,6 +18,18 @@ let
     failing
     ;
   groupsOf = c: c.users.users.alice.extraGroups;
+
+  # --- mkHostFacts: the read-only, self-scoped host projection a home may read (ADR-0002) ---
+  # The host builds this per-user for the inline-eval bind path; a home branches on it (e.g.
+  # hostFacts.granted.signing.enable) but must never see the hostName or a secret value. Build a
+  # host that HAS a hostName and a grant, then prove the projection carries the grant + platform
+  # and NOTHING else — the confinement the home relies on.
+  factsHostConfig = eval [
+    (mkUser "alice" { })
+    (grant "alice" { gui.enable = true; })
+    { networking.hostName = "secret-box"; }
+  ];
+  facts = mkHostFacts factsHostConfig "alice";
 
   # --- grant / deny ---
   granted = eval [
@@ -153,6 +166,24 @@ in
     {
       name = "identity.json: a non-privileged extraGroup passes, a privileged one is clamped";
       ok = lib.elem "audio" danaGroups && !(lib.elem "docker" danaGroups);
+    }
+
+    # --- mkHostFacts (ADR-0002): the self-scoped, secret-free host projection ---
+    {
+      name = "mkHostFacts: exposes EXACTLY the self-scoped projection (exposed/granted/platform) — no hostName, no secret";
+      ok =
+        lib.sort (a: b: a < b) (lib.attrNames facts) == [
+          "exposed"
+          "granted"
+          "platform"
+        ];
+    }
+    {
+      name = "mkHostFacts: carries the user's grants + the platform, never the hostName the host was given";
+      ok =
+        facts.granted.gui.enable
+        && facts.platform == factsHostConfig.nixpkgs.hostPlatform.system
+        && !(facts ? hostName);
     }
 
     # --- the nix-daemon feature (ADR-0017, issue #15) ---

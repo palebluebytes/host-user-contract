@@ -30,6 +30,7 @@
   bindUserModule,
   mkContractPackage,
   bindContractPackage,
+  mkHostFacts,
   nixosSystem,
   system,
 }:
@@ -51,6 +52,7 @@ let
         lib
         toolkit
         loadIdentity
+        mkHostFacts
         safeSet
         featureGroups
         privilegedGroups
