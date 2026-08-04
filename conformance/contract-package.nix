@@ -55,7 +55,7 @@ let
 
   # --- bindContractPackage eval proof (issue #16) ---
   # Use a plain repo-path fixture (no derivation build needed, no IFD) so the eval assertions
-  # stay pure. The fixture mirrors the example user's request: gui.desktop = "plasma".
+  # stay pure. The fixture mirrors the reference user ada's request: gui.desktop = "plasma".
   fixturePackage = ./fixtures/example-contract-package;
 
   boundRuntime = eval [
@@ -85,8 +85,8 @@ in
     {
       name = "bindContractPackage: the account materializes from identity";
       ok =
-        boundRuntime.users.users.example.isNormalUser
-        && boundRuntime.users.users.example.description == "Example User";
+        boundRuntime.users.users.ada.isNormalUser
+        && boundRuntime.users.users.ada.description == "Ada Reference";
     }
 
     # bindContractPackage: granted request enables the gui surface (parity with bindUserModule)
@@ -104,7 +104,7 @@ in
     # bindContractPackage: systemd activation service is registered
     {
       name = "bindContractPackage: activation service is registered in systemd";
-      ok = boundRuntime.systemd.services ? "contract-activate-example";
+      ok = boundRuntime.systemd.services ? "contract-activate-ada";
     }
 
     # bindContractPackage: no package policy profile replacement when allowedPrograms is empty
@@ -112,7 +112,7 @@ in
       name = "bindContractPackage: no profile replacement when allowedPrograms is empty (default)";
       ok =
         let
-          svcConfig = boundRuntime.systemd.services."contract-activate-example".serviceConfig or { };
+          svcConfig = boundRuntime.systemd.services."contract-activate-ada".serviceConfig or { };
         in
         !(svcConfig ? ExecStartPost);
     }

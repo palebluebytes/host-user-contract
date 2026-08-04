@@ -12,7 +12,7 @@
 # It then proves session SELECTION (ADR-0010 step 8): the launcher picks the seat-default type, a
 # home override flips it, and each execs the host-bound backend. Building a real home needs
 # home-manager (the contract has none, ADR-0004), so the home here is a stub activation package —
-# the real-home end-to-end lives in examples/user (the consumer-renders boundary, like gui-union).
+# the real-home end-to-end lives in examples/fleet (the consumer-renders boundary, like gui-union).
 {
   pkgs,
   contractModule,

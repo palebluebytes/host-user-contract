@@ -55,7 +55,7 @@ let
     };
   # A REAL-ish home: it sets a non-contract home-manager option (programs.git, reading the
   # injected identity) AND emits a contract request. The tracer would throw on programs.git;
-  # the real bind must not. (Kept inline, NOT in examples/user/home.nix, which stays
+  # the real bind must not. (Kept inline, NOT in the reference user's home.nix, which stays
   # contract-pure so the tracer can still harvest it — ADR-0008 / issue #5.)
   realHome =
     { config, ... }:
@@ -69,7 +69,7 @@ let
       hmStub
       (bindUserModule {
         userModule = realHome;
-        identity = exampleIdentity; # username "example", name "Example User"
+        identity = exampleIdentity; # username "ada", name "Ada Reference"
         inherit grants;
         hostFacts = exampleHostFacts;
       })
@@ -85,13 +85,12 @@ in
     }
     {
       name = "bindUser: the home HOLDS the injected identity (single loader, ADR-0009)";
-      ok = boundRuntime.home.config.identity.name == "Example User";
+      ok = boundRuntime.home.config.identity.name == "Ada Reference";
     }
     {
       name = "bindUser: the account materializes from identity.json";
       ok =
-        boundHost.users.users.example.isNormalUser
-        && boundHost.users.users.example.description == "Example User";
+        boundHost.users.users.ada.isNormalUser && boundHost.users.users.ada.description == "Ada Reference";
     }
     {
       name = "bindUser: a safe-set grant bridges the gui request, enabling the display surface";
@@ -99,21 +98,21 @@ in
     }
     {
       name = "bindUser: an ungranted request is inert (no system feature config bridged)";
-      ok = !(boundNone.system.custom.users.example ? gui);
+      ok = !(boundNone.system.custom.users.ada ? gui);
     }
     {
       # issue #8: a REAL home (programs.git, a non-contract option) binds without throwing —
       # the harvest happens inside home-manager, not the tracer's bare evalModules.
       name = "bindUserModule: a real home-manager home (programs.git) binds and evaluates";
       ok =
-        realBoundRuntime.home-manager.users.example.programs.git.userName == "Example User"
-        && realBoundRuntime.home-manager.users.example.contract.requests.gui.desktop == "wayland-de";
+        realBoundRuntime.home-manager.users.ada.programs.git.userName == "Ada Reference"
+        && realBoundRuntime.home-manager.users.ada.contract.requests.gui.desktop == "wayland-de";
     }
     {
       name = "bindUserModule: the account materializes from identity.json";
       ok =
-        realBoundRuntime.users.users.example.isNormalUser
-        && realBoundRuntime.users.users.example.description == "Example User";
+        realBoundRuntime.users.users.ada.isNormalUser
+        && realBoundRuntime.users.users.ada.description == "Ada Reference";
     }
     {
       # The bridge is a CONFIG REFERENCE into the single home eval — the granted request enables

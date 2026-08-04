@@ -28,17 +28,17 @@ let
 
   # The auth-flow EXECUTION test (ADR-0008 condition 1, the CANONICAL eval-free auth): pull the
   # actual shipped `contract-greeter-auth` script out of the enabled greeter's systemPackages and
-  # run it against the example user repo's identity.json. It must accept the right password and
+  # run it against the reference user ada's identity.json. It must accept the right password and
   # reject a wrong one / a mismatched username — having read only data (`jq` + libc crypt), never
   # the user's Nix. Tier 2 isolates the password check (no signature); the Tier-1 block then
   # exercises the signature branch with a real SSH key (good signature accepts, untrusted-key and
-  # absent signatures reject). The cleartext for the example's hashedPassword is
+  # absent signatures reject). The cleartext for ada's hashedPassword is
   # "correct-horse-battery-staple".
   authScript =
     lib.findFirst (p: lib.hasInfix "contract-greeter-auth" (p.name or ""))
       (throw "conformance: contract-greeter-auth not found in the greeter's systemPackages")
       greeterBound.environment.systemPackages;
-  exampleSrc = ../examples/user;
+  exampleSrc = ../examples/users/users/ada;
   authFlowTest =
     pkgs.runCommand "contract-greeter-auth-flow"
       {
@@ -53,11 +53,11 @@ let
 
         echo "# right password ⇒ accepts"
         printf '%s\n' 'correct-horse-battery-staple' \
-          | contract-greeter-auth "$src" example tier2 /dev/null
+          | contract-greeter-auth "$src" ada tier2 /dev/null
 
         echo "# wrong password ⇒ rejects"
         if printf '%s\n' 'wrong-password' \
-          | contract-greeter-auth "$src" example tier2 /dev/null 2>/dev/null; then
+          | contract-greeter-auth "$src" ada tier2 /dev/null 2>/dev/null; then
           echo "FAIL: a wrong password was accepted" >&2; exit 1
         fi
 
@@ -84,17 +84,17 @@ let
 
         echo "# tier1: a host-trusted signature over the repo ⇒ accepts"
         printf '%s\n' 'correct-horse-battery-staple' \
-          | contract-greeter-auth signed example tier1 trusted-signers
+          | contract-greeter-auth signed ada tier1 trusted-signers
 
         echo "# tier1: a signature by an UNTRUSTED key ⇒ rejects"
         if printf '%s\n' 'correct-horse-battery-staple' \
-          | contract-greeter-auth signed example tier1 attacker-signers 2>/dev/null; then
+          | contract-greeter-auth signed ada tier1 attacker-signers 2>/dev/null; then
           echo "FAIL: a signature by an untrusted key was accepted" >&2; exit 1
         fi
 
         echo "# tier1: no signature at all ⇒ rejects"
         if printf '%s\n' 'correct-horse-battery-staple' \
-          | contract-greeter-auth "$src" example tier1 trusted-signers 2>/dev/null; then
+          | contract-greeter-auth "$src" ada tier1 trusted-signers 2>/dev/null; then
           echo "FAIL: an unsigned repo was accepted at tier1" >&2; exit 1
         fi
 
@@ -198,7 +198,7 @@ let
         cp contract-key.enc src/contract-key.enc
 
         echo "# right passphrase ⇒ returns a key file containing the age identity"
-        keyfile=$(CONTRACT_LOGIN_PASS=unlock-pass contract-greeter-secret-key example "$PWD/src")
+        keyfile=$(CONTRACT_LOGIN_PASS=unlock-pass contract-greeter-secret-key ada "$PWD/src")
         [ -n "$keyfile" ] || { echo "FAIL: no key file returned on success" >&2; exit 1; }
         grep -qF "$(grep '^AGE-SECRET-KEY' id.txt)" "$keyfile" \
           || { echo "FAIL: recovered key does not match the original" >&2; exit 1; }
@@ -206,7 +206,7 @@ let
 
         echo "# no wrapped key in src ⇒ graceful degradation (empty output, exit 0)"
         mkdir -p nosrc
-        keyfile=$(CONTRACT_LOGIN_PASS=unlock-pass contract-greeter-secret-key example "$PWD/nosrc" || true)
+        keyfile=$(CONTRACT_LOGIN_PASS=unlock-pass contract-greeter-secret-key ada "$PWD/nosrc" || true)
         [ -z "$keyfile" ] || { echo "FAIL: expected empty output on graceful degradation" >&2; exit 1; }
 
         echo "secret-key passphrase flow OK"; touch $out
@@ -223,7 +223,7 @@ let
         export HOME=$PWD
         mkdir -p nosrc
         echo "# requireSecrets + no wrapped key ⇒ refused (non-zero exit)"
-        if CONTRACT_LOGIN_PASS=any contract-greeter-secret-key example "$PWD/nosrc" 2>/dev/null; then
+        if CONTRACT_LOGIN_PASS=any contract-greeter-secret-key ada "$PWD/nosrc" 2>/dev/null; then
           echo "FAIL: requireSecrets did not refuse a login with no obtainable key" >&2; exit 1
         fi
         echo "secret-key requireSecrets refusal OK"; touch $out

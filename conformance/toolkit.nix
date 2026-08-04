@@ -67,10 +67,12 @@ rec {
   # the home umbrella proves the namespace's shape with no home-manager.
   evalHome = mods: (lib.evalModules { modules = [ homeModule ] ++ mods; }).config;
 
-  # The in-repo example user (ADR-0007): a contract-pure home + its identity.json, bound by the
-  # tracer and the real bindUserModule. exampleIdentity has username "example", name "Example User".
-  exampleHome = import ../examples/user/home.nix;
-  exampleIdentity = loadIdentity ../examples/user/identity.json;
+  # A real atom borrowed from the reference user fleet (ADR-0020, docs/adr/0022): ada's contract-pure
+  # home + her identity.json, bound by the tracer and the real bindUserModule. This is the one-way
+  # oracle→reference seam — the synthetic suite consumes realistic atoms from the reference fleet,
+  # never the reverse. exampleIdentity has username "ada", name "Ada Reference".
+  exampleHome = import ../examples/users/users/ada/home.nix;
+  exampleIdentity = loadIdentity ../examples/users/users/ada/identity.json;
   exampleHostFacts = {
     exposed = false;
     platform = system;
