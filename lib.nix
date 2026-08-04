@@ -252,10 +252,13 @@ in
   # file, the set of hosts that GRANT it — the single source of truth for .sops.yaml
   # recipients. Applied to a fleet's nixosConfigurations by the host (it reads the fleet).
   #
-  # NOTE: no current feature declares `secretFiles` — the one secret-bearing feature (`signing`)
+  # NOTE: no SHIPPED feature declares `secretFiles` — the one secret-bearing feature (`signing`)
   # rides the USER's own home sops, decrypted by the user's own key, with no host re-key (see
-  # features.nix). So this returns `{}` over any fleet today. It is the forward-facing plumbing for
-  # a host-re-keyed SHARED-secret feature, and lights up the moment one declares `secretFiles`.
+  # features.nix). So this returns `{}` over any real fleet today. It is the forward-facing plumbing
+  # for a host-re-keyed SHARED-secret feature, and lights up the moment one declares `secretFiles`.
+  # The derivation ALGORITHM below is nonetheless covered: conformance/recipients.nix re-instantiates
+  # this file over a SYNTHETIC `secretFiles`-bearing feature and proves the recipient set equals
+  # exactly the granting hosts (issue #20).
   mkFeatureRecipients =
     nixosConfigurations:
     let
