@@ -1,7 +1,8 @@
 # ada — the multi-machine (portable) reference user (ADR-0007 home shape, consumed per ADR-0016).
 #
 # ONE identity, ONE home, that logs in as a GUI user on the seat host and a CLI-only user on a
-# headless host — the session modality is decided by each HOST's grant, never by ada. This home
+# headless host — whether she gets a gui or cli session is decided by each HOST's grant, never by
+# ada. This home
 # does nothing to make that happen beyond OFFERING its desktop choice: the contract bridges the
 # gui request into the account ONLY where the host granted gui (bindUser's `bridgeRequests`), so
 # the SAME contractPackage yields a gui account on `workstation` and a silently-degraded cli

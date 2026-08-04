@@ -37,8 +37,8 @@
       # lets one `ada-contractPackage` be gui on one seat and cli-only on another.
       roster = {
         # ada — the multi-machine user (the contract's portable-user north star): ONE identity,
-        # ONE home, granted a gui session on the seat and cli-only on a headless host. The session
-        # modality is a per-host GRANT, never a user trait. Bakes no secret grant.
+        # ONE home, granted a gui session on the seat and cli-only on a headless host. Whether she
+        # gets gui or cli is a per-host GRANT, never a user trait. Bakes no secret grant.
         ada = {
           bakedGrants = { };
         };

@@ -10,7 +10,7 @@
 # It also enables the reference greeter (a seat concern): the runtime login path. The greeter's
 # end-to-end provisioning is exercised by the fleet-integration VM, which consumes the same ada
 # output at runtime — declarative here, runtime there, one convention.
-{ contract, bindUserPkg }:
+{ contract, bindUserPkg, ... }:
 {
   imports = [
     contract.nixosModules.greeter
