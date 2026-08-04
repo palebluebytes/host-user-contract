@@ -98,6 +98,31 @@ let
       cp ${manifestFile} $out/contract-requests.json
     '';
 
+  # mkContractPackageForHome (ADR-0016, issue #23): the OPTIONAL home-manager producer adapter. It mirrors
+  # `bindContractPackage`'s turnkey-ness on the PRODUCER side — since ~every producer builds its
+  # home with home-manager, each one otherwise hand-rolls the identical adapter that reads the four
+  # disassembled primitives (`activationPackage`, `requests`, `packages`, `username`) off its home.
+  # This lifts that recurring wrapper into the contract so a producer calls `{ home; grants; pkgs; }`.
+  #
+  # It does NOT import home-manager (ADR-0004 package-free preserved): it only READS attributes off
+  # an already-evaluated `home`, exactly as `bindUserModule` *references*
+  # `config.home-manager.users.<u>.contract.requests`. The generic `mkContractPackage` stays
+  # builder-agnostic (a hand-rolled or future nix-darwin home still calls the core directly); this
+  # is a thin convenience over it. `pkgs` stays a parameter so one call emits multi-arch variants.
+  mkContractPackageForHome =
+    {
+      home,
+      pkgs,
+      grants ? { },
+    }:
+    mkContractPackage {
+      inherit pkgs grants;
+      activationPackage = home.activationPackage;
+      requests = home.config.contract.requests;
+      packages = home.config.home.packages;
+      username = home.config.home.username;
+    };
+
   # bindContractPackage (ADR-0016, issue #16): the HOST-SIDE binding for the pre-built path.
   # Unlike `bindUserModule` (which evaluates the home inline), this reads the already-built
   # `contract-requests.json` from a pinned store path and bridges the feature requests exactly
@@ -332,5 +357,5 @@ in
       };
     };
 
-  inherit mkContractPackage bindContractPackage;
+  inherit mkContractPackage mkContractPackageForHome bindContractPackage;
 }

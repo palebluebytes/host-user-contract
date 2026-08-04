@@ -98,9 +98,12 @@ in
     # Pre-built binding mode (ADR-0016):
     #   - mkContractPackage (issue #14): assembles the contractPackage derivation a user CI
     #     produces — activate + contract-requests.json — from an already-evaluated home.
+    #   - mkContractPackageForHome (issue #23): the optional home-manager producer adapter — a
+    #     turnkey wrapper that reads mkContractPackage's four primitives off an already-evaluated
+    #     home, so a producer calls { home; grants; pkgs; }. No home-manager import (ADR-0004).
     #   - bindContractPackage (issue #16): the host-side binding for the pre-built path; reads
     #     contract-requests.json from a pinned store path and registers the activation step.
-    inherit (contractLib) mkContractPackage bindContractPackage;
+    inherit (contractLib) mkContractPackage mkContractPackageForHome bindContractPackage;
   };
 
   # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0008) + the
