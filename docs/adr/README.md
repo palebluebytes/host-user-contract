@@ -32,10 +32,11 @@ contract ships).
 | [0021](0021-contract-display-server-agnostic.md) | The contract is display-server-agnostic; the seat owns session type and launch (supersedes 0018 + the gui-session union of 0003) |
 | [0022](0022-reference-fleets-and-the-test-split.md) | Reference user + host fleets as sibling flakes; the synthetic suite is the adversarial oracle, the fleet a positive-space reference that borrows atoms one-way |
 | [0023](0023-contract-handles-no-secrets.md) | The contract handles no secrets beyond the login credential (supersedes 0005 + 0015; retires ADR-0001's secret-bearing mechanisms) |
+| [0024](0024-split-workstation-into-atomic-capabilities.md) | Split the `workstation` role into atomic capability features (`sudo` + `containers`); a privileged group is conferred by exactly one feature |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0023`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0024`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme

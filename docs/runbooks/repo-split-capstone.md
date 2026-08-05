@@ -168,7 +168,8 @@ integration test, `~/code/nixos/parts/checks/prebuilt-bind-external/`
 (`nix build .#checks.<system>.prebuilt_bind_external`). It binds the **real** external user home via
 `bindContractPackage` on two synthetic seats:
 
-- **`exposed`** — `custom.host.exposed = true`, grants `workstation` only. Proves criterion 6: the
+- **`exposed`** — `custom.host.exposed = true`, grants `containers` only (was `workstation` before
+  ADR-0024 split that role; the external check flips when it next updates its `contract` pin). Proves criterion 6: the
   account materializes, the home activates, git falls back to `~/.ssh`, and **no** signing secret
   is present.
 - **`trusted`** — grants `signing`, and holds a throwaway key so sops-nix decrypts at runtime.
