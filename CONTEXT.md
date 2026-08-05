@@ -313,26 +313,26 @@ the term is stable, the code is pending (see the cited issue).
   no bake. Home-affecting-ness is **per-repo** (whether *that* repo's home branches on the grant),
   so the contract owns no `home` flag: the producer's **baked variant set is the taxonomy**. A
   variant's name (`<user>-contractPackage-<key>`, key = sorted home-affecting grant names, empty
-  ⇒ `base`) is a cosmetic label, not a parse target. **(designed; not yet built — issue #25)** (ADR-0025)
+  ⇒ `base`) is a cosmetic label, not a parse target. **(built — issue #25)** (ADR-0025)
 - **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
   = { identity; offer; variants = [{ granted; package }] }`. Plain data (no IFD), so a host
   selects a [[variant]] without building any of them. Identity is resolved once from the ADR-0020
-  path. **(designed; not yet built — issue #25)** (ADR-0025)
+  path. **(built — issue #25)** (ADR-0025)
 - **`mkUserBindings`** — the **producer** helper (contract `lib`) the `users` flake calls once:
   maps over each user's declared [[offer]]/variants and emits **both** the named packages **and**
   the [[binding index]]. The turnkey producer surface for the multi-user repo (ADR-0020), as
-  `mkContractPackageForHome` is for a single home. **(designed; not yet built — issue #25)** (ADR-0025)
+  `mkContractPackageForHome` is for a single home. **(built — issue #25)** (ADR-0025)
 - **`bindUserFromFlake`** — the **turnkey host-side bind**: `{ usersFlake; username }`, **no
   `grants`**. Reads `contract.affordances` and the user's [[binding index]], derives
   `grant = affordances ∩ offer`, selects the **maximal baked [[variant]] whose grant-key ⊆ grant**
   (no unique maximum ⇒ hard error), and delegates to `bindContractPackage` with the derived grant
   and index-supplied identity. The host holds **zero** users-repo internals (no variant names, no
   identity paths). Wraps the primitive on the consumer side as `mkUserBindings` does on the
-  producer side. **(designed; not yet built — issue #25)** (ADR-0025)
+  producer side. **(built — issue #25)** (ADR-0025)
 - **coupling guard** — `bindContractPackage`'s assertion `manifest.granted ⊆ grantedNamesOf grants`:
   you may only bind a [[variant]] whose baked grants you actually grant. Required by ADR-0016 but
   never enforced until ADR-0025; maximal-subset selection satisfies it by construction, so the
-  check is defense-in-depth for direct callers. **(designed; not yet built — issue #25)** (ADR-0016, ADR-0025)
+  check is defense-in-depth for direct callers. **(built — issue #25)** (ADR-0016, ADR-0025)
 
 ## Program scope and package policy
 
