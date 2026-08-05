@@ -40,11 +40,19 @@ let
         !(lib.elem "uinput" (acct "agent" "ada").extraGroups) && !cfgs.agent.custom.gui.surface.enabled;
     }
     {
-      name = "clamp: cleo receives the privileged 'docker' group ONLY via the workstation grant";
+      name = "clamp: cleo receives the privileged 'docker' group ONLY via the containers grant";
       ok = lib.elem "docker" (acct "desk" "cleo").extraGroups;
     }
     {
-      name = "sudo: admin gets wheel and NOTHING more (the minimal grant — no docker, unlike workstation)";
+      name = "atomic grants: cleo's containers grant confers docker but NOT wheel (no wheel without sudo)";
+      ok =
+        let
+          g = (acct "desk" "cleo").extraGroups;
+        in
+        lib.elem "docker" g && !(lib.elem "wheel" g);
+    }
+    {
+      name = "sudo: admin gets wheel and NOTHING more (the minimal grant — no docker, that is the containers grant)";
       ok =
         let
           g = (acct "desk" "admin").extraGroups;

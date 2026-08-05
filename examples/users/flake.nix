@@ -47,7 +47,7 @@
           bakedGrants = { };
         };
         # cleo — the privileged-group user: declares `docker` in identity.extraGroups and receives
-        # it ONLY via the `workstation` grant (the clamp, positive direction). workstation is
+        # it ONLY via the `containers` grant (the clamp, positive direction). containers is
         # non-secret, so nothing is baked.
         cleo = {
           bakedGrants = { };

@@ -5,7 +5,7 @@
 # ada. This home
 # does nothing to make that happen beyond OFFERING its desktop choice: the contract bridges the
 # gui request into the account ONLY where the host granted gui (bindUser's `bridgeRequests`), so
-# the SAME contractPackage yields a gui account on `workstation` and a silently-degraded cli
+# the SAME contractPackage yields a gui account on the seat host `desk` and a silently-degraded cli
 # account on `agent` — the home-side of the contract's silent-degradation promise (ADR-0002),
 # with no per-host branching in the home at all.
 #
