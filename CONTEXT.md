@@ -42,16 +42,32 @@ the term is stable, the code is pending (see the cited issue).
 - **projection** — any surface *derived* from the registry (`featureGroups`,
   `grantedOptions`, `featureConfigOptions`, `safeSet`). Keys can't drift across projections
   because there is one set of keys. (`kit.nix`)
-- **offer** — *implicit*: a user emitting a `contract.requests` entry for a feature is
-  offering it. No formal `offers` field exists until the separate-repo future needs one. (ADR-0002)
+- **offer** — the **user's** voice on *which* features it asks for (distinct from [[request]],
+  the parameters of a feature). *Implicit* for a home emitting a `contract.requests` entry;
+  **formalised** per-user by the `users` flake in the turnkey path — the "formal `offers` field
+  until the separate-repo future needs one" that future being now (ADR-0020/0025). A grant is
+  derived as host [[affordance]] ∩ offer; the home-affecting subset of the offer is what the
+  producer bakes as [[variant]]s. (ADR-0002, ADR-0025)
 
 ## Grants and confinement
 
-- **grant** — a host's decision to enable a feature for a user
-  (`custom.users.<u>.granted.<f>.enable`). **Host-write-only**, and the *only* source of
-  privilege. (ADR-0001 mechanic 2)
+- **grant** — the decision to enable a feature for a user
+  (`custom.users.<u>.granted.<f>.enable`); the realization's **only** source of privilege. Two
+  ways to arrive at it: written **directly** by the host (the inline/hard-enforcement path,
+  `bindContractPackage { grants }`), or **derived** as `affordances ∩ offer` in the turnkey
+  pre-built path (`bindUserFromFlake`, ADR-0025). Derived, the grant is a two-sided
+  **negotiation** — host [[affordance]] ∧ user [[offer]], *both necessary* — not a unilateral
+  host write. Either way it remains the sole privilege source the realization reads. (ADR-0001
+  mechanic 2, ADR-0025)
+- **affordance** / **`contract.affordances`** — the **host's** voice (system-side), shaped
+  `{ <feature>.enable = bool; }`: the features this host is willing to grant to users who
+  [[offer]] them, declared **once** per host. The symmetric counterpart of [[request]]
+  (`contract.requests`, the user's voice) and a generalisation of the greeter's safe set (the
+  safe set *is* the greeter's affordance). A **necessary** condition for a derived grant — the
+  host's absolute veto: a feature it does not afford is never granted, whatever a user offers.
+  (ADR-0025; consumed by `bindUserFromFlake`)
 - **deny** — the **absence of a grant**. Not a veto, not a default-open block — a host runs
-  only what it explicitly grants.
+  only what it grants (written directly, or derived within its [[affordance]]s).
 - **feature configuration** *(a feature's **parameters**)* — the **host-owned** parameters the
   realization consumes (`custom.users.<u>.<feature>.*`, e.g. `gui.desktop`), distinct from the
   grant (the yes/no). The **consumer** end of a producer→consumer pair with **request**:
@@ -68,8 +84,12 @@ the term is stable, the code is pending (see the cited issue).
   `users.users` account. Powers route through *grants*, not raw identity. (`realization.nix`,
   ADR-0001 mechanic 5)
 - **clamp** — the realization filtering privileged groups out of a user's self-declared
-  `identity.extraGroups` (untrusted input). Privileged groups come only from a grant — a
-  user can never self-escalate by listing `docker`/`wheel` in its identity.
+  `identity.extraGroups` (untrusted input). Privileged groups come only from a grant, so a
+  user can never self-escalate by listing `docker`/`wheel` in its identity — and, under the
+  negotiated grant (ADR-0025), never **beyond the host's [[affordance]]s**: the offer completes
+  a grant only for features the host affords, and the untrusted/greeter path affords only the
+  safe set (no privileged feature), so a stranger's offer can never reach privilege. The clamp
+  remains defense-in-depth: any privileged group not backed by the derived grant is dropped.
 - **gui-session union** *(REMOVED, ADR-0021)* — the realization used to derive the host's display
   surface's session types (`custom.gui.surface.{wayland,x11}`) as the union of every granted gui
   user's session type. **Removed:** the contract is now **display-server-agnostic** — it exposes only
@@ -286,6 +306,33 @@ the term is stable, the code is pending (see the cited issue).
   `system.activationScripts` entry that runs `contractPackage/activate` at switch time. When
   `custom.host.packagePolicy.allowedPrograms` is non-empty it also builds and links a
   host-built package profile. **(built — issue #16)** (ADR-0016)
+- **variant** — a **baked home identified by the grant set it was baked with**. `mkContractPackage`
+  freezes `activationPackage`, so a grant that *changes the baked home* (a **home-affecting**
+  grant — one the user's `home.nix` fans out on, e.g. `gui` → emacs/ai) must be its own variant,
+  while a grant conferring only host-side effects (a privileged group) rides the bind and needs
+  no bake. Home-affecting-ness is **per-repo** (whether *that* repo's home branches on the grant),
+  so the contract owns no `home` flag: the producer's **baked variant set is the taxonomy**. A
+  variant's name (`<user>-contractPackage-<key>`, key = sorted home-affecting grant names, empty
+  ⇒ `base`) is a cosmetic label, not a parse target. **(designed; not yet built — issue #25)** (ADR-0025)
+- **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
+  = { identity; offer; variants = [{ granted; package }] }`. Plain data (no IFD), so a host
+  selects a [[variant]] without building any of them. Identity is resolved once from the ADR-0020
+  path. **(designed; not yet built — issue #25)** (ADR-0025)
+- **`mkUserBindings`** — the **producer** helper (contract `lib`) the `users` flake calls once:
+  maps over each user's declared [[offer]]/variants and emits **both** the named packages **and**
+  the [[binding index]]. The turnkey producer surface for the multi-user repo (ADR-0020), as
+  `mkContractPackageForHome` is for a single home. **(designed; not yet built — issue #25)** (ADR-0025)
+- **`bindUserFromFlake`** — the **turnkey host-side bind**: `{ usersFlake; username }`, **no
+  `grants`**. Reads `contract.affordances` and the user's [[binding index]], derives
+  `grant = affordances ∩ offer`, selects the **maximal baked [[variant]] whose grant-key ⊆ grant**
+  (no unique maximum ⇒ hard error), and delegates to `bindContractPackage` with the derived grant
+  and index-supplied identity. The host holds **zero** users-repo internals (no variant names, no
+  identity paths). Wraps the primitive on the consumer side as `mkUserBindings` does on the
+  producer side. **(designed; not yet built — issue #25)** (ADR-0025)
+- **coupling guard** — `bindContractPackage`'s assertion `manifest.granted ⊆ grantedNamesOf grants`:
+  you may only bind a [[variant]] whose baked grants you actually grant. Required by ADR-0016 but
+  never enforced until ADR-0025; maximal-subset selection satisfies it by construction, so the
+  check is defense-in-depth for direct callers. **(designed; not yet built — issue #25)** (ADR-0016, ADR-0025)
 
 ## Program scope and package policy
 
