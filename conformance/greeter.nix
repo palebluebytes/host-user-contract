@@ -67,6 +67,32 @@ let
           echo "FAIL: a mismatched username was accepted" >&2; exit 1
         fi
 
+        # --- yescrypt hash format (issue #22, ADR-0019) ---
+        # ada's stored hash is $6$ (sha512); real user identities ship yescrypt ($y$). The auth
+        # script re-hashes with libc crypt (via perl), which handles $y$ exactly as /etc/shadow
+        # does — but that branch is unexercised unless a $y$ fixture drives it. Bind a synthetic
+        # yescrypt identity and assert the SAME accept/reject behaviour the $6$ fixture asserts,
+        # so a format-handling regression can't pass conformance unnoticed. The cleartext is the
+        # same canonical secret; only the stored format differs.
+        mkdir yescrypt-src
+        cat > yescrypt-src/identity.json <<'IDENTITY'
+        {
+          "name": "Yescrypt Fixture",
+          "username": "yola",
+          "hashedPassword": "$y$j9T$y4lDWR0CJ4BGpctDjIbuG1$URzSLledzsqlsmLKANrADmvBphvYbfaAtBgXPcSLiI1"
+        }
+        IDENTITY
+
+        echo "# yescrypt: right password ⇒ accepts (the \$y\$ branch)"
+        printf '%s\n' 'correct-horse-battery-staple' \
+          | contract-greeter-auth yescrypt-src yola tier2 /dev/null
+
+        echo "# yescrypt: wrong password ⇒ rejects"
+        if printf '%s\n' 'wrong-password' \
+          | contract-greeter-auth yescrypt-src yola tier2 /dev/null 2>/dev/null; then
+          echo "FAIL: a wrong password was accepted against the yescrypt fixture" >&2; exit 1
+        fi
+
         # --- Tier 1: the repo must be SIGNED by a host-trusted key (ADR-0006) ---
         # Build a signed source: the example identity.json + an SSH signature over the tree
         # manifest (exactly what the auth script recomputes and verifies), plus the allowed-signers
