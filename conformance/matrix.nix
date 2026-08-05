@@ -36,6 +36,9 @@ let
       ]
       ++ map (n: grant n (grantsFor n)) userNames
     );
+  # The "workstation" archetype is a host ROLE (a seat with privileged, gui-capable users), not the
+  # retired feature of the same name: it grants the `containers` capability to every user to prove
+  # realization holds under a privileged grant, and gui to the gui users.
   workstationArch = mkArchetype {
     exposed = false;
     grantsFor =
@@ -44,14 +47,14 @@ let
       if users.${n}.custom.users.${n} ? gui then
         {
           gui.enable = true;
-          workstation.enable = true;
+          containers.enable = true;
         }
       else
-        { workstation.enable = true; };
+        { containers.enable = true; };
   };
   agentArch = mkArchetype {
     exposed = true;
-    grantsFor = _: { workstation.enable = true; };
+    grantsFor = _: { containers.enable = true; };
   };
   headlessArch = mkArchetype {
     exposed = false;

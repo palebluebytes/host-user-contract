@@ -158,9 +158,12 @@ in
       # runtime-bound user can never receive a privileged-group feature — escalation is
       # impossible by construction, not by a deny rule.
       name = "greeterGrants: grants no privileged-group feature (no escalation)";
-      ok =
-        !(lib.elem "workstation" (lib.attrNames greeterGrants))
-        && !(lib.elem "virtualization" (lib.attrNames greeterGrants));
+      ok = lib.all (f: !(lib.elem f (lib.attrNames greeterGrants))) [
+        "containers"
+        "sudo"
+        "virtualization"
+        "nix-daemon"
+      ];
     }
     {
       # ADR-0008 litmus: the greeter ships in the eval but a host that does not enable it gets
@@ -180,7 +183,7 @@ in
       name = "greeter: the runtime grant is fixed to greeterGrants (the safe set), unwidenable";
       ok =
         greeterBound.custom.greeter.grants == greeterGrants
-        && !(lib.elem "workstation" (lib.attrNames greeterBound.custom.greeter.grants));
+        && !(lib.elem "containers" (lib.attrNames greeterBound.custom.greeter.grants));
     }
     {
       # The home BUILD is the host's binding (ADR-0008 "the host supplies only bindings") —

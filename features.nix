@@ -55,23 +55,27 @@
     };
   };
 
-  # workstation: privileged host access — the docker/podman/wheel groups. A user can
-  # never obtain these by declaring them in identity.extraGroups; only this grant does.
-  workstation = {
-    grant = "privileged workstation groups for this user (host grant)";
+  # containers: privileged container-runtime access — the docker/podman groups. Both are
+  # root-equivalent (the docker socket runs containers that mount the host fs as root), so a user
+  # can never obtain them by declaring them in identity.extraGroups; only this grant does. Split
+  # from the retired `workstation` role (ADR-0024), which coarsely bundled docker/podman AND wheel:
+  # container access is now its own atomic capability, composed with `sudo` (wheel) rather than
+  # fused to it, so "containers without sudo" (a hardened build account) is expressible.
+  containers = {
+    grant = "container runtime (docker/podman) access for this user (host grant)";
     privilegedGroups = [
       "docker"
       "podman"
-      "wheel"
     ];
   };
 
-  # sudo: administrative (wheel) access and nothing more — the MINIMAL privileged grant.
-  # workstation also confers docker/podman; this is for accounts that need sudo without a
-  # dev toolchain (e.g. a break-glass admin, or a co-admin user). wheel is privileged, so
-  # like workstation it is build-time-only and excluded from the safe set — never a
-  # greeter auto-grant. A user can never obtain wheel by declaring it in identity; the
-  # clamp drops it (ADR-0001 threat model) and only this grant restores it.
+  # sudo: administrative (wheel) access and nothing more — the MINIMAL privileged grant. Each
+  # privileged-group feature confers ONE concern's groups (contrast `containers` above, docker/
+  # podman), so a host composes them (`sudo` + `containers`) instead of granting one coarse role
+  # — the retired `workstation` fused all three (ADR-0024). wheel is privileged, so like every
+  # privileged-group feature it is build-time-only and excluded from the safe set — never a
+  # greeter auto-grant. A user can never obtain wheel by declaring it in identity; the clamp
+  # drops it (ADR-0001 threat model) and only this grant restores it.
   sudo = {
     grant = "wheel/sudo administrative access for this user (host grant)";
     privilegedGroups = [ "wheel" ];

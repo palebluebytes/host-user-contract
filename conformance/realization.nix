@@ -50,7 +50,7 @@ let
   ];
   clampWithGrant = eval [
     (mkUser "alice" { })
-    (grant "alice" { workstation.enable = true; })
+    (grant "alice" { containers.enable = true; })
     { custom.users.alice.identity.extraGroups = [ "docker" ]; }
   ];
 
@@ -77,9 +77,9 @@ let
   danaGroups = loadedHost.users.users.dana.extraGroups;
 
   # --- the sudo feature: the MINIMAL privileged grant (wheel only) ---
-  # sudo confers wheel and ONLY wheel — no docker/podman (the contrast that distinguishes it
-  # from workstation). Real production accounts ship it (admin/eyeofalligator on weedySeadragon,
-  # admin in examples/fleet). Mirror the clamp→grant→restore cycle workstation already has.
+  # sudo confers wheel and ONLY wheel — no docker/podman (those are the separate `containers`
+  # grant). Real production accounts ship it (admin/eyeofalligator on weedySeadragon, admin in
+  # examples/fleet). Mirror the clamp→grant→restore cycle `containers` also has.
   sudoClampNoGrant = eval [
     (mkUser "alice" { })
     { custom.users.alice.identity.extraGroups = [ "wheel" ]; }
@@ -88,7 +88,7 @@ let
     (mkUser "alice" { })
     (grant "alice" { sudo.enable = true; })
     # self-declare wheel too, so this proves the full clamp→grant→RESTORE cycle in one eval
-    # (as workstation's clampWithGrant does), not merely a conferral.
+    # (as the containers grant's clampWithGrant does), not merely a conferral.
     { custom.users.alice.identity.extraGroups = [ "wheel" ]; }
   ];
 
@@ -137,7 +137,7 @@ let
   # host and prove per-account confinement: a privileged grant confers its groups ONLY to the granted
   # account, and a user self-declaring wheel escalates neither itself nor a neighbour.
   #
-  #   alice — gui + workstation + virtualization (docker/podman/wheel + libvirtd); self-declares wheel
+  #   alice — gui + containers + sudo + virtualization (docker/podman + wheel + libvirtd); self-declares wheel
   #   bob   — gui only, NO privileged grant; self-declares wheel  → must be clamped
   #   carol — sudo (wheel only), no gui
   isolationHost = eval [
@@ -146,13 +146,14 @@ let
     (mkUser "carol" { gui = false; })
     (grant "alice" {
       gui.enable = true;
-      workstation.enable = true;
+      containers.enable = true;
+      sudo.enable = true;
       virtualization.enable = true;
     })
     (grant "bob" { gui.enable = true; })
     (grant "carol" { sudo.enable = true; })
     {
-      # two co-residents self-declare wheel: alice (restored by her grant) and bob (no grant ⇒ clamped)
+      # two co-residents self-declare wheel: alice (restored by her sudo grant) and bob (no grant ⇒ clamped)
       custom.users.alice.identity.extraGroups = [ "wheel" ];
       custom.users.bob.identity.extraGroups = [ "wheel" ];
     }
@@ -196,7 +197,7 @@ in
       ok = lib.elem "audio" (groupsOf clampNoGrant);
     }
     {
-      name = "grant: the workstation grant confers the privileged group";
+      name = "grant: the containers grant confers the privileged group";
       ok = lib.elem "docker" (groupsOf clampWithGrant);
     }
 
@@ -206,7 +207,7 @@ in
       ok = !(lib.elem "wheel" (groupsOf sudoClampNoGrant));
     }
     {
-      name = "sudo: the grant restores wheel and confers it ONLY (no docker/podman, unlike workstation)";
+      name = "sudo: the grant restores wheel and confers it ONLY (no docker/podman — those are the containers grant)";
       ok =
         lib.elem "wheel" (groupsOf sudoGranted)
         && !(lib.elem "docker" (groupsOf sudoGranted))
@@ -225,8 +226,8 @@ in
     }
     {
       # criterion 2: the granted user receives the feature's privileged groups; the ungranted
-      # co-residents do NOT. workstation's docker/podman reach alice alone.
-      name = "isolation: workstation's docker/podman reach ONLY the granted account, not its ungranted co-residents";
+      # co-residents do NOT. the containers grant's docker/podman reach alice alone.
+      name = "isolation: the containers grant's docker/podman reach ONLY the granted account, not its ungranted co-residents";
       ok =
         lib.elem "docker" (isoGroups "alice")
         && lib.elem "podman" (isoGroups "alice")
@@ -245,11 +246,11 @@ in
     {
       # criterion 3: a user self-declaring wheel escalates neither itself nor a neighbour. bob
       # self-declares wheel with no wheel-conferring grant ⇒ clamped, even though BOTH his
-      # co-residents legitimately hold wheel (alice via workstation, carol via sudo). Their grants
-      # do not leak to him, and his self-declaration confers nothing on anyone.
+      # co-residents legitimately hold wheel (alice and carol via sudo). Their grants do not leak
+      # to him, and his self-declaration confers nothing on anyone.
       name = "isolation: a self-declared wheel is clamped for the ungranted user, and neighbours' wheel grants do not leak to him";
       ok =
-        lib.elem "wheel" (isoGroups "alice") # workstation grant restores her self-declared wheel
+        lib.elem "wheel" (isoGroups "alice") # sudo grant restores her self-declared wheel
         && lib.elem "wheel" (isoGroups "carol") # sudo grant confers wheel
         && !(lib.elem "wheel" (isoGroups "bob")); # gui-only + self-declared wheel ⇒ clamped, no leak in
     }
@@ -268,7 +269,12 @@ in
     }
     {
       name = "safe set: privileged-group features are excluded";
-      ok = !(lib.elem "workstation" safeSet) && !(lib.elem "virtualization" safeSet);
+      ok = lib.all (f: !(lib.elem f safeSet)) [
+        "containers"
+        "sudo"
+        "virtualization"
+        "nix-daemon"
+      ];
     }
     {
       name = "gui confers no privileged group";
@@ -277,6 +283,10 @@ in
     {
       name = "virtualization confers privileged groups (only via its grant)";
       ok = lib.elem "libvirtd" featureGroups.virtualization;
+    }
+    {
+      name = "containers confers BOTH docker and podman (its atomic privileged groups, only via its grant)";
+      ok = lib.elem "docker" featureGroups.containers && lib.elem "podman" featureGroups.containers;
     }
     {
       name = "identity.json: loadIdentity realizes the account (required fields carried)";

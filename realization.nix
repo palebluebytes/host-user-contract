@@ -6,7 +6,7 @@
 #     `identity.extraGroups` is untrusted input, so privileged groups (docker,
 #     wheel, …) are filtered out of it and conferred ONLY by a feature grant
 #     (contract featureGroups). A user can never escalate by listing `docker` in
-#     its own identity; a host must grant `workstation`.
+#     its own identity; a host must grant `containers` (docker/podman) or `sudo` (wheel).
 #
 # Audit (ADR-0001 threat model) — which identity fields confer host-side power:
 #   name/email/gmail/username .... inert (descriptive)
@@ -16,8 +16,8 @@
 #   granted.<feature> ............ the host's decision; the only source of privilege
 # An account that declares a privileged group (e.g. `wheel`) in its identity does NOT get
 # it unless a grant confers it — so a host that wants such an account to keep that power
-# MUST grant the matching feature (e.g. `sudo`/`workstation`). The host repo's grant matrix
-# is where those decisions live; this module only enforces the rule.
+# MUST grant the matching feature (e.g. `sudo` for wheel, `containers` for docker/podman). The
+# host repo's grant matrix is where those decisions live; this module only enforces the rule.
 #
 # Closes over its contract data (privilegedGroups, featureGroups) rather than reaching
 # through the consumer's `self` (ADR-0004): contract/default.nix applies this with the
