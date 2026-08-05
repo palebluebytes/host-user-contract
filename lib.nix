@@ -34,6 +34,9 @@ let
   # enabler; degradation is silent"). `requests` is a value in the tracer and a CONFIG
   # REFERENCE in the module — the fold is identical either way.
   grantedNamesOf = grants: lib.filter (f: grants.${f}.enable or false) (lib.attrNames grants);
+  # List subset test — `a ⊆ b`. Single-sourced so the coupling guard and the turnkey
+  # variant-selection (covering + maximal) all spell "is this grant-key covered?" one way.
+  subsetOf = a: b: lib.all (x: lib.elem x b) a;
   bridgeRequests =
     requests: grantedNames:
     lib.foldl' (
@@ -123,6 +126,77 @@ let
       username = home.config.home.username;
     };
 
+  # variantName (ADR-0025, issue #25): the canonical, ORDER-INDEPENDENT label for a baked
+  # variant — the sorted home-affecting grant-key feature names, empty ⇒ `base`. It names the
+  # published package (`<user>-contractPackage-<name>`) only; selection reads the machine-readable
+  # grant-key off the binding index, never this string, so the format is cosmetic — a label, not a
+  # parse target (ADR-0025 "Considered Options": name-parse selection rejected).
+  variantName =
+    granted:
+    let
+      names = lib.sort (a: b: a < b) (grantedNamesOf granted);
+    in
+    if names == [ ] then "base" else lib.concatStringsSep "-" names;
+
+  # mkUserBindings (ADR-0025, issue #25): the turnkey PRODUCER helper the `users` flake calls
+  # ONCE. It is to a whole multi-user roster what `mkContractPackageForHome` is to a single home —
+  # it lifts the recurring producer wrapper (bake each variant, name it, expose a selector) into
+  # the contract so the users flake stops hand-rolling it. For each user it maps over the declared
+  # variants and emits BOTH:
+  #   - the named packages `<user>-contractPackage-<variantName>` (built via
+  #     mkContractPackageForHome — so this stays package-free, only READING attributes off an
+  #     already-evaluated home, ADR-0004), and
+  #   - the pure `contractUsers.<sys>.<user>` BINDING INDEX `{ identity; offer; variants = [{
+  #     granted; package }] }`. The index is plain data (identity resolved once via loadIdentity
+  #     from the ADR-0020 `<usersDir>/<user>/identity.json` path; `granted` is the variant's
+  #     grant-key as a NAME LIST; `package` is the built derivation), so a host's
+  #     `bindUserFromFlake` selects a variant by reading it — never by building every variant to
+  #     inspect a baked manifest (the ADR-0016 "can't read manifests cheaply" trap, sidestepped).
+  # Each input user is `{ offer; variants = [{ grants; home }] }` — `grants` is the grant ATTRSET
+  # the variant is baked with (same `{ <feature>.enable = bool; }` shape as everywhere else, and
+  # what `mkContractPackageForHome` consumes); it is projected to the index's `granted` NAME LIST
+  # by `grantedNamesOf`. `loadIdentity` is injected by the kit (like `homeModule` for bindUser) so
+  # the users flake calls this without wiring the loader itself. `pkgs`/`system` stay parameters so
+  # one call can emit multi-arch outputs.
+  mkUserBindings =
+    {
+      loadIdentity,
+      pkgs,
+      system,
+      usersDir,
+      users,
+    }:
+    let
+      perUser =
+        name: u:
+        let
+          built = map (v: {
+            granted = grantedNamesOf v.grants;
+            package = mkContractPackageForHome {
+              inherit pkgs;
+              home = v.home;
+              grants = v.grants;
+            };
+            label = variantName v.grants;
+          }) u.variants;
+        in
+        {
+          packages = lib.listToAttrs (
+            map (v: lib.nameValuePair "${name}-contractPackage-${v.label}" v.package) built
+          );
+          index = {
+            identity = loadIdentity "${usersDir}/${name}/identity.json";
+            inherit (u) offer;
+            variants = map (v: { inherit (v) granted package; }) built;
+          };
+        };
+      byUser = lib.mapAttrs perUser users;
+    in
+    {
+      packages.${system} = lib.foldl' (acc: u: acc // u.packages) { } (lib.attrValues byUser);
+      contractUsers.${system} = lib.mapAttrs (_: u: u.index) byUser;
+    };
+
   # bindContractPackage (ADR-0016, issue #16): the HOST-SIDE binding for the pre-built path.
   # Unlike `bindUserModule` (which evaluates the home inline), this reads the already-built
   # `contract-requests.json` from a pinned store path and bridges the feature requests exactly
@@ -149,9 +223,34 @@ let
       userPackages = manifest.packages or [ ];
       approvedNames = lib.filter (n: lib.elem n allowedPrograms) userPackages;
       approvedPkgs = lib.filter (p: p != null) (map (n: pkgs.${n} or null) approvedNames);
+      # The coupling guard (ADR-0016, finally enforced by ADR-0025): a host may bind a variant
+      # only if it actually grants every feature the variant was BAKED with. `manifest.granted`
+      # (the enabled feature names frozen into the home at bake time) MUST be a subset of the
+      # grant the host passes — otherwise the host would activate a home built for privileges it
+      # is not conferring (e.g. a home-affecting/secret-bearing bake it never granted). A v1
+      # manifest predates the baked field (`granted or [ ]` ⇒ vacuously satisfied). Maximal-subset
+      # selection in `bindUserFromFlake` satisfies this by construction; the check is
+      # defense-in-depth for direct callers who write `grants` by hand.
+      bakedGranted = manifest.granted or [ ];
+      ungranted = lib.subtractLists (grantedNamesOf grants) bakedGranted;
+      guard = lib.assertMsg (subsetOf bakedGranted (grantedNamesOf grants)) (
+        "bindContractPackage: the variant for '${username}' was baked with grant(s) "
+        + "[${lib.concatStringsSep ", " ungranted}] the host does not grant "
+        + "(granted: [${lib.concatStringsSep ", " (grantedNamesOf grants)}]) — "
+        + "the ADR-0016 coupling guard requires manifest.granted ⊆ granted."
+      );
     in
     {
-      custom.users.${username} = mkUserAccount { inherit identity grants requests; };
+      # The guard rides the account VALUE, not a wrapping `assert` on this whole attrset: when
+      # `contractPackage` is SELECTED from config (bindUserFromFlake), a top-level `assert` would
+      # force the manifest read while the module system merely probes this module for unrelated
+      # options (e.g. `nixpkgs.*` to build `pkgs`), and that read — reaching back through the
+      # config-derived package into `pkgs` — is an infinite recursion. Attached to the account, the
+      # guard fires whenever `custom.users.<u>` is read (always, via the realization) but never
+      # during bare option-key probing. Still a hard eval error on violation.
+      custom.users.${username} =
+        assert guard;
+        mkUserAccount { inherit identity grants requests; };
       # A login session that PERSISTS past activation: the home's user systemd services (sd-switch,
       # sops-nix) must keep running after the `runuser -l` activation exits, so the binding lingers
       # the user itself rather than leaving it a per-seat "should" (issue #1 review: linger was
@@ -198,6 +297,76 @@ let
         );
       };
     };
+
+  # bindUserFromFlake (ADR-0025, issue #25): the turnkey HOST-SIDE bind — the consumer twin of
+  # `mkUserBindings`. A host declares its `contract.affordances` ONCE and imports each user with
+  # `{ usersFlake; username }` — no per-user `grants`, no variant names, no identity paths (the
+  # host holds ZERO users-repo internals). It returns a NixOS module that:
+  #   1. infers `system` from the host's own `pkgs`, and reads the user's binding index off the
+  #      pinned `usersFlake` (`contractUsers.<sys>.<user>`, the pure data `mkUserBindings` emitted);
+  #   2. derives the grant as `affordances ∩ offer` — the host's affordance is a NECESSARY
+  #      condition (an absolute veto: a feature the host does not afford is never granted, whatever
+  #      the user offers), and the user's offer completes it (ADR-0025 "the grant becomes a
+  #      negotiation");
+  #   3. selects the MAXIMAL baked variant whose grant-key ⊆ the derived grant — `sudo`/`containers`
+  #      ride the bind and never multiply variants; no unique maximum (two incomparable baked
+  #      variants both ⊆ the grant) is a HARD eval error naming the available variants, never a
+  #      silent fallback;
+  #   4. delegates to `bindContractPackage` with the derived grant + the index-supplied identity.
+  # Maximal-subset selection satisfies `bindContractPackage`'s coupling guard by construction (the
+  # selected variant's baked grants are ⊆ the derived grant).
+  bindUserFromFlake =
+    { usersFlake, username }:
+    # Apply the inner bindContractPackage module to the current module args and return its config,
+    # rather than returning it via `imports`: the selected variant depends on
+    # `config.contract.affordances`, and an `imports` list that depends on `config` is an infinite
+    # recursion (imports must resolve before the config fixpoint). Splicing the inner module's
+    # config in directly is legal because it defines only config (no options, no imports) and
+    # merely READS config values.
+    { config, pkgs, ... }:
+    let
+      # The host's platform, inferred from the host's own pkgs (ADR-0025). Everything this module
+      # selects from `system` (the binding index lookup, hence identity/variant/grant) lands in
+      # config VALUES, never in this module's top-level option KEYS — so probing the module for an
+      # unrelated option (`nixpkgs.*`, to build `pkgs` itself) never forces `system` and there is
+      # no config↔pkgs cycle. The keys are the fixed `custom.users` / `users.users` / `systemd`
+      # paths bindContractPackage always sets.
+      system = pkgs.stdenv.hostPlatform.system;
+      index =
+        usersFlake.contractUsers.${system}.${username} or (throw (
+          "bindUserFromFlake: the users flake exposes no binding index for '${username}' on "
+          + "'${system}' — does it call contract.lib.mkUserBindings for this system?"
+        ));
+      # grant = affordances ∩ offer (both necessary; the host's affordance is the veto).
+      grantNames = lib.intersectLists (grantedNamesOf config.contract.affordances) (
+        grantedNamesOf index.offer
+      );
+      grants = lib.genAttrs grantNames (_: {
+        enable = true;
+      });
+      # Maximal baked variant whose grant-key ⊆ the derived grant. A variant covers when every
+      # feature it was baked with is granted; the maximum covers every other cover. Zero or ≥2
+      # maxima (an uncovered or incomparable combo the producer never baked) is a hard error.
+      covering = lib.filter (v: subsetOf v.granted grantNames) index.variants;
+      maxima = lib.filter (m: lib.all (c: subsetOf c.granted m.granted) covering) covering;
+      availableList = lib.concatMapStringsSep "; " (
+        v: "[${lib.concatStringsSep ", " v.granted}]"
+      ) index.variants;
+      selected =
+        if lib.length maxima == 1 then
+          lib.head maxima
+        else
+          throw (
+            "bindUserFromFlake: no unique maximal variant of '${username}' covers the derived "
+            + "grant [${lib.concatStringsSep ", " grantNames}]; baked variants are: ${availableList}."
+          );
+    in
+    (bindContractPackage {
+      contractPackage = selected.package;
+      inherit (index) identity;
+      inherit grants;
+    })
+      { inherit config pkgs; };
 in
 {
   inherit runtimeEligibleFeature safeSet;
@@ -357,5 +526,11 @@ in
       };
     };
 
-  inherit mkContractPackage mkContractPackageForHome bindContractPackage;
+  inherit
+    mkContractPackage
+    mkContractPackageForHome
+    bindContractPackage
+    mkUserBindings
+    bindUserFromFlake
+    ;
 }

@@ -58,6 +58,16 @@ in
   config = {
     custom.gui.surface.enabled = anyGuiGranted;
 
+    # XDG fold (ADR-0025): the residual gui host-glue a seat otherwise hand-writes on every gui
+    # user — linking the XDG desktop-portal and applications dirs into the system path so portals
+    # and `.desktop` entries resolve. It names no display server or DE, so it is a display-server-
+    # agnostic gui host-effect and stays inside ADR-0021's boundary. Set only when some gui user is
+    # granted (the gui SURFACE is enabled); a cli-only/headless host never gets it.
+    environment.pathsToLink = lib.mkIf anyGuiGranted [
+      "/share/xdg-desktop-portal"
+      "/share/applications"
+    ];
+
     users.users = lib.mapAttrs (_name: u: {
       isNormalUser = true;
       inherit (u.identity) hashedPassword;

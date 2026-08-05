@@ -104,6 +104,16 @@ in
     #   - bindContractPackage (issue #16): the host-side binding for the pre-built path; reads
     #     contract-requests.json from a pinned store path and registers the activation step.
     inherit (contractLib) mkContractPackage mkContractPackageForHome bindContractPackage;
+    # Turnkey binding (ADR-0025, issue #25), the twin of the pre-built primitives above:
+    #   - mkUserBindings (producer): the users flake calls it once to emit the named per-variant
+    #     packages AND the pure `contractUsers.<sys>.<user>` binding index. loadIdentity is
+    #     injected here (like homeModule for bindUser) so the users flake needn't wire the loader.
+    #   - bindUserFromFlake (consumer): a host declares `contract.affordances` once and imports a
+    #     user with `{ usersFlake; username }`; the grant is derived as `affordances ∩ offer` and
+    #     the maximal covering variant is selected — no per-user grants, no users-repo internals.
+    mkUserBindings =
+      args: contractLib.mkUserBindings (args // { inherit (identityJson) loadIdentity; });
+    inherit (contractLib) bindUserFromFlake;
   };
 
   # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0008) + the

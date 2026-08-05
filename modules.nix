@@ -34,6 +34,20 @@
         default = { };
         description = "Per-user identity, grants, and feature configuration.";
       };
+      # contract.affordances (ADR-0025, issue #25): the HOST's voice — the features this host is
+      # willing to grant to users who offer them, declared ONCE per host. Same `{ <feature>.enable
+      # = bool; }` shape as a grant set (grantedOptions). It is the symmetric counterpart of the
+      # user's `contract.requests` and a generalisation of the greeter's safe set (the safe set is
+      # simply the greeter's affordance). Consumed ONLY by the turnkey `bindUserFromFlake`, which
+      # derives each user's grant as `affordances ∩ offer` — a NECESSARY condition, the host's
+      # absolute veto: a feature not afforded is never granted, whatever a user offers. The direct
+      # `bindContractPackage { grants }` path is unchanged and ignores this (a host there writes the
+      # grant verbatim).
+      options.contract.affordances = lib.mkOption {
+        type = lib.types.submodule { options = grantedOptions; };
+        default = { };
+        description = "Features this host affords to users who offer them (ADR-0025); bindUserFromFlake derives each grant as affordances ∩ offer. Same shape as a grant set; the host's absolute veto.";
+      };
       options.custom.host.exposed = lib.mkEnableOption "an exposed/agent-facing host — a plain fact a user's home may read (via hostFacts) and adapt to; the contract enforces nothing on it";
       # Package policy inclusion list (ADR-0017, issue #17): after contractPackage activation,
       # bindContractPackage replaces ~/.nix-profile with a host-built profile containing the
