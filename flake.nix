@@ -29,6 +29,11 @@
       # Separate from default because it touches home-manager's `home.file` (default stays
       # tracer-pure — evaluable with no home-manager, ADR-0008).
       homeModules.greeterDesktop = kit.homeGreeterDesktopModule;
+      # Legacy-spelling alias: `homeModules` is the modern name (mirrors nixosModules/darwinModules
+      # and home-manager's own `<x>Modules.default` outputs), but the older `homeManagerModules`
+      # spelling is still common in the wild, so expose the same values under it for discoverability.
+      # Same modules, no divergence — prefer `homeModules` in new consumers.
+      homeManagerModules = self.homeModules;
 
       # The contract derivation functions (ADR-0004 Q4).
       inherit (kit) lib;
