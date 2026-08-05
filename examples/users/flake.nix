@@ -30,39 +30,58 @@
       # nothing reaches sideways between users. What distinguishes the users is not their homes
       # (deliberately thin, contract-pure) but what the FLEET grants each of them per host.
       #
-      # `bakedGrants` is the ONLY per-user knob here: the grants the contractPackage is BUILT with.
-      # No grant is secret-bearing (the contract handles no secrets), so a host may grant or deny
-      # ANY feature over the SAME package freely — that freedom is exactly what lets one
-      # `ada-contractPackage` be gui on one seat and cli-only on another.
+      # Two per-user knobs here:
+      #   - `bakedGrants`: the grants the contractPackage is BUILT with. No grant is secret-bearing
+      #     (the contract handles no secrets) and these reference homes don't FAN OUT on any grant
+      #     (they are trivial, contract-pure), so nothing is home-affecting and every user bakes a
+      #     single grant-less `base` variant. That is exactly what lets one `ada-contractPackage-base`
+      #     be gui on one seat and cli-only on another — the grant rides the bind, never the bake.
+      #   - `offer` (ADR-0025): the features this user ASKS a host for. In the turnkey path a host
+      #     declares its `contract.affordances` once and binds each user with `bindUserFromFlake`;
+      #     the grant is derived as `affordances ∩ offer`. So ada OFFERS gui and RECEIVES it only on
+      #     a host that affords gui — the portable-user gui↔cli divergence, now a two-sided
+      #     negotiation rather than a hand-written per-host grant.
       roster = {
         # ada — the multi-machine user (the contract's portable-user north star): ONE identity,
-        # ONE home, granted a gui session on the seat and cli-only on a headless host. Whether she
-        # gets gui or cli is a per-host GRANT, never a user trait.
+        # ONE home, OFFERS gui — she gets a gui session on a seat that affords gui and cli-only on a
+        # headless host that does not. Whether she gets gui is a per-host AFFORDANCE ∩ her offer,
+        # never a user trait.
         ada = {
           bakedGrants = { };
+          offer = {
+            gui.enable = true;
+          };
         };
-        # ben — a second cli reference user (a plain, contract-pure home): distinct identity, no
-        # privileged or gui grant. Useful as a co-resident on the same host as a privileged account.
+        # ben — a second cli reference user (a plain, contract-pure home): distinct identity, offers
+        # nothing. Useful as a co-resident on the same host as a privileged account.
         ben = {
           bakedGrants = { };
+          offer = { };
         };
-        # cleo — the privileged-group user: declares `docker` in identity.extraGroups and receives
-        # it ONLY via the `containers` grant (the clamp, positive direction). containers is
-        # non-secret, so nothing is baked.
+        # cleo — the privileged-group user: declares `docker` in identity.extraGroups and OFFERS
+        # `containers`; she receives docker ONLY on a host that affords containers (the clamp +
+        # negotiation, positive direction). containers is non-secret, so nothing is baked.
         cleo = {
           bakedGrants = { };
+          offer = {
+            containers.enable = true;
+          };
         };
-        # svc — a pure automation account: cli-only on every host that runs it, never gui. The
-        # minimal home; nothing secret.
+        # svc — a pure automation account: cli-only on every host that runs it, never gui. Offers
+        # nothing. The minimal home; nothing secret.
         svc = {
           bakedGrants = { };
+          offer = { };
         };
-        # admin — a break-glass administrative account: bound with the `sudo` feature it gets
-        # `wheel` and nothing more (the minimal privileged grant, ADR-0020). Its login password is
-        # the well-known "password" (ADR-0019: the credential travels with the user). sudo is
-        # privileged but non-secret, so nothing is baked.
+        # admin — a break-glass administrative account: OFFERS `sudo`, so on a host that affords sudo
+        # it gets `wheel` and nothing more (the minimal privileged grant, ADR-0020). Its login
+        # password is the well-known "password" (ADR-0019: the credential travels with the user).
+        # sudo is privileged but non-secret, so nothing is baked.
         admin = {
           bakedGrants = { };
+          offer = {
+            sudo.enable = true;
+          };
         };
       };
 
@@ -137,30 +156,35 @@
         ) roster)
         // (lib.mapAttrs' (name: _: lib.nameValuePair "${name}-greeter" (mkGreeterHome name)) roster);
 
-      # The per-user pre-built binding artifacts (ADR-0016): each is a content-addressed
-      # derivation carrying `activate` + `contract-requests.json`. A host pins this fleet as a
-      # flake input and binds each user with `contract.lib.bindContractPackage` — the ONE
-      # consumption convention, whether the host owns the account (declarative) or a greeter
-      # provisions it at login (runtime). `grants` bakes the secret-bearing coupling (ADR-0016).
+      # The turnkey PRODUCER surface (ADR-0025, issue #25): `mkUserBindings` maps the whole roster
+      # ONCE into BOTH the per-user pre-built binding artifacts AND the pure `contractUsers` binding
+      # index a host selects a variant from. It replaces the hand-rolled `mkContractPackageForHome`
+      # loop the fleet used to write (issue #23) — the producer twin of the host's `bindUserFromFlake`.
       #
-      # Assembled with `mkContractPackageForHome` (issue #23) — the home-manager producer adapter
-      # that reads mkContractPackage's four primitives off the already-evaluated home, so this
-      # home-manager producer passes `{ home; grants; pkgs; }` instead of hand-rolling the
-      # disassembly. Turnkey on the producer side, exactly as `bindContractPackage` is on the host.
-      # The manifest's `username` is now sourced from the home itself (`home.config.home.username`)
-      # rather than the roster key, which BINDS the manifest to the identity the home activates for:
-      # the account `bindContractPackage` creates can never diverge from the user the `activate`
-      # script expects. (Here `mkHome` sets `home.username = name`, so the two agree by construction.)
-      packages.${system} = lib.mapAttrs' (
-        name: u:
-        lib.nameValuePair "${name}-contractPackage" (
-          contract.lib.mkContractPackageForHome {
-            inherit pkgs;
-            home = self.homeConfigurations.${name};
-            grants = u.bakedGrants;
-          }
-        )
-      ) roster;
+      # Each user declares its `offer` and its `variants` (here a single grant-less `base` variant,
+      # since these reference homes don't fan out on any grant). mkUserBindings bakes each variant
+      # via mkContractPackageForHome (still package-free — it only READS the already-evaluated home),
+      # names it `<user>-contractPackage-<variantName>` (empty grant-key ⇒ `base`), resolves each
+      # identity once from `users/<u>/identity.json`, and emits the index `contractUsers.<sys>.<u> =
+      # { identity; offer; variants = [{ granted; package }] }` as plain data (no IFD) so a host
+      # picks a variant without building any of them.
+      inherit
+        (contract.lib.mkUserBindings {
+          inherit pkgs system;
+          usersDir = ./users;
+          users = lib.mapAttrs (name: u: {
+            inherit (u) offer;
+            variants = [
+              {
+                grants = u.bakedGrants;
+                home = self.homeConfigurations.${name};
+              }
+            ];
+          }) roster;
+        })
+        packages
+        contractUsers
+        ;
 
       # The REAL home build step, per user (the model a real user repo follows when it CIs its own
       # homes). The contract's OWN suite cannot cover this — it needs home-manager, which the

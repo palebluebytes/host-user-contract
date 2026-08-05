@@ -1,21 +1,15 @@
 # vault — a headless, NON-exposed host.
 #
-# It binds:
-#   - ben, GRANTED nothing: a cli-only reference account.
-#   - svc, GRANTED nothing: a cli-only automation account.
+# It affords NOTHING (default `contract.affordances = { }`) and binds:
+#   - ben: a cli-only reference account (offers nothing).
+#   - svc: a cli-only automation account (offers nothing).
 #
-# Non-exposed and headless: no gui grants, so no display surface.
-{ bindUserPkg, ... }:
+# Non-exposed and headless: affords no gui, so no display surface.
+{ bindUserTurnkey, ... }:
 {
   imports = [
-    (bindUserPkg {
-      name = "ben";
-      grants = { };
-    })
-    (bindUserPkg {
-      name = "svc";
-      grants = { };
-    })
+    (bindUserTurnkey "ben")
+    (bindUserTurnkey "svc")
   ];
 
   networking.hostName = "vault";

@@ -72,7 +72,7 @@ let
 in
 pkgs.runCommand "reference-fleet-checks" { } ''
   cat <<'EOF'
-  reference fleet — real hosts × the reference user fleet (bound via bindContractPackage):
+  reference fleet — real hosts × the reference user fleet (bound turnkey via bindUserFromFlake):
   ${report}
   EOF
   ${lib.optionalString (failures != [ ]) ''
