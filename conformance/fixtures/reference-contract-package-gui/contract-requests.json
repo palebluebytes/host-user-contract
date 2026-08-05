@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "username": "ada",
+  "requests": {
+    "gui": { "desktop": "plasma" }
+  },
+  "packages": ["hello"],
+  "granted": ["gui"]
+}

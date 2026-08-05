@@ -124,6 +124,35 @@ let
       grants = { };
     })
   ];
+
+  # --- coupling guard (ADR-0016 guard, enforced by ADR-0025) ---
+  # A v2 fixture that BAKES `granted = ["gui"]` — the manifest field the guard checks. A plain
+  # repo path (no derivation, no IFD) so the accept/reject stay eval-level. bindContractPackage
+  # asserts manifest.granted ⊆ grantedNamesOf grants:
+  #   - ACCEPT when the host grants gui (the baked feature is covered);
+  #   - REJECT (hard eval error, caught by tryEval) when it does not — you may never activate a
+  #     home baked with a feature you are not conferring.
+  guiFixture = ./fixtures/reference-contract-package-gui;
+  guardAccept = builtins.tryEval (
+    (eval [
+      (bindContractPackage {
+        contractPackage = guiFixture;
+        identity = referenceIdentity;
+        grants = {
+          gui.enable = true;
+        };
+      })
+    ]).users.users.ada.isNormalUser
+  );
+  guardReject = builtins.tryEval (
+    (eval [
+      (bindContractPackage {
+        contractPackage = guiFixture;
+        identity = referenceIdentity;
+        grants = { };
+      })
+    ]).users.users.ada.isNormalUser
+  );
 in
 {
   assertions = [
@@ -187,6 +216,16 @@ in
           svcConfig = boundRuntime.systemd.services."contract-activate-ada".serviceConfig or { };
         in
         !(svcConfig ? ExecStartPost);
+    }
+
+    # coupling guard: accept when the baked grant is covered, reject when it is not
+    {
+      name = "coupling guard: manifest.granted=[gui] ⊆ grant {gui} ⇒ accept (binds)";
+      ok = guardAccept.success && guardAccept.value;
+    }
+    {
+      name = "coupling guard: manifest.granted=[gui] ⊄ grant {} ⇒ reject (hard eval error)";
+      ok = !guardReject.success;
     }
   ];
 

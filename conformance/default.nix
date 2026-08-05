@@ -31,6 +31,8 @@
   mkContractPackage,
   mkContractPackageForHome,
   bindContractPackage,
+  mkUserBindings,
+  bindUserFromFlake,
   mkHostFacts,
   nixosSystem,
   system,
@@ -102,6 +104,17 @@ let
         mkContractPackageForHome
         bindContractPackage
         greeterGrants
+        ;
+    })
+    (import ./turnkey-bind.nix {
+      inherit
+        lib
+        pkgs
+        toolkit
+        loadIdentity
+        mkUserBindings
+        bindUserFromFlake
+        system
         ;
     })
   ];

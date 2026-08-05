@@ -74,6 +74,8 @@
             mkContractPackage
             mkContractPackageForHome
             bindContractPackage
+            mkUserBindings
+            bindUserFromFlake
             mkHostFacts
             renderNixConfig
             ;
