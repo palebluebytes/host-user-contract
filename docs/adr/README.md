@@ -33,10 +33,11 @@ contract ships).
 | [0022](0022-reference-fleets-and-the-test-split.md) | Reference user + host fleets as sibling flakes; the synthetic suite is the adversarial oracle, the fleet a positive-space reference that borrows atoms one-way |
 | [0023](0023-contract-handles-no-secrets.md) | The contract handles no secrets beyond the login credential (supersedes 0005 + 0015; retires ADR-0001's secret-bearing mechanisms) |
 | [0024](0024-split-workstation-into-atomic-capabilities.md) | Split the `workstation` role into atomic capability features (`sudo` + `containers`); a privileged group is conferred by exactly one feature |
+| [0025](0025-turnkey-host-side-bind.md) | Turnkey host-side bind: `grant = affordances ∩ offer`, variant selection from the baked set, the ADR-0016 coupling guard enforced (extends 0016/0020/0007) |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0024`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0025`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme

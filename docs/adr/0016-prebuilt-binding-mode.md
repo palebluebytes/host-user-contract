@@ -3,6 +3,10 @@
 **Status:** Proposed. Amends [ADR-0007](0007-user-flake-shape.md) (user flake shape gains
 `packages.${system}.contractPackage`); amends [ADR-0002](0002-user-confinement-manifest-greeter.md)
 (`execPayload` deferred); related to [ADR-0017](0017-daemon-restricted-user-package-policy.md).
+**Amended by [ADR-0025](0025-turnkey-host-side-bind.md)**: this ADR's grant/variant coupling
+guard ("the grant baked into the home MUST match the grant the host passes") — baked as
+`manifest.granted` but never read — is enforced there as a subset check (`manifest.granted ⊆
+grants`), and the turnkey `bindUserFromFlake`/`mkUserBindings` helpers wrap this primitive.
 
 [ADR-0007](0007-user-flake-shape.md) fixed the user flake shape and `bindUserModule` as the
 real binding mechanism: the host imports the user's home module into `home-manager.users.<u>`
