@@ -7,7 +7,7 @@
 # It lives here, in the fleet flake that legitimately has home-manager (via the users input), for
 # the reason the contract's own suite cannot host it: building a real home needs home-manager, and
 # the contract depends only on nixpkgs `lib` (ADR-0004). It is a FOCUSED seat node (like the
-# contract's greeter-vm), not the full desk host config — so the runtime-provisioned account
+# contract's greeter-provision-vm), not the full desk host config — so the runtime-provisioned account
 # never collides with a declarative one, and the boot stays lean.
 {
   pkgs,
@@ -19,7 +19,7 @@
   username,
 }:
 pkgs.testers.runNixOSTest {
-  name = "reference-fleet-greeter-provision-real-home";
+  name = "reference-fleet-integration";
 
   # The contract umbrella imports insecure-packages.nix (writes nixpkgs.config), which conflicts
   # with the driver's default read-only nixpkgs, so let the node own its pkgs as a real host does.

@@ -96,7 +96,7 @@
         # plasma session + the account activated. The seat picks the session type, not the contract
         # (ADR-0021). Uses a test-only SDDM/Plasma binding the suite supplies. Moved here from its
         # original in-repo home (ADR-0004).
-        conformance-vm = import ./conformance/vm.nix {
+        gui-surface-vm = import ./conformance/vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           inherit system;
@@ -105,7 +105,7 @@
         # Runtime proof of the greeter's provisioning CRUX (ADR-0006, issue #2): a booted seat
         # host with nixosModules.greeter enabled materializes the example user's account and
         # activates a built home at runtime — the declarative→runtime bridge eval cannot show.
-        greeter-vm = import ./conformance/greeter-vm.nix {
+        greeter-provision-vm = import ./conformance/greeter-vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           greeterModule = self.nixosModules.greeter;
@@ -116,7 +116,7 @@
         # LIVE session on real virtio-gpu DRM, via greetd-as-user. The seat owns the session type
         # (ADR-0021), so one Wayland (cage) boot exercises the render; the sequence VM below proves
         # two different desktops one-after-another on one seat. Heavy (a real graphical boot) — the
-        # render counterpart to greeter-vm's selection. A real GNOME/Plasma is the same shape with a
+        # render counterpart to greeter-provision-vm's selection. A real GNOME/Plasma is the same shape with a
         # heavier command (the consumer-renders boundary, like the gui-surface VM's SDDM/Plasma).
         greeter-session = import ./conformance/greeter-session-vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};

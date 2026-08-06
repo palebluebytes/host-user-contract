@@ -1,6 +1,6 @@
 # Runtime VM for the greeter's SESSION RENDER (ADR-0010 step 8) — proves the bound
 # `custom.greeter.desktops.<name>.command` brings up a LIVE graphical session, the render counterpart
-# to greeter-vm's session SELECTION (which only checks which command is chosen).
+# to greeter-provision-vm's session SELECTION (which only checks which command is chosen).
 #
 # A real compositor needs a logind SEAT session for DRM/KMS access — which greetd establishes
 # (it creates the seat session and runs the session command AS the user). So this drives greetd's
@@ -13,7 +13,7 @@
 # The session command is SELF-CONTAINED: the contract does not know or set the session type (wayland
 # vs x11) — the seat's command owns that (ADR-0021). This test binds a Wayland compositor (cage); an
 # x11 seat would bind a command that starts Xorg itself. Render is decoupled from provisioning here
-# (alice is a declared account) — provisioning is proven in greeter-vm; this isolates "does the bound
+# (alice is a declared account) — provisioning is proven in greeter-provision-vm; this isolates "does the bound
 # session backend actually come up live."
 {
   pkgs,
@@ -63,7 +63,7 @@ pkgs.testers.runNixOSTest {
       fonts.packages = [ pkgs.dejavu_fonts ];
       virtualisation.qemu.options = [ "-vga none -device virtio-gpu-pci" ];
 
-      # The user whose session we render (declared — provisioning is proven separately in greeter-vm).
+      # The user whose session we render (declared — provisioning is proven separately in greeter-provision-vm).
       users.users.alice = {
         isNormalUser = true;
         uid = 1000;

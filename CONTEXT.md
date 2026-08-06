@@ -190,7 +190,7 @@ the term is stable, the code is pending (see the cited issue).
   `conformance/bind-loop-vm.nix`): drive the actual `contract-greeter-bind` ORCHESTRATOR on a booted
   seat — flake URL + username + password on stdin → `nix flake archive` (real fetch) → eval-free Tier-1
   signature auth → [[homeBuilder]] → [[contract-greeter-bind|provision]] → session launch — the one
-  truly-runtime step `greeter-vm`/`greeter-provision` stop short of (they drive provision/session with a
+  truly-runtime step `greeter-provision-vm`/`greeter-provision` stop short of (they drive provision/session with a
   pre-built home). The fixture user flake is minimal (its `activationPackage` is a raw derivation that
   is just an `$out/activate`, all `provision` needs) so the test isolates the LOOP, not a home-manager
   build (that is `home-build`). One concession, documented in-file: a *nested test VM* cannot realize a

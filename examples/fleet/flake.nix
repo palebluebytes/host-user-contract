@@ -80,7 +80,7 @@
         # uniform flake-output consumption convention (declarative binds the contractPackage via
         # bindContractUser, the greeter builds the greeter home), the
         # counterpart to the declarative binds above. Focused seat node (like the contract's own
-        # greeter-vm), not the full desk host, so the provisioned account never collides with a
+        # greeter-provision-vm), not the full desk host, so the provisioned account never collides with a
         # declarative one.
         fleet-integration = import ./integration-vm.nix {
           inherit pkgs system;

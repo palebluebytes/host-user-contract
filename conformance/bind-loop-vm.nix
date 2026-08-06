@@ -1,5 +1,5 @@
 # Runtime VM: the FULL real bind loop (ADR-0006, issue #2) — the one truly-runtime step every other
-# greeter test stops short of. greeter-vm/integration-vm drive `provision`/`session` directly with a
+# greeter test stops short of. greeter-provision-vm/integration-vm drive `provision`/`session` directly with a
 # pre-built home; this drives the actual `contract-greeter-bind` ORCHESTRATOR end-to-end, exactly as a
 # greetd login does: flake URL + username + password on stdin →
 #   archive (real fetch of a local flake) → eval-free Tier-1 signature auth → homeBuilder (a REAL
@@ -154,7 +154,7 @@ pkgs.testers.runNixOSTest {
       nix.settings.substituters = lib.mkForce [ ];
 
       # Enable the reference greeter and BIND its two host bindings: the homeBuilder and a desktop. We
-      # drive the orchestrator by hand, so keep greetd from grabbing the console at boot (as greeter-vm
+      # drive the orchestrator by hand, so keep greetd from grabbing the console at boot (as greeter-provision-vm
       # / integration-vm do).
       custom.greeter.enable = true;
       custom.greeter.tier = "tier1";
