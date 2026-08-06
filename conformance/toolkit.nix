@@ -61,7 +61,7 @@ rec {
   evalHome = mods: (lib.evalModules { modules = [ homeModule ] ++ mods; }).config;
 
   # A real atom borrowed from the reference user fleet (ADR-0020, docs/adr/0022): ada's contract-pure
-  # home + her identity.json, bound by the tracer and the real bindUserModule. This is the one-way
+  # home + her identity.json, inspected by traceUser and baked via the pre-built path. This is the one-way
   # oracle→reference seam — the synthetic suite consumes realistic atoms from the reference fleet,
   # never the reverse. referenceIdentity has username "ada", name "Ada Reference".
   referenceHome = import ../examples/users/users/ada/home.nix;

@@ -1,5 +1,6 @@
 # Conformance domain: the turnkey host-side bind (ADR-0025, issue #25) — `contract.affordances`,
-# `bindUserFromFlake`, `mkUserBindings`, the coupling guard, and the gui XDG fold. All synthetic:
+# `bindContractUser`, the `mkContractUser`/`mkContractUsers` producer coin, the coupling guard, and
+# the gui XDG fold. All synthetic:
 # no host repo, no home-manager. A binding index is fabricated as PLAIN DATA (variant packages are
 # the repo-path fixture `bindContractPackage` already uses, so selection reads the index with NO
 # derivation build — the no-IFD property is structural, not asserted by side effect).
@@ -7,8 +8,9 @@
   lib,
   toolkit,
   loadIdentity,
-  bindUserFromFlake,
-  mkUserBindings,
+  bindContractUser,
+  mkContractUser,
+  mkContractUsers,
   pkgs,
   system,
 }:
@@ -31,7 +33,7 @@ let
     extraGroups = [ "wheel" ];
   };
 
-  # Fabricate a binding index exactly as mkUserBindings would emit it — pure data. `granted` is a
+  # Fabricate a binding index exactly as mkContractUsers would emit it — pure data. `granted` is a
   # NAME LIST (the variant's grant-key); `package` is the fixture path. Two variants (base + gui)
   # let us exercise maximal-subset selection without baking anything.
   mkIndex =
@@ -48,7 +50,7 @@ let
       }) variants;
     };
 
-  # A usersFlake stand-in: only the `contractUsers.<sys>.<user>` surface bindUserFromFlake reads.
+  # A usersFlake stand-in: only the `contractUsers.<sys>.<user>` surface bindContractUser reads.
   mkUsersFlake = index: { contractUsers.${system}.ada = index; };
 
   # Bind a user via the turnkey path against a fabricated flake + a host affordance set.
@@ -59,7 +61,7 @@ let
     }:
     eval [
       { contract.affordances = affordances; }
-      (bindUserFromFlake {
+      (bindContractUser {
         usersFlake = mkUsersFlake index;
         username = "ada";
       })
@@ -185,7 +187,7 @@ let
         gui.enable = true;
       };
     }
-    (bindUserFromFlake {
+    (bindContractUser {
       usersFlake = {
         contractUsers.${system}.mallory = malloryIndex;
       };
@@ -193,7 +195,7 @@ let
     })
   ];
 
-  # --- (e) mkUserBindings: the emitted shape + no-IFD selection ---
+  # --- (e) mkContractUsers: the emitted shape + no-IFD selection ---
   # A synthetic already-evaluated home (attribute paths mirror a homeManagerConfiguration result),
   # exactly as ./contract-package.nix stands one in for mkContractPackageForHome. One base variant.
   activationStub = pkgs.runCommand "turnkey-activation-stub" { } ''
@@ -213,25 +215,34 @@ let
       };
     };
   };
-  bindings = mkUserBindings {
+  adaOffer = {
+    gui.enable = true;
+  };
+  adaVariants = [
+    {
+      grants = { };
+      home = syntheticHome;
+    }
+  ];
+  bindings = mkContractUsers {
     inherit pkgs;
     inherit system;
     usersDir = ../examples/users/users;
-    users = {
-      ada = {
-        offer = {
-          gui.enable = true;
-        };
-        variants = [
-          {
-            grants = { };
-            home = syntheticHome;
-          }
-        ];
-      };
+    users.ada = {
+      offer = adaOffer;
+      variants = adaVariants;
     };
   };
   emittedIndex = bindings.contractUsers.${system}.ada;
+  # The SINGULAR partner: mkContractUser bakes ONE user and must emit byte-identical outputs to the
+  # roster form for that user (mkContractUsers is nothing but this mapped over the roster).
+  singleUser = mkContractUser {
+    inherit pkgs system;
+    usersDir = ../examples/users/users;
+    name = "ada";
+    offer = adaOffer;
+    variants = adaVariants;
+  };
 in
 {
   assertions = [
@@ -279,13 +290,13 @@ in
       ok = !(malloryBind.custom.users.mallory.granted.sudo.enable or false);
     }
 
-    # (e) mkUserBindings shape + no-IFD selection
+    # (e) mkContractUsers shape + no-IFD selection
     {
-      name = "mkUserBindings: emits the named package <user>-contractPackage-base";
+      name = "mkContractUsers: emits the named package <user>-contractPackage-base";
       ok = bindings.packages.${system} ? "ada-contractPackage-base";
     }
     {
-      name = "mkUserBindings: the binding index carries { identity; offer; variants }";
+      name = "mkContractUsers: the binding index carries { identity; offer; variants }";
       ok =
         (emittedIndex ? identity)
         && (emittedIndex ? offer)
@@ -293,7 +304,7 @@ in
         && emittedIndex.identity.username == "ada";
     }
     {
-      name = "mkUserBindings: the index variant carries its grant-key names + package";
+      name = "mkContractUsers: the index variant carries its grant-key names + package";
       ok =
         let
           v = lib.head emittedIndex.variants;
@@ -303,6 +314,18 @@ in
     {
       name = "no-IFD: selection reads the index (plain data) and binds against a repo-path fixture";
       ok = vetoBind.systemd.services ? "contract-activate-ada";
+    }
+    {
+      # The singular producer is the true per-user partner of bindContractUser: its one-user output
+      # must match the roster form for that user (same package store path, same index entry).
+      name = "mkContractUser: the singular producer matches mkContractUsers for one user";
+      ok =
+        (
+          singleUser.packages.${system}."ada-contractPackage-base".outPath
+          == bindings.packages.${system}."ada-contractPackage-base".outPath
+        )
+        && singleUser.contractUsers.${system}.ada.identity.username == "ada"
+        && singleUser.contractUsers.${system}.ada.offer.gui.enable;
     }
 
     # gui XDG fold

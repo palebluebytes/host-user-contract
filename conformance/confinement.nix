@@ -10,7 +10,7 @@
 # `homeModule` declares only `identity`, `custom.home.profiles`, and the
 # freeform-INSIDE-`contract.requests` namespace — no top-level freeformType). So a home that
 # sets one throws "option does not exist" at eval, exactly as a stray `home.packages` does in
-# the headless bindUser tracer. This is the SAME universe bindUser harvests in (../lib.nix),
+# the headless traceUser inspector. This is the SAME universe traceUser harvests in (../lib.nix),
 # so what is unexpressible here is unexpressible in a real bound user. Privilege escalation is
 # impossible because the vocabulary to request it does not exist — structural, not a blocklist.
 {

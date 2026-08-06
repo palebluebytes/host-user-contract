@@ -3,9 +3,12 @@
 # mkContractPackage is proven by an execution proof (the derivation builds and has correct
 # content); mkContractPackageForHome by an eval-level equivalence proof (a synthetic home
 # forwards to the SAME content-addressed store path). bindContractPackage is proven at eval
-# level: the same gui surface and account that bindUserModule produces emerges from reading a
+# level: the same gui surface and account the traceUser inspector resolves emerges from reading a
 # pre-built contract-requests.json fixture — same `mkUserAccount` + `bridgeRequests` kernel,
-# different data source. The fixture is a plain repo path (no derivation, no IFD).
+# different data source. It reads a STATIC fixture and never evaluates a home, so it proves the
+# manifest→bridge kernel only; that a real non-contract-pure home builds through the contract is
+# proven where home-manager lives — `examples/users`' `home-build` (ADR-0004, package-free). The
+# fixture is a plain repo path (no derivation, no IFD).
 {
   pkgs,
   toolkit,
@@ -190,7 +193,7 @@ in
         && boundRuntime.users.users.ada.description == "Ada Reference";
     }
 
-    # bindContractPackage: granted request enables the gui surface (parity with bindUserModule)
+    # bindContractPackage: granted request enables the gui surface (parity with the traceUser kernel)
     {
       name = "bindContractPackage: a granted gui request enables the display surface";
       ok = boundRuntime.custom.gui.surface.enabled;

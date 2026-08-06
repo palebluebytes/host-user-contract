@@ -20,7 +20,7 @@ let
   groupsOf = c: c.users.users.alice.extraGroups;
 
   # --- mkHostFacts: the read-only, self-scoped host projection a home may read (ADR-0002) ---
-  # The host builds this per-user for the inline-eval bind path; a home branches on it (e.g.
+  # The internal `mkHostFacts` kernel projects this from a host config; a home branches on it (e.g.
   # hostFacts.granted.gui.enable) but must never see the hostName. Build a host that HAS a hostName
   # and a grant, then prove the projection carries the grant + platform and NOTHING else — the
   # confinement the home relies on.

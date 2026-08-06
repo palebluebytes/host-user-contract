@@ -26,13 +26,13 @@
   featureGroups,
   privilegedGroups,
   loadIdentity,
-  bindUser,
-  bindUserModule,
+  traceUser,
+  mkContractUser,
+  mkContractUsers,
+  bindContractUser,
   mkContractPackage,
   mkContractPackageForHome,
   bindContractPackage,
-  mkUserBindings,
-  bindUserFromFlake,
   mkHostFacts,
   nixosSystem,
   system,
@@ -78,8 +78,7 @@ let
     (import ./bind.nix {
       inherit
         toolkit
-        bindUser
-        bindUserModule
+        traceUser
         greeterGrants
         ;
     })
@@ -112,8 +111,9 @@ let
         pkgs
         toolkit
         loadIdentity
-        mkUserBindings
-        bindUserFromFlake
+        mkContractUser
+        mkContractUsers
+        bindContractUser
         system
         ;
     })
