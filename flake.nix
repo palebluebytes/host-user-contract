@@ -74,15 +74,19 @@
             ;
           inherit (self.lib)
             loadIdentity
-            bindUser
-            bindUserModule
+            traceUser
+            mkContractUser
+            mkContractUsers
+            bindContractUser
+            renderNixConfig
+            ;
+          # Internal derivation logic (ADR-0026): not flake outputs, but the in-repo
+          # conformance suite proves them in isolation.
+          inherit (kit.internal)
             mkContractPackage
             mkContractPackageForHome
             bindContractPackage
-            mkUserBindings
-            bindUserFromFlake
             mkHostFacts
-            renderNixConfig
             ;
           nixosSystem = nixpkgs.lib.nixosSystem;
         };
@@ -205,7 +209,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           inherit system;
-          inherit (self.lib) bindContractPackage;
+          inherit (kit.internal) bindContractPackage;
         };
 
         # Runtime proof of package policy + daemon restriction (ADR-0017, issue #17): host
@@ -215,7 +219,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           inherit system;
-          inherit (self.lib) bindContractPackage;
+          inherit (kit.internal) bindContractPackage;
         };
       });
 

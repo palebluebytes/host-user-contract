@@ -38,15 +38,15 @@
       # willing to grant to users who offer them, declared ONCE per host. Same `{ <feature>.enable
       # = bool; }` shape as a grant set (grantedOptions). It is the symmetric counterpart of the
       # user's `contract.requests` and a generalisation of the greeter's safe set (the safe set is
-      # simply the greeter's affordance). Consumed ONLY by the turnkey `bindUserFromFlake`, which
-      # derives each user's grant as `affordances ∩ offer` — a NECESSARY condition, the host's
-      # absolute veto: a feature not afforded is never granted, whatever a user offers. The direct
-      # `bindContractPackage { grants }` path is unchanged and ignores this (a host there writes the
-      # grant verbatim).
+      # simply the greeter's affordance). Consumed by `bindContractUser` — the sole public consumer
+      # bind (ADR-0026) — which derives each user's grant as `affordances ∩ offer`: a NECESSARY
+      # condition, the host's absolute veto — a feature not afforded is never granted, whatever a
+      # user offers. There is no unilateral direct-grant path: the public grant model is always
+      # negotiated.
       options.contract.affordances = lib.mkOption {
         type = lib.types.submodule { options = grantedOptions; };
         default = { };
-        description = "Features this host affords to users who offer them (ADR-0025); bindUserFromFlake derives each grant as affordances ∩ offer. Same shape as a grant set; the host's absolute veto.";
+        description = "Features this host affords to users who offer them (ADR-0025); bindContractUser derives each grant as affordances ∩ offer. Same shape as a grant set; the host's absolute veto.";
       };
       options.custom.host.exposed = lib.mkEnableOption "an exposed/agent-facing host — a plain fact a user's home may read (via hostFacts) and adapt to; the contract enforces nothing on it";
       # Package policy inclusion list (ADR-0017, issue #17): after contractPackage activation,
@@ -55,8 +55,9 @@
       # but the host did not allow are absent; programs not in this list are never imposed. An
       # empty list (the default) means no package policy — ~/.nix-profile is left as-is after
       # activation. Each name resolves to `pkgs.<name>` from the host's nixpkgs pin; unknown
-      # names are silently dropped (graceful degradation). Effective only for users bound with
-      # bindContractPackage; ignored for bindUserModule users.
+      # names are silently dropped (graceful degradation). Effective for users bound via the
+      # pre-built path (bindContractUser and its bindContractPackage kernel), where a daemon-
+      # restricted user's ~/.nix-profile is rebuilt from this list.
       options.custom.host.packagePolicy.allowedPrograms = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -72,8 +73,9 @@
 
     # contract.requests (ADR-0002/0007, issue #5): the typed, read-only namespace a user's
     # home module POPULATES to describe host-affecting parameters of the features it
-    # offers (e.g. gui.desktop). The host harvests the GRANTED ones post-eval (bindUser);
-    # the user only asks, never writes system state. Its per-feature shape IS the registry's
+    # offers (e.g. gui.desktop). The host bridges the GRANTED ones from the pre-built manifest
+    # (bindContractPackage) or a dry-run harvest (traceUser); the user only asks, never writes
+    # system state. Its per-feature shape IS the registry's
     # feature `config` fragments (featureConfigOptions) — the same parameters carried
     # system-side as custom.users.<u>.<feature>.* today (ADR-0003), now emitted from the
     # user's own side. Enforcement (ADR-0002 "ignore-overreach / validate-intent"):

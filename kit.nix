@@ -78,42 +78,52 @@ in
   # shape it authenticates against before any eval (ADR-0007, issue #5).
   inherit (identityJson) identityFile identitySchema;
 
-  # Public derivation functions hosts consume (ADR-0004 Q4). The internal predicate
-  # (runtimeEligibleFeature) stays internal to ./lib.nix.
+  # Public derivation functions consumers use (ADR-0004 Q4, surface fixed by ADR-0026). The
+  # package-level kernels (mkContractPackage/mkContractPackageForHome/bindContractPackage) and the
+  # predicate (runtimeEligibleFeature) stay INTERNAL — see `internal` below.
   lib = {
-    inherit (contractLib) mkHostFacts renderNixConfig;
-    # The identity.json loader (ADR-0007): lossless over identity.nix, used by both the
-    # user's home module and host-side bindUser.
+    inherit (contractLib) renderNixConfig;
+    # The identity.json loader (ADR-0007): lossless over identity.nix, used by a user's home
+    # module and by the producer coin below.
     inherit (identityJson) loadIdentity;
-    # The binding mechanism (ADR-0007/0008), each partially applied over the contract's own
-    # homeModule so a caller passes only { userModule, identity, grants, … }:
-    #   - bindUser (issue #5): the headless tracer — harvests a contract-pure home via bare
-    #     evalModules, returns { username, home, requests, system }. The logic-level proof.
-    #   - bindUserModule (issue #8): the REAL mechanism both paths call — a NixOS module the
-    #     host imports; the home is evaluated once by the host's home-manager and the bridge is
-    #     a config reference, so real homes (programs.*, home.*) bind. The host supplies
-    #     home-manager; the contract stays package-free.
-    bindUser = args: contractLib.bindUser (args // { homeModule = modules.homeModule; });
-    bindUserModule = args: contractLib.bindUserModule (args // { homeModule = modules.homeModule; });
-    # Pre-built binding mode (ADR-0016):
-    #   - mkContractPackage (issue #14): assembles the contractPackage derivation a user CI
-    #     produces — activate + contract-requests.json — from an already-evaluated home.
-    #   - mkContractPackageForHome (issue #23): the optional home-manager producer adapter — a
-    #     turnkey wrapper that reads mkContractPackage's four primitives off an already-evaluated
-    #     home, so a producer calls { home; grants; pkgs; }. No home-manager import (ADR-0004).
-    #   - bindContractPackage (issue #16): the host-side binding for the pre-built path; reads
-    #     contract-requests.json from a pinned store path and registers the activation step.
-    inherit (contractLib) mkContractPackage mkContractPackageForHome bindContractPackage;
-    # Turnkey binding (ADR-0025, issue #25), the twin of the pre-built primitives above:
-    #   - mkUserBindings (producer): the users flake calls it once to emit the named per-variant
-    #     packages AND the pure `contractUsers.<sys>.<user>` binding index. loadIdentity is
-    #     injected here (like homeModule for bindUser) so the users flake needn't wire the loader.
-    #   - bindUserFromFlake (consumer): a host declares `contract.affordances` once and imports a
-    #     user with `{ usersFlake; username }`; the grant is derived as `affordances ∩ offer` and
-    #     the maximal covering variant is selected — no per-user grants, no users-repo internals.
-    mkUserBindings =
-      args: contractLib.mkUserBindings (args // { inherit (identityJson) loadIdentity; });
-    inherit (contractLib) bindUserFromFlake;
+    # traceUser (ADR-0007/0026): the home-manager-free dry-run inspector, partially applied over
+    # the contract's own homeModule so a caller passes only { userModule, identity, grants, … }.
+    # Harvests a contract-pure home via bare evalModules → { username, home, requests, system }.
+    # Sits OUTSIDE the produce/consume coin (it inspects a home, it never touches the index).
+    traceUser = args: contractLib.traceUser (args // { homeModule = modules.homeModule; });
+    # The turnkey producer/consumer COIN over the contractUsers binding index (ADR-0025/0026):
+    #   - mkContractUser (producer, singular): bake ONE user's variants into contractPackages +
+    #     its `contractUsers.<sys>.<user>` index entry. The per-user partner of bindContractUser.
+    #   - mkContractUsers (producer, roster): mkContractUser mapped over a whole users flake — one
+    #     call bakes the multi-user repo (ADR-0020). loadIdentity is injected here (as homeModule
+    #     is for traceUser) so the users flake needn't wire the loader.
+    #   - bindContractUser (consumer): a host declares `contract.affordances` once and binds a user
+    #     with `{ usersFlake; username }`; the grant is DERIVED as `affordances ∩ offer` (always
+    #     negotiated, ADR-0026) and the maximal covering variant selected — no per-user grants, no
+    #     users-repo internals.
+    mkContractUser =
+      args: contractLib.mkContractUser (args // { inherit (identityJson) loadIdentity; });
+    mkContractUsers =
+      args: contractLib.mkContractUsers (args // { inherit (identityJson) loadIdentity; });
+    inherit (contractLib) bindContractUser;
+  };
+
+  # INTERNAL derivation logic (ADR-0016/0026): NOT flake outputs, exposed here only so the in-repo
+  # conformance suite can prove them in isolation.
+  #   - the package-level kernels the public `bindContractUser`/`mkContractUser` bind and bake
+  #     THROUGH — a consumer never calls them directly (the grant model is negotiation-only; a bare
+  #     contractPackage has no public consumer).
+  #   - mkHostFacts: the safe {exposed,platform,granted} host projection. It needs a NixOS host
+  #     `config` at the point a home is evaluated — which the pre-built path never has (the host
+  #     binds a baked home; the producer is not a host). With inline host-side eval retired
+  #     (ADR-0026), it has no production caller, so it stays internal (conformance still proves it).
+  internal = {
+    inherit (contractLib)
+      mkContractPackage
+      mkContractPackageForHome
+      bindContractPackage
+      mkHostFacts
+      ;
   };
 
   # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0008) + the

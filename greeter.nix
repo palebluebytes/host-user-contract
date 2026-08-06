@@ -9,7 +9,8 @@
 # `lib`. A host may disable this module and supply its own greeter program (its own UI, greetd
 # integration, provisioning policy) as long as it honours the canonical mechanism (ADR-0008):
 #   (1) authenticate EVAL-FREE on identity.json before any user Nix runs,
-#   (2) bind via the contract (bindUserModule { grants = greeterGrants; }),
+#   (2) build the user's OWN home output through the contract umbrella (the homeBuilder binding,
+#       under the tier's restricted-eval posture) and realize the account via `provision`,
 #   (3) grant AT MOST the safeSet.
 #
 # The flow (ADR-0006 "data before code" — authenticate on inert data before running any Nix) is one
@@ -150,10 +151,11 @@ in
       default = null;
       description = ''
         Host BINDING (ADR-0008 "the host supplies only bindings"): a command invoked as
-        `homeBuilder <src> <username>` that evaluates the user's home THROUGH the contract
-        (bindUserModule { grants = greeterGrants; … }) under the tier's restricted-eval posture
-        and prints the built home-activation package path. It is null by default because building a
-        real home needs home-manager, which the contract does not depend on (ADR-0004); the host
+        `homeBuilder <src> <username>` that builds the user's OWN home output through the contract
+        umbrella (typically `nix build "<src>#homeConfigurations.<username>.activationPackage"`)
+        under the tier's restricted-eval posture and prints the built home-activation package path.
+        It is null by default because building a real home needs home-manager, which the contract
+        does not depend on (ADR-0004); the host
         supplies it, exactly as it supplies the platform and display bindings. The reference greeter
         ships everything else — greetd wiring, the eval-free auth ordering, the runtime
         provisioning helper, and session selection — package-free at the flake level.

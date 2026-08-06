@@ -1,9 +1,12 @@
-# The contract's derivation logic — pure functions over the registry and its projections,
-# plus the binding module factories (bindUser, bindUserModule, bindContractPackage) that
-# return NixOS module closures and depend on host config at module-eval time. Split out of
-# kit.nix (thermo-nuclear review). `runtimeEligibleFeature` is internal (the kit's `safeSet`
-# closes over it); `mkHostFacts` is the public function hosts consume (ADR-0004 Q4);
-# `safeSet` is the derived value.
+# The contract's derivation logic — pure functions over the registry and its projections.
+# The public producer/consumer coin is `mkContractUser`/`mkContractUsers` (bake a user, or a
+# whole roster, into contractPackages + the binding index) and `bindContractUser` (a host
+# binds one indexed user, grant = affordances ∩ offer); `traceUser` is the home-manager-free
+# dry-run inspector. `mkContractPackageForHome`/`mkContractPackage`/`bindContractPackage` are
+# the INTERNAL kernels those speak through (package-level, one rung below the user-level public
+# surface), as is `mkHostFacts` (no host-side inline eval consumes it post-ADR-0026) and
+# `runtimeEligibleFeature` (the kit's `safeSet` closes over it). `renderNixConfig` is the one
+# public greeter helper here; `safeSet` is the derived value.
 {
   lib,
   registry,
@@ -25,7 +28,7 @@ let
   safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
 
   # The request→feature-configuration bridge, shared by BOTH binding shapes (the headless
-  # tracer below and the real `bindUserModule`). Given a user's harvested `contract.requests`
+  # tracer below and the real `bindContractPackage`). Given a user's harvested `contract.requests`
   # and the set of features the host GRANTED, copy each granted feature's request params into
   # the system-side feature-configuration shape the realization consumes (ADR-0003) — the two
   # shapes are identical (both are featureConfigOptions), so it is a direct copy. Only KNOWN
@@ -45,10 +48,11 @@ let
 
   # The system account fragment a bind PRODUCES, given the user's identity, the host's grants,
   # and the user's harvested `contract.requests`: the account the realization materializes, the
-  # grants that power it, and the granted requests bridged into feature configuration. BOTH
-  # bind shapes emit exactly this — the tracer nested under `system`, the module at top level —
-  # so they share their whole output shape, not just the bridge step, and differ only in where
-  # `requests` come from (a harvest value vs a config reference) and what wrapper they return.
+  # grants that power it, and the granted requests bridged into feature configuration. BOTH the
+  # `traceUser` inspector and the real `bindContractPackage` emit exactly this — the tracer nested
+  # under `system`, the module at top level — so they share their whole output shape, not just the
+  # bridge step, and differ only in where `requests` come from (a harvested home eval vs a
+  # pre-built manifest) and what wrapper they return.
   mkUserAccount =
     {
       identity,
@@ -108,10 +112,11 @@ let
   # This lifts that recurring wrapper into the contract so a producer calls `{ home; grants; pkgs; }`.
   #
   # It does NOT import home-manager (ADR-0004 package-free preserved): it only READS attributes off
-  # an already-evaluated `home`, exactly as `bindUserModule` *references*
-  # `config.home-manager.users.<u>.contract.requests`. The generic `mkContractPackage` stays
-  # builder-agnostic (a hand-rolled or future nix-darwin home still calls the core directly); this
-  # is a thin convenience over it. `pkgs` stays a parameter so one call emits multi-arch variants.
+  # an already-evaluated `home` (`activationPackage`, `config.contract.requests`,
+  # `config.home.{packages,username}`), never importing the builder. The generic `mkContractPackage`
+  # stays builder-agnostic (a hand-rolled or future nix-darwin home still calls the core directly);
+  # this is a thin convenience over it. `pkgs` stays a parameter so one call emits multi-arch variants.
+  # INTERNAL: the public producer surface is `mkContractUser`/`mkContractUsers`, which bake through this.
   mkContractPackageForHome =
     {
       home,
@@ -138,27 +143,64 @@ let
     in
     if names == [ ] then "base" else lib.concatStringsSep "-" names;
 
-  # mkUserBindings (ADR-0025, issue #25): the turnkey PRODUCER helper the `users` flake calls
-  # ONCE. It is to a whole multi-user roster what `mkContractPackageForHome` is to a single home —
-  # it lifts the recurring producer wrapper (bake each variant, name it, expose a selector) into
-  # the contract so the users flake stops hand-rolling it. For each user it maps over the declared
-  # variants and emits BOTH:
-  #   - the named packages `<user>-contractPackage-<variantName>` (built via
-  #     mkContractPackageForHome — so this stays package-free, only READING attributes off an
-  #     already-evaluated home, ADR-0004), and
-  #   - the pure `contractUsers.<sys>.<user>` BINDING INDEX `{ identity; offer; variants = [{
-  #     granted; package }] }`. The index is plain data (identity resolved once via loadIdentity
-  #     from the ADR-0020 `<usersDir>/<user>/identity.json` path; `granted` is the variant's
-  #     grant-key as a NAME LIST; `package` is the built derivation), so a host's
-  #     `bindUserFromFlake` selects a variant by reading it — never by building every variant to
-  #     inspect a baked manifest (the ADR-0016 "can't read manifests cheaply" trap, sidestepped).
-  # Each input user is `{ offer; variants = [{ grants; home }] }` — `grants` is the grant ATTRSET
-  # the variant is baked with (same `{ <feature>.enable = bool; }` shape as everywhere else, and
-  # what `mkContractPackageForHome` consumes); it is projected to the index's `granted` NAME LIST
-  # by `grantedNamesOf`. `loadIdentity` is injected by the kit (like `homeModule` for bindUser) so
-  # the users flake calls this without wiring the loader itself. `pkgs`/`system` stay parameters so
-  # one call can emit multi-arch outputs.
-  mkUserBindings =
+  # mkContractUser (ADR-0025, issue #25): the SINGULAR turnkey PRODUCER — the producer twin of the
+  # consumer's `bindContractUser` (make one contract-user ⇄ bind one contract-user). A single-user
+  # repo calls it once; `mkContractUsers` (below) is nothing but this mapped over a roster. It bakes
+  # ONE user's declared variants and emits the same flake-output shape a host consumes — ready to
+  # `inherit … packages contractUsers`:
+  #   - the named packages `<user>-contractPackage-<variantName>` (built via mkContractPackageForHome
+  #     — so this stays package-free, only READING attributes off an already-evaluated home, ADR-0004), and
+  #   - the pure `contractUsers.<sys>.<user>` BINDING INDEX entry `{ identity; offer; variants = [{
+  #     granted; package }] }`. The index is plain data (identity resolved once via loadIdentity from
+  #     the ADR-0020 `<usersDir>/<user>/identity.json` path; `granted` is the variant's grant-key as a
+  #     NAME LIST; `package` is the built derivation), so a host's `bindContractUser` selects a variant
+  #     by reading it — never by building every variant to inspect a baked manifest (the ADR-0016
+  #     "can't read manifests cheaply" trap, sidestepped).
+  # `variants` is `[{ grants; home }]` — `grants` is the grant ATTRSET the variant is baked with (same
+  # `{ <feature>.enable = bool; }` shape as everywhere else, and what `mkContractPackageForHome`
+  # consumes); it is projected to the index's `granted` NAME LIST by `grantedNamesOf`. `loadIdentity`
+  # is injected by the kit (like `homeModule` for `traceUser`) so the users flake calls this without
+  # wiring the loader itself. `pkgs`/`system` stay parameters so one call can emit multi-arch outputs.
+  mkContractUser =
+    {
+      loadIdentity,
+      pkgs,
+      system,
+      usersDir,
+      name,
+      offer ? { },
+      variants,
+    }:
+    let
+      built = map (v: {
+        granted = grantedNamesOf v.grants;
+        package = mkContractPackageForHome {
+          inherit pkgs;
+          home = v.home;
+          grants = v.grants;
+        };
+        label = variantName v.grants;
+      }) variants;
+    in
+    {
+      packages.${system} = lib.listToAttrs (
+        map (v: lib.nameValuePair "${name}-contractPackage-${v.label}" v.package) built
+      );
+      contractUsers.${system}.${name} = {
+        identity = loadIdentity "${usersDir}/${name}/identity.json";
+        inherit offer;
+        variants = map (v: { inherit (v) granted package; }) built;
+      };
+    };
+
+  # mkContractUsers (ADR-0025, issue #25): the ROSTER convenience — `mkContractUser` mapped over a
+  # whole multi-user repo and its outputs merged, so a `users` flake bakes its entire roster in ONE
+  # call and `inherit … packages contractUsers`. It is the turnkey producer for the multi-user shape
+  # (ADR-0020) exactly as `bindContractUser` is the turnkey consumer; the singular `mkContractUser`
+  # is the true per-user partner underneath. Each input user is `{ offer; variants }`, forwarded to
+  # `mkContractUser`. Adds no logic of its own beyond the roster fold — the per-user bake, naming,
+  # and index shape all live in `mkContractUser`.
+  mkContractUsers =
     {
       loadIdentity,
       pkgs,
@@ -167,41 +209,30 @@ let
       users,
     }:
     let
-      perUser =
+      outs = lib.mapAttrsToList (
         name: u:
-        let
-          built = map (v: {
-            granted = grantedNamesOf v.grants;
-            package = mkContractPackageForHome {
-              inherit pkgs;
-              home = v.home;
-              grants = v.grants;
-            };
-            label = variantName v.grants;
-          }) u.variants;
-        in
-        {
-          packages = lib.listToAttrs (
-            map (v: lib.nameValuePair "${name}-contractPackage-${v.label}" v.package) built
-          );
-          index = {
-            identity = loadIdentity "${usersDir}/${name}/identity.json";
-            inherit (u) offer;
-            variants = map (v: { inherit (v) granted package; }) built;
-          };
-        };
-      byUser = lib.mapAttrs perUser users;
+        mkContractUser {
+          inherit
+            loadIdentity
+            pkgs
+            system
+            usersDir
+            name
+            ;
+          inherit (u) offer variants;
+        }
+      ) users;
     in
     {
-      packages.${system} = lib.foldl' (acc: u: acc // u.packages) { } (lib.attrValues byUser);
-      contractUsers.${system} = lib.mapAttrs (_: u: u.index) byUser;
+      packages.${system} = lib.foldl' (acc: o: acc // o.packages.${system}) { } outs;
+      contractUsers.${system} = lib.foldl' (acc: o: acc // o.contractUsers.${system}) { } outs;
     };
 
-  # bindContractPackage (ADR-0016, issue #16): the HOST-SIDE binding for the pre-built path.
-  # Unlike `bindUserModule` (which evaluates the home inline), this reads the already-built
-  # `contract-requests.json` from a pinned store path and bridges the feature requests exactly
-  # as the inline-eval path does — same `mkUserAccount`, same `bridgeRequests`. No home-manager
-  # dependency. Returns a NixOS module (not a tracer value) that the host imports.
+  # bindContractPackage (ADR-0016, issue #16): the INTERNAL package-level kernel `bindContractUser`
+  # binds through. It reads the already-built `contract-requests.json` from a pinned store path and
+  # bridges the feature requests via `mkUserAccount`/`bridgeRequests`. No home-manager dependency.
+  # Returns a NixOS module (not a tracer value) that the host imports. NOT public: hosts consume the
+  # user-level `bindContractUser`, which selects a variant from the index and delegates here (ADR-0026).
   #
   # `contractPackage` must be a realized store path at eval time — in the pre-built workflow it is
   # a pinned flake input already in the store, so reading its JSON is a plain `builtins.readFile`,
@@ -229,8 +260,8 @@ let
       # grant the host passes — otherwise the host would activate a home built for privileges it
       # is not conferring (e.g. a home-affecting/secret-bearing bake it never granted). A v1
       # manifest predates the baked field (`granted or [ ]` ⇒ vacuously satisfied). Maximal-subset
-      # selection in `bindUserFromFlake` satisfies this by construction; the check is
-      # defense-in-depth for direct callers who write `grants` by hand.
+      # selection in `bindContractUser` satisfies this by construction; the check is
+      # defense-in-depth for the internal kernel.
       bakedGranted = manifest.granted or [ ];
       ungranted = lib.subtractLists (grantedNamesOf grants) bakedGranted;
       guard = lib.assertMsg (subsetOf bakedGranted (grantedNamesOf grants)) (
@@ -242,7 +273,7 @@ let
     in
     {
       # The guard rides the account VALUE, not a wrapping `assert` on this whole attrset: when
-      # `contractPackage` is SELECTED from config (bindUserFromFlake), a top-level `assert` would
+      # `contractPackage` is SELECTED from config (bindContractUser), a top-level `assert` would
       # force the manifest read while the module system merely probes this module for unrelated
       # options (e.g. `nixpkgs.*` to build `pkgs`), and that read — reaching back through the
       # config-derived package into `pkgs` — is an infinite recursion. Attached to the account, the
@@ -298,12 +329,13 @@ let
       };
     };
 
-  # bindUserFromFlake (ADR-0025, issue #25): the turnkey HOST-SIDE bind — the consumer twin of
-  # `mkUserBindings`. A host declares its `contract.affordances` ONCE and imports each user with
-  # `{ usersFlake; username }` — no per-user `grants`, no variant names, no identity paths (the
-  # host holds ZERO users-repo internals). It returns a NixOS module that:
+  # bindContractUser (ADR-0025, issue #25): the turnkey HOST-SIDE bind — the consumer twin of the
+  # producer's `mkContractUser` (bind one contract-user ⇄ make one contract-user). A host declares
+  # its `contract.affordances` ONCE and imports each user with `{ usersFlake; username }` — no
+  # per-user `grants`, no variant names, no identity paths (the host holds ZERO users-repo
+  # internals). It returns a NixOS module that:
   #   1. infers `system` from the host's own `pkgs`, and reads the user's binding index off the
-  #      pinned `usersFlake` (`contractUsers.<sys>.<user>`, the pure data `mkUserBindings` emitted);
+  #      pinned `usersFlake` (`contractUsers.<sys>.<user>`, the pure data `mkContractUser` emitted);
   #   2. derives the grant as `affordances ∩ offer` — the host's affordance is a NECESSARY
   #      condition (an absolute veto: a feature the host does not afford is never granted, whatever
   #      the user offers), and the user's offer completes it (ADR-0025 "the grant becomes a
@@ -312,10 +344,12 @@ let
   #      ride the bind and never multiply variants; no unique maximum (two incomparable baked
   #      variants both ⊆ the grant) is a HARD eval error naming the available variants, never a
   #      silent fallback;
-  #   4. delegates to `bindContractPackage` with the derived grant + the index-supplied identity.
-  # Maximal-subset selection satisfies `bindContractPackage`'s coupling guard by construction (the
-  # selected variant's baked grants are ⊆ the derived grant).
-  bindUserFromFlake =
+  #   4. delegates to the internal `bindContractPackage` kernel with the derived grant + the
+  #      index-supplied identity.
+  # Maximal-subset selection satisfies the coupling guard by construction (the selected variant's
+  # baked grants are ⊆ the derived grant). This is the sole PUBLIC consumer bind: the grant is
+  # always negotiated (affordances ∩ offer), never written unilaterally by the host (ADR-0026).
+  bindContractUser =
     { usersFlake, username }:
     # Apply the inner bindContractPackage module to the current module args and return its config,
     # rather than returning it via `imports`: the selected variant depends on
@@ -334,8 +368,8 @@ let
       system = pkgs.stdenv.hostPlatform.system;
       index =
         usersFlake.contractUsers.${system}.${username} or (throw (
-          "bindUserFromFlake: the users flake exposes no binding index for '${username}' on "
-          + "'${system}' — does it call contract.lib.mkUserBindings for this system?"
+          "bindContractUser: the users flake exposes no binding index for '${username}' on "
+          + "'${system}' — does it call contract.lib.mkContractUser(s) for this system?"
         ));
       # grant = affordances ∩ offer (both necessary; the host's affordance is the veto).
       grantNames = lib.intersectLists (grantedNamesOf config.contract.affordances) (
@@ -357,7 +391,7 @@ let
           lib.head maxima
         else
           throw (
-            "bindUserFromFlake: no unique maximal variant of '${username}' covers the derived "
+            "bindContractUser: no unique maximal variant of '${username}' covers the derived "
             + "grant [${lib.concatStringsSep ", " grantNames}]; baked variants are: ${availableList}."
           );
     in
@@ -375,10 +409,10 @@ in
   # greeter does not let an operator choose features — it auto-grants every runtime-eligible
   # one, and privilege is impossible because the safe set EXCLUDES secret-bearing and
   # privileged-group features by construction. This is the canonical, conformance-checked grant
-  # value the greeter binds with (`bindUserModule { grants = greeterGrants; … }`); single-sourcing
-  # it here is exactly ADR-0008's conformance condition (3): a greeter grants AT MOST the safe
-  # set. `grants` is shaped `{ <feature>.enable = bool; }` (the registry's grantedOptions), so
-  # this lifts the safe-set NAME LIST into that grant attrset.
+  # value the greeter provisions with (`contract-greeter-provision` realizes AT MOST the safe set);
+  # single-sourcing it here is exactly ADR-0008's conformance condition (3): a greeter grants AT
+  # MOST the safe set. `grants` is shaped `{ <feature>.enable = bool; }` (the registry's
+  # grantedOptions), so this lifts the safe-set NAME LIST into that grant attrset.
   greeterGrants = lib.genAttrs safeSet (_: {
     enable = true;
   });
@@ -427,25 +461,25 @@ in
     granted = config.custom.users.${userName}.granted;
   };
 
-  # bindUser (ADR-0007, ADR-0008): binds an external user's home module to the contract —
-  # it harvests the user's `contract.requests`, then returns the system fragment that realizes
-  # the account (identity), records the grants, and BRIDGES the GRANTED requests to the
-  # system-side feature configuration the realization consumes (ADR-0003). Ungranted requests
-  # are inert — never bridged — so requesting an ungranted feature is a silent no-op, not an
-  # error (ADR-0002: "the grant is the sole enabler; degradation is silent"). `homeModule` is
-  # the contract's homeModules.default, partially applied by the kit so a caller passes only
-  # the user side.
+  # traceUser (ADR-0007, ADR-0026): the home-manager-free DRY-RUN inspector, and the sole
+  # request→grant→bridge tool that sits OUTSIDE the contractUser produce/consume coin. Given a
+  # user's home module + identity + grants, it harvests the user's `contract.requests` and returns
+  # a plain record `{ username; home; requests; system }` — the account fragment the realization
+  # would materialize, the grants that power it, and the granted requests bridged into feature
+  # configuration (ADR-0003). Ungranted requests are inert — never bridged — so a request for an
+  # ungranted feature is a silent no-op, not an error (ADR-0002: "the grant is the sole enabler;
+  # degradation is silent"). `homeModule` is the contract's homeModules.default, partially applied
+  # by the kit so a caller passes only the user side.
   #
-  # SCOPE — this is the HEADLESS TRACER (issue #5): the package-PUREST proof of the confined
-  # request→grant→bridge logic. It harvests by evaluating the home against the contract
-  # umbrella ALONE (lib.evalModules, no home-manager, not even a stub — ADR-0004's package-free
-  # invariant), so it can only evaluate a CONTRACT-PURE home that sets nothing but contract
-  # options. A REAL home module also sets home-manager options (programs.*, home.*), which are
-  # undeclared here and would throw. `bindUserModule` below is the REAL binding mechanism both
-  # paths (operator-grant + greeter) call — it evaluates the home once inside the host's
-  # home-manager and bridges by config reference, so real homes bind (issue #8). The tracer
-  # remains the logic-level proof: same bridge (`bridgeRequests`), zero home-manager dependency.
-  bindUser =
+  # SCOPE — it evaluates the home against the contract umbrella ALONE (lib.evalModules, no
+  # home-manager, not even a stub — ADR-0004's package-free invariant), so it can only trace a
+  # CONTRACT-PURE home that sets nothing but contract options. A REAL home module also sets
+  # home-manager options (programs.*, home.*), which are undeclared here and would throw — that is
+  # by design: `traceUser` answers "given these grants, what does my home request, and does it
+  # bridge?" WITHOUT a build. It is the logic-level proof the conformance suite drives and the
+  # public tool a home author dry-runs against; it is NOT a deployment path (real binds are
+  # pre-built: `bindContractUser`, ADR-0026).
+  traceUser =
     {
       homeModule,
       userModule,
@@ -456,7 +490,7 @@ in
     }:
     let
       username = identity.username;
-      # Evaluate the user's home against the contract home umbrella. bindUser is the SINGLE
+      # Evaluate the user's home against the contract home umbrella. traceUser is the SINGLE
       # reader of the loaded identity (ADR-0009): it injects the same value into the home it
       # gives the system account, so the home HOLDS its identity (e.g. for git name/email)
       # and the account and home can never disagree about who the user is — the home never
@@ -474,63 +508,16 @@ in
     {
       inherit username home requests;
       # The system module a host merges to realize this user (the account, its powers, and the
-      # bridged request params that feed the gui-session union) — see `mkUserAccount`.
+      # bridged request params that feed the display surface) — see `mkUserAccount`.
       system.custom.users.${username} = mkUserAccount { inherit identity grants requests; };
-    };
-
-  # bindUserModule (ADR-0008, issue #8): the REAL binding mechanism, called by BOTH paths an
-  # operator build-time grant and a runtime greeter (ADR-0006). Unlike the tracer, it harvests
-  # nothing itself — it returns a NixOS MODULE the host imports, and the home is evaluated ONCE
-  # by the host's home-manager. The bridge is then a CONFIG REFERENCE
-  # (config.home-manager.users.<u>.contract.requests), not a second eval, so the data flows the
-  # right way (ADR-0002: the system reads the home eval) and a REAL home that sets home-manager
-  # options (programs.git, home.packages) binds — those options are declared by the host's
-  # home-manager, the very thing the tracer's bare evalModules lacks.
-  #
-  # PACKAGE-FREE (ADR-0004): this module only *references* `home-manager.*` option paths; it
-  # does NOT import home-manager. The HOST supplies home-manager (it already does to build
-  # homes) — so the contract keeps depending on nixpkgs `lib` alone. Identity is the single
-  # loaded value injected into both the account and the home (ADR-0009), exactly as the tracer;
-  # `hostFacts` is injected per-user via the home submodule's `_module.args` (home-manager's
-  # `extraSpecialArgs` is global, so the read-only, per-user host projection rides the submodule
-  # instead). `pkgs` needs no injection here — home-manager provides it to the home natively.
-  bindUserModule =
-    {
-      homeModule,
-      userModule,
-      identity,
-      grants ? { },
-      hostFacts ? { },
-    }:
-    { config, ... }:
-    let
-      username = identity.username;
-    in
-    {
-      # The system account (identity + grants + bridged requests, see `mkUserAccount`). The
-      # requests are read by CONFIG REFERENCE from the single home eval — no second harvest.
-      custom.users.${username} = mkUserAccount {
-        inherit identity grants;
-        requests = config.home-manager.users.${username}.contract.requests;
-      };
-      # The home, evaluated once by the host's home-manager. identity is injected (ADR-0009);
-      # hostFacts rides the submodule's module args so the home reads its self-scoped, read-only
-      # host projection (ADR-0002) without a global specialArg.
-      home-manager.users.${username} = {
-        imports = [
-          homeModule
-          { inherit identity; }
-          userModule
-        ];
-        _module.args.hostFacts = hostFacts;
-      };
     };
 
   inherit
     mkContractPackage
     mkContractPackageForHome
     bindContractPackage
-    mkUserBindings
-    bindUserFromFlake
+    mkContractUser
+    mkContractUsers
+    bindContractUser
     ;
 }
