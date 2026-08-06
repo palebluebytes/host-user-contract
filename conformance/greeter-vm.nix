@@ -4,15 +4,16 @@
 # real host can show is RUNTIME provisioning — materializing an account and realizing it OUTSIDE
 # NixOS's declarative build-time model.
 #
-# It boots ONE seat host with `nixosModules.greeter` enabled and drives the privileged helpers
-# directly against a synthetic identity.json. It asserts that `provision` is the shell-side
-# `realization.nix` (ADR-0012): the account is fully realized — password (so PAM works), GECOS,
-# authorizedKeys, the user's SAFE declared groups, the greeter-seat baseline groups — with the
-# privileged-group CLAMP reproduced at runtime (a hostile `docker` in identity.json is dropped).
-# It then proves session SELECTION (ADR-0010 step 8): the launcher picks the seat-default type, a
-# home override flips it, and each execs the host-bound backend. Building a real home needs
-# home-manager (the contract has none, ADR-0004), so the home here is a stub activation package —
-# the real-home end-to-end lives in examples/fleet (the consumer-renders boundary, like gui-union).
+# It boots ONE seat host with `nixosModules.greeter` enabled (via ./seat-vm.nix's helpers-driven
+# posture, greetd kept off the console) and drives the privileged helpers directly against a synthetic
+# identity.json. It asserts that `provision` is the shell-side `realization.nix` (ADR-0012): the
+# account is fully realized — password (so PAM works), GECOS, authorizedKeys, the user's SAFE
+# declared groups, the greeter-seat baseline groups — with the privileged-group CLAMP reproduced at
+# runtime (a hostile `docker` in identity.json is dropped). It then proves session SELECTION
+# (ADR-0010 step 8): the launcher picks the seat-default type, a home override flips it, and each
+# execs the host-bound backend. Building a real home needs home-manager (the contract has none,
+# ADR-0004), so the home here is the harness's stub activation package — the real-home end-to-end
+# lives in examples/fleet (the consumer-renders boundary, like gui-union).
 {
   pkgs,
   contractModule,
@@ -20,6 +21,16 @@
   system,
 }:
 let
+  seatVM = import ./seat-vm.nix {
+    inherit
+      pkgs
+      system
+      contractModule
+      greeterModule
+      ;
+  };
+  inherit (seatVM) mkSeatVM activationStub;
+
   # A synthetic external identity (the inert data the eval-free auth reads). hashedPassword is the
   # sha512-crypt of "correct-horse-battery-staple"; extraGroups carries one safe group (audio) and
   # one privileged group (docker) so the runtime clamp is observable.
@@ -38,58 +49,20 @@ let
       ];
     }
   );
-
-  # The test's stand-in for what `homeBuilder` returns: a home-activation package shaped like a
-  # home-manager one ($out/activate) that writes a marker into the user's home on activation.
-  activationStub = pkgs.runCommand "home-activation-stub" { } ''
-    mkdir -p $out
-    cat > $out/activate <<'SH'
-    #!/bin/sh
-    set -e
-    mkdir -p "$HOME"
-    echo "stub home-manager activation for $USER" > "$HOME/.contract-home-activated"
-    SH
-    chmod +x $out/activate
-  '';
 in
-pkgs.testers.runNixOSTest {
+mkSeatVM {
   name = "contract-greeter-provision";
 
-  # The contract umbrella imports insecure-packages.nix (writes nixpkgs.config), which conflicts
-  # with the driver's default read-only nixpkgs, so let the node own its pkgs as a real host does.
-  node.pkgsReadOnly = false;
-
-  nodes.machine =
-    { lib, ... }:
-    {
-      imports = [
-        contractModule
-        greeterModule
-      ];
-
-      system.stateVersion = "25.11";
-      nixpkgs.hostPlatform = system;
-      boot.loader.grub.enable = false;
-      fileSystems."/" = {
-        device = "tmpfs";
-        fsType = "tmpfs";
-      };
-
-      # Enable the reference greeter. Offer two desktops as marker commands so per-user desktop
-      # SELECTION is observable, with `plasma` the seat default. Drive the helpers directly, so keep
-      # boot lean by not pulling the interactive greetd login in (as gui-union does for its DM).
-      custom.greeter.enable = true;
-      # Marker commands stand in for real desktops; each is self-contained (the seat owns the
-      # session type, ADR-0021) — here they just record which desktop was selected.
-      custom.greeter.desktops.gnome.command = "echo gnome > /tmp/desktop-launched";
-      custom.greeter.desktops.plasma.command = "echo plasma > /tmp/desktop-launched";
-      custom.greeter.defaultDesktop = "plasma";
-      systemd.services.greetd.wantedBy = lib.mkForce [ ];
-
-      # `docker` must EXIST for the clamp test to be meaningful (so "not in docker" proves the
-      # clamp dropped it, not that the group was merely absent). audio already exists by default.
-      users.groups.docker = { };
-    };
+  # Offer two desktops as marker commands so per-user desktop SELECTION is observable, with `plasma`
+  # the seat default. Each is self-contained (the seat owns the session type, ADR-0021) — here they
+  # just record which desktop was selected. `docker` must EXIST for the clamp test to be meaningful
+  # (so "not in docker" proves the clamp dropped it, not that the group was merely absent).
+  seat = {
+    custom.greeter.desktops.gnome.command = "echo gnome > /tmp/desktop-launched";
+    custom.greeter.desktops.plasma.command = "echo plasma > /tmp/desktop-launched";
+    custom.greeter.defaultDesktop = "plasma";
+    users.groups.docker = { };
+  };
 
   testScript = ''
     machine.start()

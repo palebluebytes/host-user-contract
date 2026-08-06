@@ -5,9 +5,10 @@
 # greetd seat session). Staying within Wayland keeps it off the flaky cross-type (Wayland↔X11) DRM
 # handoff, which is pure logind/backend behaviour, not contract logic.
 #
-# greetd's `initial_session` runs ONE command — here a script that launches compositor A, waits for
-# it to exit, then compositor B. Each runs a client that records it reached a live session. Two
-# genuinely different wlroots compositors are used: cage (single-window kiosk) and sway (tiling WM).
+# greetd's `initial_session` (from ./seat-vm.nix's live-session posture) runs ONE command — here a
+# script that launches compositor A, waits for it to exit, then compositor B. Each runs a client that
+# records it reached a live session. Two genuinely different wlroots compositors are used: cage
+# (single-window kiosk) and sway (tiling WM).
 #
 # NOTE on GNOME: gnome-shell/mutter standalone (no GDM) does not start-and-cleanly-exit when launched
 # as a bare greetd session command — a full DE expects a display manager + systemd user session, not
@@ -24,6 +25,18 @@
   greeterModule,
 }:
 let
+  inherit
+    (import ./seat-vm.nix {
+      inherit
+        pkgs
+        system
+        contractModule
+        greeterModule
+        ;
+    })
+    mkSeatVM
+    ;
+
   # sway exits after recording its marker (a tiling WM doesn't self-exit, so we tell it to).
   swayConfig = pkgs.writeText "greeter-seq-sway.conf" ''
     exec ${pkgs.writeShellScript "sway-once" ''
@@ -40,46 +53,16 @@ let
     ${pkgs.sway}/bin/sway -c ${swayConfig}
   '';
 in
-pkgs.testers.runNixOSTest {
+mkSeatVM {
   name = "contract-greeter-session-sequence";
+  graphical = true;
+  autologin = "alice";
 
-  node.pkgsReadOnly = false;
-  enableOCR = false;
-
-  nodes.machine =
-    { lib, ... }:
-    {
-      imports = [
-        contractModule
-        greeterModule
-      ];
-
-      system.stateVersion = "25.11";
-      nixpkgs.hostPlatform = system;
-      boot.loader.grub.enable = false;
-      fileSystems."/" = {
-        device = "tmpfs";
-        fsType = "tmpfs";
-      };
-
-      hardware.graphics.enable = true;
-      fonts.packages = [ pkgs.dejavu_fonts ];
-      virtualisation.qemu.options = [ "-vga none -device virtio-gpu-pci" ];
-
-      users.users.alice = {
-        isNormalUser = true;
-        uid = 1000;
-      };
-
-      custom.greeter.enable = true;
-      # The desktop is a self-contained command; the seat owns the session type (ADR-0021).
-      custom.greeter.desktops.sequence.command = "${sequence}";
-      custom.greeter.defaultDesktop = "sequence";
-      services.greetd.settings.initial_session = lib.mkForce {
-        user = "alice";
-        command = "/run/current-system/sw/bin/contract-greeter-session alice /home/alice";
-      };
-    };
+  # The desktop is a self-contained command; the seat owns the session type (ADR-0021).
+  seat = {
+    custom.greeter.desktops.sequence.command = "${sequence}";
+    custom.greeter.defaultDesktop = "sequence";
+  };
 
   testScript = ''
     start_all()

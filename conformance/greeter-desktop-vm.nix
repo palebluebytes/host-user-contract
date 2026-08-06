@@ -4,6 +4,7 @@
 # session entry to a desktop and a user logs in — the same session command a display manager
 # (GDM/SDDM) would exec, run instead by the greeter in greetd's seat session.
 #
+# Uses ./seat-vm.nix's live-session posture (greetd autologins alice into the session launcher).
 # Heavy by nature (a full DE closure booted under software-rendered virtio-gpu). The DE is supplied
 # as a TEST binding (the contract ships none, ADR-0004) — the consumer-renders boundary.
 {
@@ -15,53 +16,33 @@
 }:
 let
   lib = pkgs.lib;
-in
-pkgs.testers.runNixOSTest {
-  name = "contract-greeter-desktop-${de.name}";
-
-  node.pkgsReadOnly = false;
-  enableOCR = false;
-
-  nodes.machine =
-    { lib, ... }:
-    {
-      imports = [
+  inherit
+    (import ./seat-vm.nix {
+      inherit
+        pkgs
+        system
         contractModule
         greeterModule
-        de.module
-      ];
+        ;
+    })
+    mkSeatVM
+    ;
+in
+mkSeatVM {
+  name = "contract-greeter-desktop-${de.name}";
+  graphical = true;
+  autologin = "alice";
 
-      system.stateVersion = "25.11";
-      nixpkgs.hostPlatform = system;
-      boot.loader.grub.enable = false;
-      fileSystems."/" = {
-        device = "tmpfs";
-        fsType = "tmpfs";
-      };
-
-      # A full DE needs real RAM + GPU. virtio-gpu gives software-rendered DRM/KMS.
-      virtualisation.memorySize = 4096;
-      virtualisation.cores = 2;
-      hardware.graphics.enable = true;
-      fonts.packages = [ pkgs.dejavu_fonts ];
-      virtualisation.qemu.options = [ "-vga none -device virtio-gpu-pci" ];
-
-      users.users.alice = {
-        isNormalUser = true;
-        uid = 1000;
-      };
-
-      # The seat offers the DE; the greeter launches its session entry as the user (greetd's seat
-      # session gives it the systemd-user instance + D-Bus + DRM a full DE needs).
-      custom.greeter.enable = true;
-      # The DE's session-entry command is self-contained (the seat owns the session type, ADR-0021).
-      custom.greeter.desktops.${de.name}.command = de.command;
-      custom.greeter.defaultDesktop = de.name;
-      services.greetd.settings.initial_session = lib.mkForce {
-        user = "alice";
-        command = "/run/current-system/sw/bin/contract-greeter-session alice /home/alice";
-      };
-    };
+  # The seat offers the DE; the greeter launches its session entry as the user (greetd's seat session
+  # gives it the systemd-user instance + D-Bus + DRM a full DE needs). The DE's session-entry command
+  # is self-contained (the seat owns the session type, ADR-0021). A full DE needs real RAM + GPU.
+  seat = {
+    imports = [ de.module ];
+    virtualisation.memorySize = 4096;
+    virtualisation.cores = 2;
+    custom.greeter.desktops.${de.name}.command = de.command;
+    custom.greeter.defaultDesktop = de.name;
+  };
 
   testScript = ''
     start_all()
