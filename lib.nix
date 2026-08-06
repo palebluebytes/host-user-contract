@@ -11,6 +11,7 @@
   lib,
   registry,
   manifest,
+  grantLib,
 }:
 let
   # A feature is runtime/greeter-eligible iff it declares no privilegedGroups (ADR-0002,
@@ -37,7 +38,11 @@ let
   # requesting an ungranted feature is a silent no-op (ADR-0002: "the grant is the sole
   # enabler; degradation is silent"). `requests` is a value in the tracer and a CONFIG
   # REFERENCE in the module — the fold is identical either way.
-  grantedNamesOf = grants: lib.filter (f: grants.${f}.enable or false) (lib.attrNames grants);
+  # The granted-feature-names projection — single-sourced from the injected grantLib (issue #28),
+  # the same fold realization.nix and greeter.nix read grants through. Aliased to a local name here
+  # because the derivation logic below reads it heavily (the coupling guard, the tracer, the index
+  # projection, the turnkey variant selection).
+  grantedNamesOf = grantLib.grantedNames;
   # List subset test — `a ⊆ b`. Single-sourced so the coupling guard and the turnkey
   # variant-selection (covering + maximal) all spell "is this grant-key covered?" one way.
   subsetOf = a: b: lib.all (x: lib.elem x b) a;

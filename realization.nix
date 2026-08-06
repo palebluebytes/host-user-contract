@@ -19,11 +19,12 @@
 # MUST grant the matching feature (e.g. `sudo` for wheel, `containers` for docker/podman). The
 # host repo's grant matrix is where those decisions live; this module only enforces the rule.
 #
-# Closes over its contract data (privilegedGroups, featureGroups) rather than reaching
-# through the consumer's `self` (ADR-0004): contract/default.nix applies this with the
-# registry-derived values, so the shipped module depends on neither `self` nor `inputs`
-# — only the NixOS module args. This is what lets the contract become a standalone flake.
-{ privilegedGroups, featureGroups }:
+# Closes over its contract data (the injected grantLib) rather than reaching through the
+# consumer's `self` (ADR-0004): the kit applies this with the registry-derived grant-projection
+# helpers, so the shipped module depends on neither `self` nor `inputs` — only the NixOS module
+# args. This is what lets the contract become a standalone flake. grantLib (issue #28) is the
+# single owner of the grant→groups fold and the privileged-group clamp used below.
+{ grantLib }:
 {
   lib,
   config,
@@ -38,11 +39,10 @@ let
   guiUsers = lib.filter (u: u.granted.gui.enable or false) (lib.attrValues users);
   anyGuiGranted = guiUsers != [ ];
 
-  grantedNames = u: lib.filter (f: u.granted.${f}.enable or false) (lib.attrNames u.granted);
-  # Privileged groups earned from the features granted to this user.
-  grantedGroups = u: lib.concatMap (f: featureGroups.${f} or [ ]) (grantedNames u);
-  # Self-declared groups with privileged ones clamped out (untrusted input).
-  safeDeclared = u: lib.filter (g: !lib.elem g privilegedGroups) u.identity.extraGroups;
+  # Privileged + input groups earned from the features granted to this user (grantLib fold).
+  grantedGroups = u: grantLib.grantedGroups u.granted;
+  # Self-declared groups with privileged ones clamped out (untrusted input — grantLib clamp).
+  safeDeclared = u: grantLib.safeDeclared u.identity.extraGroups;
 in
 {
   # Some gui user is granted ⇒ the host needs a shared display surface. Neutral, session-agnostic

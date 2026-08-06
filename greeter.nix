@@ -33,8 +33,7 @@
 {
   lib,
   privilegedGroups,
-  featureGroups,
-  safeSet,
+  grantLib,
   greeterGrants,
   tier1EvalConfig,
   renderNixConfig,
@@ -43,8 +42,11 @@
 let
   # The safe set's group memberships — the system-side effect greeterGrants confers (ADR-0010).
   # For the safe set `["gui"]` this is gui's input groups; they form the standing greeter-seat
-  # baseline this module declares + `provision` enrolls each account into.
-  baselineGroups = lib.unique (lib.concatMap (f: featureGroups.${f} or [ ]) safeSet);
+  # baseline this module declares + `provision` enrolls each account into. Single-sourced through
+  # grantLib's grant→groups fold over greeterGrants (issue #28) — the same fold realization.nix uses
+  # for a build-time account, so the greeter-seat baseline and a realized account earn groups
+  # identically.
+  baselineGroups = lib.unique (grantLib.grantedGroups greeterGrants);
   enrolledGroups = baselineGroups ++ [ "greeter-users" ];
 
   # The Tier-1 restricted-eval posture (ADR-0014), rendered to a NIX_CONFIG body the greeter

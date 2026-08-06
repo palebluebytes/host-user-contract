@@ -19,13 +19,35 @@ let
   featureGroups = lib.mapAttrs (_: f: (f.groups or [ ]) ++ (f.privilegedGroups or [ ])) (
     lib.filterAttrs (_: f: f ? groups || f ? privilegedGroups) registry
   );
+
+  # The grant-projection helper set (issue #28, deepening candidate 04): the single owner of the
+  # three folds every grant-reading site would otherwise re-derive — the granted-feature-names
+  # projection, the grant→groups fold, and the privileged-group clamp. Computed once here (over the
+  # featureGroups/privilegedGroups projections above) and injected into the realization and greeter
+  # modules and the derivation logic (./lib.nix) exactly as featureGroups/privilegedGroups are, so
+  # the security-critical clamp is single-sourced ahead of the account-plan work. No behaviour change.
+  grantLib =
+    let
+      # Granted-feature-names projection: the enabled feature names in a grant attrset
+      # `{ <feature>.enable = bool; }` (the registry's grantedOptions shape).
+      grantedNames = grants: lib.filter (f: grants.${f}.enable or false) (lib.attrNames grants);
+    in
+    {
+      inherit grantedNames;
+      # grant→groups fold: the privileged + input groups the enabled features of a grant confer.
+      # Takes a grant (the same shape grantedNames does), so both folds compose over one input.
+      grantedGroups = grants: lib.concatMap (f: featureGroups.${f} or [ ]) (grantedNames grants);
+      # Privileged-group clamp: self-declared groups with privileged ones filtered out (untrusted
+      # input — a user can never escalate by listing a privileged group in its own identity).
+      safeDeclared = declared: lib.filter (g: !lib.elem g privilegedGroups) declared;
+    };
   grantedOptions = lib.mapAttrs (_: f: { enable = lib.mkEnableOption f.grant; }) registry;
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (
     map (f: f.config or { }) (lib.attrValues registry)
   );
 
   # --- closed-over modules + option fragments ---
-  realization = import ./realization.nix { inherit privilegedGroups featureGroups; };
+  realization = import ./realization.nix { inherit grantLib; };
   identityOptions = import ./identity.nix { inherit lib; };
   identityJson = import ./identity-json.nix { inherit lib identityOptions; };
   homeProfileOptions = import ./home-profiles.nix { inherit lib; };
@@ -40,6 +62,7 @@ let
       lib
       registry
       manifest
+      grantLib
       ;
   };
   modules = import ./modules.nix {
@@ -59,10 +82,9 @@ let
   # `pkgs`, so the contract FLAKE still inputs only nixpkgs `lib` (ADR-0004). It is closed
   # over the fixed runtime grant + the identity.json filename it authenticates on.
   greeterModule = import ./greeter.nix {
-    inherit lib privilegedGroups featureGroups;
+    inherit lib privilegedGroups grantLib;
     inherit (contractLib)
       greeterGrants
-      safeSet
       tier1EvalConfig
       renderNixConfig
       ;

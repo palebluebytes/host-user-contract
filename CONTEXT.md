@@ -42,6 +42,12 @@ the term is stable, the code is pending (see the cited issue).
 - **projection** — any surface *derived* from the registry (`featureGroups`,
   `grantedOptions`, `featureConfigOptions`, `safeSet`). Keys can't drift across projections
   because there is one set of keys. (`kit.nix`)
+- **grantLib** — the grant-projection **helper set** computed once in the kit and *injected* into
+  the realization and greeter modules and the derivation logic (`lib.nix`), the same way the
+  [[projection]] data (`featureGroups`/`privilegedGroups`) is. It single-sources the three folds
+  each grant-reading site would otherwise re-derive: `grantedNames` (the enabled feature names in a
+  grant), `grantedGroups` (the grant→groups fold), and `safeDeclared` (the privileged-group
+  [[clamp]]). One owner ⇒ the security-critical clamp cannot drift between eval sites. (`kit.nix`)
 - **offer** — the **user's** voice on *which* features it asks for (distinct from [[request]],
   the parameters of a feature). *Implicit* for a home emitting a `contract.requests` entry;
   **formalised** per-user by the `users` flake in the turnkey path — the "formal `offers` field
@@ -90,6 +96,9 @@ the term is stable, the code is pending (see the cited issue).
   a grant only for features the host affords, and the untrusted/greeter path affords only the
   safe set (no privileged feature), so a stranger's offer can never reach privilege. The clamp
   remains defense-in-depth: any privileged group not backed by the derived grant is dropped.
+  At eval time the clamp is [[grantLib]]'s `safeDeclared` fold; the greeter's runtime `provision`
+  reproduces the same rule shell-side over `privilegedGroups` (a greeter user is never built into
+  the system, so `realization.nix` never runs for it).
 - **gui-session union** *(REMOVED, ADR-0021)* — the realization used to derive the host's display
   surface's session types (`custom.gui.surface.{wayland,x11}`) as the union of every granted gui
   user's session type. **Removed:** the contract is now **display-server-agnostic** — it exposes only
