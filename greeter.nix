@@ -38,6 +38,7 @@
   tier1EvalConfig,
   renderNixConfig,
   identityFile,
+  identityFields,
 }:
 let
   # The safe set's group memberships — the system-side effect greeterGrants confers (ADR-0010).
@@ -48,6 +49,25 @@ let
   # identically.
   baselineGroups = lib.unique (grantLib.grantedGroups greeterGrants);
   enrolledGroups = baselineGroups ++ [ "greeter-users" ];
+
+  # The runtime accountPlan adapter's DATA (issue #31): accountPlan's grant-side + clamp + the
+  # identity field-name projection, rendered so the shell `provision` reproduces the account record
+  # WITHOUT hardcoding any field name or the privileged-group clamp set. Single-sourced through
+  # grantLib (the privileged-group clamp set + the grant→groups baseline fold — the same folds
+  # realization.nix reads build-time) and `identityFields` (the identity.nix option names), so the
+  # runtime clamp cannot drift from the build-time one — it is the same definition on both sides.
+  provisionPlan = {
+    identityFields = {
+      inherit (identityFields)
+        name
+        hashedPassword
+        sshKey
+        trustedKeys
+        extraGroups
+        ;
+    };
+    inherit privilegedGroups enrolledGroups;
+  };
 
   # The Tier-1 restricted-eval posture (ADR-0014), rendered to a NIX_CONFIG body the greeter
   # exports to the host's homeBuilder. Single-sourced from the contract's canonical tier1EvalConfig
@@ -64,15 +84,8 @@ let
 
   # The shipped programs, one per file (the canonical mechanism + the replaceable UI). Each is
   # a writeShellApplication closed over only what it needs; bind orchestrates the rest.
-  authScript = import ./greeter/auth.nix { inherit pkgs identityFile; };
-  provisionScript = import ./greeter/provision.nix {
-    inherit
-      pkgs
-      lib
-      privilegedGroups
-      enrolledGroups
-      ;
-  };
+  authScript = import ./greeter/auth.nix { inherit pkgs identityFile identityFields; };
+  provisionScript = import ./greeter/provision.nix { inherit pkgs provisionPlan; };
   sessionScript = import ./greeter/session.nix {
     inherit pkgs lib;
     inherit (cfg) desktops defaultDesktop;

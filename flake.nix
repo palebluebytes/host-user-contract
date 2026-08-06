@@ -112,6 +112,11 @@
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           greeterModule = self.nixosModules.greeter;
+          # The shared plan + the fixed runtime grant, so the VM proves build↔runtime parity by
+          # rendering the build-time account for its fixture identity and asserting `provision`
+          # reproduces it (ADR-0012, issue #31).
+          inherit (kit.internal) accountPlan;
+          inherit (self) greeterGrants;
           inherit system;
         };
 

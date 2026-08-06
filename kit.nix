@@ -94,7 +94,7 @@ let
       tier1EvalConfig
       renderNixConfig
       ;
-    inherit (identityJson) identityFile;
+    inherit (identityJson) identityFile identityFields;
   };
 in
 {
@@ -157,6 +157,10 @@ in
       bindContractPackage
       mkHostFacts
       ;
+    # The shared account plan (issue #30/#31), exposed so the greeter-provision VM can render the
+    # BUILD-TIME account for a fixture identity and assert the runtime `provision` reproduces it —
+    # proving build↔runtime realization parity from the ONE plan both adapters render (ADR-0012).
+    inherit accountPlan;
     # The manifest schema owner (issue #27): the producer/consumer seam, exposed so the
     # conformance suite proves the write→read round-trip and generates its fixtures through it.
     inherit (manifest)

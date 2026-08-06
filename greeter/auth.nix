@@ -3,7 +3,11 @@
 # The CANONICAL, mandatory mechanism (ADR-0008 condition 1). It reads only data (`jq`) and
 # re-hashes the password with libc crypt (via perl, which covers yescrypt/sha512crypt exactly
 # as /etc/shadow does) — it never evaluates the user's flake.
-{ pkgs, identityFile }:
+{
+  pkgs,
+  identityFile,
+  identityFields,
+}:
 pkgs.writeShellApplication {
   name = "contract-greeter-auth";
   runtimeInputs = [
@@ -20,12 +24,14 @@ pkgs.writeShellApplication {
 
     [ -f "$identity" ] || { echo "auth: no ${identityFile} in repo source" >&2; exit 1; }
 
-    # The username the caller logs in as must be the one the repo claims (no impersonation).
-    claimed=$(jq -r '.username // empty' "$identity")
+    # The username the caller logs in as must be the one the repo claims (no impersonation). The
+    # field names come from `identityFields` (projected from identity.nix, issue #31) — not a
+    # hardcoded `.username`/`.hashedPassword` that could drift from the single identity source.
+    claimed=$(jq -r '.${identityFields.username} // empty' "$identity")
     [ "$claimed" = "$username" ] || { echo "auth: username mismatch (repo claims '$claimed')" >&2; exit 1; }
 
-    # Password: verify against identity.json.hashedPassword with libc crypt — eval-free.
-    stored=$(jq -r '.hashedPassword // empty' "$identity")
+    # Password: verify against identity.json's credential field with libc crypt — eval-free.
+    stored=$(jq -r '.${identityFields.hashedPassword} // empty' "$identity")
     [ -n "$stored" ] || { echo "auth: identity.json has no hashedPassword" >&2; exit 1; }
     read -r password
     computed=$(perl -e 'print crypt($ARGV[0], $ARGV[1])' "$password" "$stored")

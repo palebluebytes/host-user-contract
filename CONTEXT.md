@@ -97,9 +97,10 @@ the term is stable, the code is pending (see the cited issue).
   and `extraGroups` (the [[clamp]]ed self-declared groups ∪ the granted groups). Closed over
   [[grantLib]] so its clamp + grant→groups fold are single-sourced. It is the plan **both** adapters
   render: the [[realization]] maps it into `users.users` at build time; the greeter's runtime
-  `provision` will render the same record to data (issue #31) — so the two cannot drift. A neutral
-  record (the four account fields, not a NixOS-module shape), so the runtime side can serialize it.
-  (`account-plan.nix`) **(built — issue #30)**
+  `provision` reproduces the same record from a build-time-rendered plan (the clamp set + the
+  greeter-seat baseline + the identity field-name projection, serialized to JSON) — so the two
+  cannot drift. A neutral record (the four account fields, not a NixOS-module shape), so the runtime
+  side can serialize it. (`account-plan.nix`) **(built — issues #30, #31)**
 - **clamp** — the account plan applying [[grantLib]]'s filter of privileged groups out of a
   user's self-declared `identity.extraGroups` (untrusted input). Privileged groups come only from a grant, so a
   user can never self-escalate by listing `docker`/`wheel` in its identity — and, under the
@@ -108,8 +109,9 @@ the term is stable, the code is pending (see the cited issue).
   safe set (no privileged feature), so a stranger's offer can never reach privilege. The clamp
   remains defense-in-depth: any privileged group not backed by the derived grant is dropped.
   At eval time the clamp is [[grantLib]]'s `safeDeclared` fold; the greeter's runtime `provision`
-  reproduces the same rule shell-side over `privilegedGroups` (a greeter user is never built into
-  the system, so `realization.nix` never runs for it).
+  applies the **same** privileged-group set — [[grantLib]] renders it into `provision`'s build-time
+  plan, so the clamp is one definition on both sides, not a re-listed shell copy (a greeter user is
+  never built into the system, so `realization.nix` never runs for it). (issue #31)
 - **gui-session union** *(REMOVED, ADR-0021)* — the realization used to derive the host's display
   surface's session types (`custom.gui.surface.{wayland,x11}`) as the union of every granted gui
   user's session type. **Removed:** the contract is now **display-server-agnostic** — it exposes only
@@ -193,12 +195,14 @@ the term is stable, the code is pending (see the cited issue).
   place a package is allowed without breaking the package-free invariant.
 - **contract-greeter-{bind,auth,provision}** — the reference greeter's three scripts. `auth` is
   the **canonical eval-free** step (`jq` over `identity.json` + libc-crypt password + Tier-1 SSH
-  signature, running zero user Nix); `provision` is the **runtime-provisioning helper** — the
-  privileged crux that is the **shell-side `realization.nix`** for one user: it fully realizes the
-  account from `identity.json` + the safe-set grant (password, `authorizedKeys`, GECOS, the
-  **clamped** safe groups + the greeter-seat baseline) **and** activates the built home AS the
-  user, all before the session starts, outside NixOS's declarative build-time model; `bind` is the
-  greetd orchestrator tying the ordering together. (`greeter.nix`; ADR-0006, ADR-0012)
+  signature, running zero user Nix, with the identity field names it reads projected from
+  `identity.nix`); `provision` is the **runtime-provisioning helper** — the privileged crux that is
+  the **runtime adapter over [[accountPlan]]** (the twin of [[realization]]'s build-time adapter): it
+  reproduces the account record from the build-time-rendered plan + `identity.json` and realizes it
+  (password, `authorizedKeys`, GECOS, the **clamped** safe groups + the greeter-seat baseline)
+  **and** activates the built home AS the user, all before the session starts, outside NixOS's
+  declarative build-time model; `bind` is the greetd orchestrator tying the ordering together.
+  (`greeter.nix`; ADR-0006, ADR-0012)
 - **homeBuilder** — the greeter's one **host binding** (`custom.greeter.homeBuilder`, null by
   default): the command that evaluates + builds a user's home *through the contract* under the
   [[tier1-eval-posture]] and prints the activation package. It is host-side because building a real

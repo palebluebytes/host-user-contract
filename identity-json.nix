@@ -23,6 +23,28 @@ in
   # authenticates against before any eval).
   identitySchema = { inherit required optional; };
 
+  # The identity field NAMES the eval-free runtime greeter reads out of identity.json — the
+  # username + credential `auth` verifies and the account fields `provision` realizes through the
+  # rendered accountPlan (issue #31). PROJECTED from identity.nix (each name asserted to be a real
+  # option) so the shell helpers never carry an independently-hardcoded field list: a rename in the
+  # single identity source is a loud build error here, not a silently-stale `jq` path. The name maps
+  # to itself (the jq key IS the option name) — the projection's job is the validation, not a rename.
+  identityFields =
+    let
+      names = [
+        "username"
+        "name"
+        "hashedPassword"
+        "sshKey"
+        "trustedKeys"
+        "extraGroups"
+      ];
+      unknown = lib.subtractLists known names;
+    in
+    assert lib.assertMsg (unknown == [ ])
+      "identity-json: field(s) the runtime greeter reads are not options in identity.nix: ${lib.concatStringsSep ", " unknown}";
+    lib.genAttrs names (n: n);
+
   # The conventional filename a user repo ships at its root.
   identityFile = "identity.json";
 

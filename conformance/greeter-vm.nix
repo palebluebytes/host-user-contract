@@ -6,10 +6,12 @@
 #
 # It boots ONE seat host with `nixosModules.greeter` enabled (via ./seat-vm.nix's helpers-driven
 # posture, greetd kept off the console) and drives the privileged helpers directly against a synthetic
-# identity.json. It asserts that `provision` is the shell-side `realization.nix` (ADR-0012): the
-# account is fully realized — password (so PAM works), GECOS, authorizedKeys, the user's SAFE
-# declared groups, the greeter-seat baseline groups — with the privileged-group CLAMP reproduced at
-# runtime (a hostile `docker` in identity.json is dropped). It then proves session SELECTION
+# identity.json. It asserts that `provision` is the runtime adapter over the shared `accountPlan`
+# (ADR-0012, issue #31): the account it realizes at runtime — password (so PAM works), GECOS,
+# authorizedKeys, the clamped declared groups + the greeter-seat baseline — reproduces, FIELD FOR
+# FIELD, the BUILD-TIME account the same `accountPlan` renders for this identity. The privileged-group
+# CLAMP is thus proven from the ONE shared plan (a hostile `docker` in identity.json is dropped), and
+# build↔runtime parity is proven by construction, not by parallel hand-checks. It then proves session SELECTION
 # (ADR-0010 step 8): the launcher picks the seat-default type, a home override flips it, and each
 # execs the host-bound backend. Building a real home needs home-manager (the contract has none,
 # ADR-0004), so the home here is the harness's stub activation package — the real-home end-to-end
@@ -18,9 +20,12 @@
   pkgs,
   contractModule,
   greeterModule,
+  accountPlan,
+  greeterGrants,
   system,
 }:
 let
+  inherit (pkgs) lib;
   seatVM = import ./seat-vm.nix {
     inherit
       pkgs
@@ -35,19 +40,39 @@ let
   # sha512-crypt of "correct-horse-battery-staple"; extraGroups carries one safe group (audio) and
   # one privileged group (docker) so the runtime clamp is observable.
   passwordHash = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
-  identityJson = pkgs.writeText "identity.json" (
-    builtins.toJSON {
-      name = "Example User";
-      email = "example@user.invalid";
-      username = "example";
-      hashedPassword = passwordHash;
-      sshKey = "ssh-ed25519 AAAAexamplekey example@user.invalid";
-      trustedKeys = [ "ssh-ed25519 AAAAtrustedkey trusted@elsewhere" ];
-      extraGroups = [
-        "audio"
-        "docker"
-      ];
-    }
+  identityAttrs = {
+    name = "Example User";
+    email = "example@user.invalid";
+    username = "example";
+    hashedPassword = passwordHash;
+    sshKey = "ssh-ed25519 AAAAexamplekey example@user.invalid";
+    trustedKeys = [ "ssh-ed25519 AAAAtrustedkey trusted@elsewhere" ];
+    extraGroups = [
+      "audio"
+      "docker"
+    ];
+  };
+  identityJson = pkgs.writeText "identity.json" (builtins.toJSON identityAttrs);
+
+  # The BUILD-TIME account for the SAME identity + the safe-set grant, rendered from the ONE shared
+  # accountPlan the build-time realization.nix also renders (ADR-0012, issue #31). The runtime
+  # `provision` is a second adapter over this exact plan, so its realized account must reproduce it
+  # field-for-field — that is the build↔runtime parity this VM proves, from the shared plan rather
+  # than by parallel hand-checks. `provision` adds the greeter-seat marker (`greeter-users`) on top
+  # of the plan's groups (the standing baseline it enrolls into), so the expected supplementary
+  # group set is the plan's `extraGroups` ∪ that marker.
+  buildTimePlan = accountPlan {
+    identity = identityAttrs;
+    grants = greeterGrants;
+  };
+  expectedGroups = lib.sort (a: b: a < b) (
+    lib.unique (buildTimePlan.extraGroups ++ [ "greeter-users" ])
+  );
+  expectedGroupsCsv = lib.concatStringsSep "," expectedGroups;
+  # The authorized_keys `provision` must write, one key per line (jq -r's trailing newline included) —
+  # as a store file so the exact-and-in-order comparison needs no multi-line Python string literal.
+  expectedKeysFile = pkgs.writeText "expected-authorized-keys" (
+    lib.concatMapStrings (k: "${k}\n") buildTimePlan.authorizedKeys
   );
 in
 mkSeatVM {
@@ -78,20 +103,24 @@ mkSeatVM {
     machine.succeed("contract-greeter-provision example ${identityJson} ${activationStub} tier1")
     machine.succeed("getent passwd example")
 
-    # Account fully realized from identity.json + the safe-set grant:
-    # - GECOS = name
-    machine.succeed("getent passwd example | cut -d: -f5 | grep -qx 'Example User'")
-    # - password = identity.hashedPassword (so PAM works — not a locked '!' entry)
-    machine.succeed("test \"$(getent shadow example | cut -d: -f2)\" = '${passwordHash}'")
-    # - authorizedKeys = sshKey + trustedKeys
-    machine.succeed("grep -q AAAAexamplekey /home/example/.ssh/authorized_keys")
-    machine.succeed("grep -q AAAAtrustedkey /home/example/.ssh/authorized_keys")
-    # - safe declared group conferred; greeter-seat baseline groups enrolled
-    machine.succeed("id -nG example | tr ' ' '\\n' | grep -qx audio")
-    machine.succeed("id -nG example | tr ' ' '\\n' | grep -qx greeter-users")
-    machine.succeed("id -nG example | tr ' ' '\\n' | grep -qx uinput")
+    # Account fully realized from identity.json + the safe-set grant, and — the issue #31 claim —
+    # realized IDENTICALLY to the build-time account the shared accountPlan renders for this identity
+    # (ADR-0012 build↔runtime parity), field for field:
+    # - GECOS = the plan's description
+    machine.succeed("getent passwd example | cut -d: -f5 | grep -qx '${buildTimePlan.description}'")
+    # - password = the plan's hashedPassword (so PAM works — not a locked '!' entry)
+    machine.succeed("test \"$(getent shadow example | cut -d: -f2)\" = '${buildTimePlan.hashedPassword}'")
+    # - authorizedKeys = the plan's keys (primary sshKey + trustedKeys), exactly and in order
+    machine.succeed("diff ${expectedKeysFile} /home/example/.ssh/authorized_keys")
     # - the CLAMP: a privileged group declared in identity.json is dropped at runtime
     machine.fail("id -nG example | tr ' ' '\\n' | grep -qx docker")
+    # - EXACT group parity: the realized supplementary groups (all but the user's own primary group)
+    #   equal the plan's clamped+granted groups ∪ the greeter-seat marker — no group missing, none
+    #   extra. This is the runtime clamp AND the build↔runtime parity, proven from the shared plan.
+    machine.succeed(
+        "test \"$(id -nG example | tr ' ' '\\n' | grep -vx example | sort | paste -sd, -)\""
+        " = ${lib.escapeShellArg expectedGroupsCsv}"
+    )
     # - the home activated AS the user
     machine.succeed("test -f /home/example/.contract-home-activated")
 
