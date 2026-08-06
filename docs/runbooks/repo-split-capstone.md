@@ -1,7 +1,7 @@
 # Runbook — repo-split capstone (issue #1)
 
 Operator guide for the model-A → model-C cutover: moving a real user (`inkpotmonkey`)
-into its **own repo** consumed by the fleet via `bindUser`.
+into its **own repo** consumed by the fleet via `bindContractUser`.
 
 > **⚠️ Superseded stages (ADR-0023 — "the contract handles no secrets").** The contract
 > now handles no secrets beyond the login credential. The secret-specific stages below are
@@ -13,7 +13,7 @@ into its **own repo** consumed by the fleet via `bindUser`.
 > user's own key, provisioned by the user's own home module — never through the contract.
 
 > **Why this is a runbook, not code.** The contract side this capstone consumes is already
-> built and CI-proven here (`bindUser`/`bindUserModule`/`bindContractPackage`, the example
+> built and CI-proven here (`bindContractUser`/`mkContractUser`/`traceUser`, the example
 > user flake, and — for acceptance criterion 2 — `conformance/confinement.nix`). What remains
 > is **operational, cross-repo, and human-only**: creating a new repo and editing the fleet.
 > Each step below marks whether it is an edit (AFK-safe) or a **🔑 trusted-machine** action.
@@ -27,7 +27,7 @@ the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
 
 | Repo | Role | Touched here |
 | --- | --- | --- |
-| `host-user-contract` (this) | The shared schema + `lib` (`bindUser`, `bindContractPackage`, `mkHostFacts`, …). | Input only — do not fork it into the user or fleet. |
+| `host-user-contract` (this) | The shared schema + `lib` (`bindContractUser`, `mkContractUser`, `traceUser`, …). | Input only — do not fork it into the user or fleet. |
 | `user-inkpotmonkey` (**new**) | The user's home config, ADR-0007 shape. | Created in stage 1. |
 | the fleet (`~/code/nixos`) | The hosts (`kelpy`, workstations) that consume the user. | Edited in stages 3–6. |
 
@@ -54,10 +54,9 @@ the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
   read-only on `hostFacts` (`exposed`, `platform`, `granted`), never on `osConfig`/`hostName`.
 - `flake.nix` — inputs `contract` + `home-manager` (with `nixpkgs.follows` so there is ONE
   nixpkgs, ADR-0004); a `checks.home-build` that builds the real home (this is the home-manager
-  build the contract's own package-free suite cannot host); optionally a `contractPackage`
-  output via `contract.lib.mkContractPackageForHome { home; grants; pkgs }` — the home-manager
-  producer adapter (issue #23) over the generic `mkContractPackage` — for the pre-built path
-  (ADR-0016).
+  build the contract's own package-free suite cannot host); and its contractPackages + binding
+  index via `contract.lib.mkContractUser { name; offer; variants; pkgs; system; usersDir }` (the
+  singular producer; `mkContractUsers` for a multi-user repo) — the pre-built path (ADR-0016/0026).
 
 > **Confinement is structural (acceptance criterion 2), and it is now regression-proven** in
 > `conformance/confinement.nix`: the home umbrella declares no `users.users`, `security.sudo`,
@@ -78,20 +77,15 @@ This is acceptance criterion 5. The rationale (which visibility, why) must be wr
 
 ## Stage 3 — the fleet enables the user as an input
 
-**Edit (fleet).** Add `user-inkpotmonkey` as a flake input and bind it on the hosts that should
-run it. Two binding modes (pick per host):
+**Edit (fleet).** Add `user-inkpotmonkey` as a flake input and bind it turnkey. The user repo bakes
+its contractPackages + binding index with `contract.lib.mkContractUser`/`mkContractUsers`; the fleet
+declares `contract.affordances` once and binds each user with
+`contract.lib.bindContractUser { usersFlake; username }` (ADR-0025/0026). The grant is derived as
+`affordances ∩ offer` — no per-host grant matrix. This is the single, pre-built binding mode
+(ADR-0026 retired the inline-eval alternative); the user owns their nixpkgs pin and package set.
 
-- **Inline-eval / hard-enforcement** — `contract.lib.bindUserModule { homeModule = …; userModule
-  = user.homeModules.default; identity = contract.lib.loadIdentity "${user}/identity.json";
-  grants = { … }; hostFacts = …; }`. The host's home-manager evaluates the home once; the
-  request→feature bridge is a config reference (ADR-0008).
-- **Pre-built** — the user CIs a `contractPackage`; the host pins it and uses
-  `contract.lib.bindContractPackage { contractPackage; identity; grants; }` (ADR-0016). Use this
-  when the user should own their nixpkgs pin and package set.
-
-`grants` is `{ <feature>.enable = true; }`. **Grant nothing secret-bearing yet** — that is
-stage 4. A build with empty/gui-only grants proves the input wiring (acceptance criterion 3,
-first half).
+**Afford nothing secret-bearing yet.** A build whose affordances are empty/gui-only proves the input
+wiring (acceptance criterion 3, first half).
 
 **Verify:** `nix build .#nixosConfigurations.<host>.config.system.build.toplevel` on a
 workstation host builds with the user present and login-capable.
@@ -263,7 +257,7 @@ Do this in order — a later step depending on an earlier one:
 
 ## What the contract already guarantees (do not re-implement)
 
-- `bindUser` / `bindUserModule` / `bindContractPackage` — the binding surfaces (`lib.nix`).
+- `mkContractUser` / `mkContractUsers` / `bindContractUser` / `traceUser` — the public producer/consumer surface (`lib.nix`, ADR-0026).
 - `mkFeatureRecipients` — the per-feature recipient map for re-key/rotate (`lib.nix`).
 - `custom.host.exposed` + `exposedHostOffenders` — the exposed-host secret ban (`modules.nix`).
 - `conformance/confinement.nix` — the structural-confinement proof (criterion 2).

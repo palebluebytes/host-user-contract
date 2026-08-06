@@ -24,7 +24,7 @@ the term is stable, the code is pending (see the cited issue).
 - **user** — a public identity + home config + the features it *offers*; host-agnostic (it
   never names a host's `self`/inputs). Its own home secrets (if any) ride its own key,
   provisioned by its own home module — never through the contract. Target shape: a
-  home-manager config repo consumed via `bindUser` (ADR-0007); today still in-repo in the consuming host repo.
+  home-manager config repo consumed via `bindContractUser` (ADR-0007/0025); today still in-repo in the consuming host repo.
 - **umbrella / kit** — the assembled shipped surface (`kit.nix`). `nixosModules.default` =
   the `custom.users` schema + `custom.host.exposed` + realization + the insecure-package
   aggregator. `nixosModules.greeter` = the opt-in reference runtime greeter (a seat host
@@ -52,34 +52,34 @@ the term is stable, the code is pending (see the cited issue).
 ## Grants and confinement
 
 - **grant** — the decision to enable a feature for a user
-  (`custom.users.<u>.granted.<f>.enable`); the realization's **only** source of privilege. Two
-  ways to arrive at it: written **directly** by the host (the inline/hard-enforcement path,
-  `bindContractPackage { grants }`), or **derived** as `affordances ∩ offer` in the turnkey
-  pre-built path (`bindUserFromFlake`, ADR-0025). Derived, the grant is a two-sided
-  **negotiation** — host [[affordance]] ∧ user [[offer]], *both necessary* — not a unilateral
-  host write. Either way it remains the sole privilege source the realization reads. (ADR-0001
-  mechanic 2, ADR-0025)
+  (`custom.users.<u>.granted.<f>.enable`); the realization's **only** source of privilege. On the
+  public surface it arrives **one** way: **derived** as `affordances ∩ offer` by the turnkey
+  `bindContractUser` (ADR-0025). The grant is thus a two-sided **negotiation** — host [[affordance]]
+  ∧ user [[offer]], *both necessary* — never a unilateral host write (the direct-grant primitive
+  `bindContractPackage { grants }` is now an internal kernel, not a consumer path; ADR-0026). It
+  remains the sole privilege source the realization reads. (ADR-0001 mechanic 2, ADR-0025, ADR-0026)
 - **affordance** / **`contract.affordances`** — the **host's** voice (system-side), shaped
   `{ <feature>.enable = bool; }`: the features this host is willing to grant to users who
   [[offer]] them, declared **once** per host. The symmetric counterpart of [[request]]
   (`contract.requests`, the user's voice) and a generalisation of the greeter's safe set (the
   safe set *is* the greeter's affordance). A **necessary** condition for a derived grant — the
   host's absolute veto: a feature it does not afford is never granted, whatever a user offers.
-  (ADR-0025; consumed by `bindUserFromFlake`)
+  (ADR-0025; consumed by `bindContractUser`)
 - **deny** — the **absence of a grant**. Not a veto, not a default-open block — a host runs
-  only what it grants (written directly, or derived within its [[affordance]]s).
+  only what it grants (derived within its [[affordance]]s).
 - **feature configuration** *(a feature's **parameters**)* — the **host-owned** parameters the
   realization consumes (`custom.users.<u>.<feature>.*`, e.g. `gui.desktop`), distinct from the
   grant (the yes/no). The **consumer** end of a producer→consumer pair with **request**:
-  written only host-side — operator grant-data, or `bindUser` bridging a granted request —
+  written only host-side — operator grant-data, or the pre-built bind bridging a granted request —
   **never** by the user across the trust boundary. Host-affecting parameters **aggregate**
   across granted users. (ADR-0003, `featureConfigOptions`)
 - **request** / **`contract.requests`** — the **user's** voice: the home-side namespace a
   user's home module *emits* (read-only data inside home-manager's sandbox) to ask for a
   feature's parameters. The **producer** end of the pair with **feature configuration**:
-  `bindUser` harvests it post-eval and bridges only the **granted** ones into the system-side
-  feature configuration the realization reads. A request *names* a host effect but never
-  performs it; the user never writes system-side. (ADR-0002, ADR-0007; `homeModules.default`)
+  the pre-built bind reads it from the baked manifest (and `traceUser` harvests it in a dry-run) and
+  bridges only the **granted** ones into the system-side feature configuration the realization
+  reads. A request *names* a host effect but never performs it; the user never writes system-side.
+  (ADR-0002, ADR-0007; `homeModules.default`)
 - **realization** — the host-invariant module mapping each `custom.users.<u>` to a
   `users.users` account. Powers route through *grants*, not raw identity. (`realization.nix`,
   ADR-0001 mechanic 5)
@@ -125,32 +125,33 @@ the term is stable, the code is pending (see the cited issue).
   the word keeps its weight; don't model "no screen" as a ban. (ADR-0002)
 - **hostFacts** — the restricted, read-only, **self-scoped** projection of host state a
   user's home module may read: `{ exposed, platform, granted }`. Deliberately excludes
-  `hostName` so adaptation keys on *semantic* facts, not host identity. (`mkHostFacts`,
-  ADR-0002)
+  `hostName` so adaptation keys on *semantic* facts, not host identity. The value is supplied by
+  whoever builds the home (the producer bakes it per variant). `mkHostFacts` — the helper that
+  projects it safely from a NixOS host `config` — is **internal** since the pre-built path never
+  evaluates a home host-side (ADR-0026). (ADR-0002)
 
 ## The greeter and binding
 
-- **build-time binding vs runtime binding** — two paths over one contract. Build-time =
-  operator-authored fleet declaration, **default-closed**. Runtime = the **greeter**,
-  **default-open over the safe set**. Opposite defaults, *one* mechanism (`bindUserModule`).
-  (ADR-0002, ADR-0006)
-- **bindUser** — binding a user's home module to the contract: inject `identity` (single
-  loader, ADR-0009) + `hostFacts`, evaluate the home, and **bridge** the granted
-  `contract.requests` into the system-side feature configuration. It ships in **two shapes**,
-  both in `self.lib`:
-  - **`bindUserModule`** — the **real mechanism both binding paths call** (operator grant +
-    greeter): a NixOS module the host imports. The home is evaluated **once** by the host's
-    home-manager and the bridge is a **config reference**
-    (`config.home-manager.users.<u>.contract.requests`), so a real home-manager home
-    (`programs.*`, `home.*`) binds. The host supplies home-manager; the contract only
-    *references* its option paths, staying package-free (ADR-0004). **(built — issue #8)**
-  - **`bindUser`** — the **headless tracer**: the package-purest proof of the same
-    request→grant→bridge logic, harvesting a *contract-pure* home via bare `evalModules` (no
-    home-manager, not even a stub). Returns a record (`{ system, home, requests, … }`) for
-    eval testing. **(built — issue #5)**
-
-  The greeter program that drives `bindUserModule` at runtime is issue #2. (ADR-0007, ADR-0008,
-  ADR-0009)
+- **build-time binding vs runtime binding** — two paths over one contract, **opposite defaults**.
+  Build-time = operator-authored fleet declaration, **default-closed**, via `bindContractUser`
+  (pre-built). Runtime = the **greeter**, **default-open over the safe set**, building the user's
+  own home output. Neither evaluates the home host-side inline: the build-time path binds a
+  pre-built `contractPackage`, the greeter builds `homeConfigurations.<u>` (ADR-0026 retired the
+  inline-eval mechanism). (ADR-0002, ADR-0006, ADR-0026)
+- **`bindContractUser`** — the **sole public consumer bind** (ADR-0025/0026): a host declares its
+  `contract.affordances` once and binds one indexed user with `{ usersFlake; username }`. Reads the
+  user's [[binding index]] entry, derives `grant = affordances ∩ offer` (always **negotiated** —
+  there is no unilateral direct-grant path on the public surface), selects the maximal covering
+  [[variant]], and delegates to the internal [[bindContractPackage]] kernel. The consumer twin of
+  the producer's [[mkContractUser]] (bind one contract-user ⇄ make one). **(built — issue #25)**
+- **`traceUser`** — the home-manager-free **dry-run inspector**, and the one request→grant→bridge
+  tool **outside** the contractUser produce/consume coin. Given a *contract-pure* home module +
+  identity + grants it harvests via bare `evalModules` (no home-manager, not even a stub — ADR-0004)
+  and returns a record `{ username; home; requests; system }`: what does my home request under these
+  grants, and does it bridge? It is the conformance suite's logic-level proof and the public tool a
+  home author dry-runs against — **not a deployment path** (real binds are pre-built). A real home
+  that sets `programs.*`/`home.*` throws here by design; it binds through the pre-built path instead.
+  **(built — issue #5)** (ADR-0007, ADR-0026)
 - **portable user** — the runtime north star: the *same* identity logs into *any* contract
   seat and gets the **exact same experience** — home config **and** allowed system-side options —
   with host and user mediated only by the contract. This is *why* the greeter must **fully
@@ -241,9 +242,9 @@ the term is stable, the code is pending (see the cited issue).
   ones. `safeSet = ["gui"]` today. (`lib.nix`)
 - **greeterGrants** — the **canonical runtime grant value** (`self.greeterGrants`): the safe set
   lifted into a grant attrset (`{ <feature>.enable = true; }`), i.e. **default-open over the
-  safe set**. The greeter binds with it (`bindUserModule { grants = greeterGrants; }`); it is
-  ADR-0008's conformance condition (3) — *a greeter grants at most the safe set* — made a
-  single-sourced value, so escalation is impossible by construction, not by a deny rule.
+  safe set**. The greeter provisions with it (`contract-greeter-provision` realizes at most the
+  safe set); it is ADR-0008's conformance condition (3) — *a greeter grants at most the safe set* —
+  made a single-sourced value, so escalation is impossible by construction, not by a deny rule.
   (`lib.nix`; ADR-0006, ADR-0008)
 - **runtime-eligible** — *derived*, not declared (`runtimeEligibleFeature`): a feature is in
   the safe set iff it confers no privileged group. Deriving it keeps
@@ -277,35 +278,33 @@ the term is stable, the code is pending (see the cited issue).
   content-addressed store path the host pins as a flake input and activates at switch time.
   Contains the home activation script and a `contract-requests.json` sidecar
   (`{ version, username, requests, packages }`). The host reads `contract-requests.json` at
-  eval time (no IFD — it is pre-built and pinned) and bridges granted feature requests exactly
-  as today; at switch time it runs the activation then replaces `~/.nix-profile` with a
-  host-built package profile. Replaces `bindUserModule`'s inline home evaluation for the
-  **pre-built binding mode**; `bindUserModule` is retained for **inline-eval
-  (hard-enforcement)** deployments. **(built — issue #16)** (ADR-0016; amends ADR-0007)
-- **`mkContractPackage`** — the contract `lib` function that produces a `contractPackage` from
-  an already-evaluated home config:
+  eval time (no IFD — it is pre-built and pinned) and bridges granted feature requests; at switch
+  time it runs the activation then replaces `~/.nix-profile` with a host-built package profile. The
+  **one binding mode** (ADR-0026 retired the inline-eval alternative). **(built — issue #16)**
+  (ADR-0016; amends ADR-0007)
+- **`mkContractPackage`** *(internal kernel)* — the derivation logic that produces a
+  `contractPackage` from an already-evaluated home config:
   `mkContractPackage { pkgs; activationPackage; requests; packages; username }`. Serializes
   `config.contract.requests` and the top-level package manifest into `contract-requests.json`
-  (via `builtins.toFile` at eval time, no IFD) and wraps both into a single derivation. The
-  home is evaluated once by the user's flake; the contract supplies only the wrapper.
-  **(built — issue #14)** (ADR-0016)
-- **`mkContractPackageForHome`** — the optional **home-manager producer adapter**:
+  (via `builtins.toFile` at eval time, no IFD) and wraps both into a single derivation. **Not a
+  flake output** — the public producer surface is [[mkContractUser]]/[[mkContractUsers]], which bake
+  through it (ADR-0026). **(built — issue #14)** (ADR-0016)
+- **`mkContractPackageForHome`** *(internal kernel)* — the home-manager producer adapter:
   `mkContractPackageForHome { home; grants ? { }; pkgs }`. Reads `mkContractPackage`'s four
   primitives off an already-evaluated home (`home.activationPackage`,
-  `home.config.contract.requests`, `home.config.home.{packages,username}`) and forwards them,
-  so a home-manager producer passes one `home` instead of hand-rolling the disassembly — turnkey
-  on the **producer** side exactly as `bindContractPackage` is on the **consumer** side. It does
-  **not** import home-manager (it only *reads* attributes, like `bindUserModule` references
-  `config.home-manager.users.<u>`), so the package-free invariant (ADR-0004) holds; the generic
-  `mkContractPackage` stays builder-agnostic. `pkgs` is a parameter so one call emits multi-arch
-  variants. **(built — issue #23)** (ADR-0016)
-- **`bindContractPackage`** — the host-side binding for the pre-built path:
-  `bindContractPackage { contractPackage; identity; grants }`. Returns a NixOS module that
-  reads `contract-requests.json` at eval time, bridges granted requests via the same
-  `mkUserAccount`/`bridgeRequests` kernel as `bindUserModule`, and registers a
-  `system.activationScripts` entry that runs `contractPackage/activate` at switch time. When
-  `custom.host.packagePolicy.allowedPrograms` is non-empty it also builds and links a
-  host-built package profile. **(built — issue #16)** (ADR-0016)
+  `home.config.contract.requests`, `home.config.home.{packages,username}`) and forwards them. It
+  does **not** import home-manager (only *reads* attributes), so the package-free invariant
+  (ADR-0004) holds. **Not a flake output** — [[mkContractUser]] bakes each variant through it
+  (ADR-0026). **(built — issue #23)** (ADR-0016)
+- **`bindContractPackage`** *(internal kernel)* — the package-level host bind:
+  `bindContractPackage { contractPackage; identity; grants }`. Returns a NixOS module that reads
+  `contract-requests.json` at eval time, bridges granted requests via the `mkUserAccount`/
+  `bridgeRequests` kernel, and registers a `system.activationScripts` entry that runs
+  `contractPackage/activate` at switch time. When `custom.host.packagePolicy.allowedPrograms` is
+  non-empty it also builds and links a host-built package profile. **Not a flake output** — the
+  public consumer [[bindContractUser]] selects a variant and delegates here; the grant model is
+  negotiation-only, so its unilateral `grants` argument is never a consumer entry (ADR-0026).
+  **(built — issue #16)** (ADR-0016)
 - **variant** — a **baked home identified by the grant set it was baked with**. `mkContractPackage`
   freezes `activationPackage`, so a grant that *changes the baked home* (a **home-affecting**
   grant — one the user's `home.nix` fans out on, e.g. `gui` → emacs/ai) must be its own variant,
@@ -318,21 +317,27 @@ the term is stable, the code is pending (see the cited issue).
   = { identity; offer; variants = [{ granted; package }] }`. Plain data (no IFD), so a host
   selects a [[variant]] without building any of them. Identity is resolved once from the ADR-0020
   path. **(built — issue #25)** (ADR-0025)
-- **`mkUserBindings`** — the **producer** helper (contract `lib`) the `users` flake calls once:
-  maps over each user's declared [[offer]]/variants and emits **both** the named packages **and**
-  the [[binding index]]. The turnkey producer surface for the multi-user repo (ADR-0020), as
-  `mkContractPackageForHome` is for a single home. **(built — issue #25)** (ADR-0025)
-- **`bindUserFromFlake`** — the **turnkey host-side bind**: `{ usersFlake; username }`, **no
+- **`mkContractUser`** — the **singular public producer** and the twin of the consumer's
+  [[bindContractUser]] (make one contract-user ⇄ bind one): `{ name; offer; variants; pkgs; system;
+  usersDir }`. Bakes ONE user's [[variant]]s into the named packages and its
+  `contractUsers.<sys>.<user>` [[binding index]] entry — the ready-to-`inherit … packages
+  contractUsers` flake-output shape, so a single-user repo needs no roster. **(built — ADR-0026)**
+- **`mkContractUsers`** — the **roster public producer**: [[mkContractUser]] mapped over a whole
+  `users` flake and merged, so a multi-user repo (ADR-0020) bakes its entire roster in **one** call.
+  The turnkey producer for the multi-user shape exactly as [[bindContractUser]] is the turnkey
+  consumer. **(built — issue #25; singularised ADR-0026)** (ADR-0025)
+- **`bindContractUser`** — the **sole public consumer bind**: `{ usersFlake; username }`, **no
   `grants`**. Reads `contract.affordances` and the user's [[binding index]], derives
-  `grant = affordances ∩ offer`, selects the **maximal baked [[variant]] whose grant-key ⊆ grant**
-  (no unique maximum ⇒ hard error), and delegates to `bindContractPackage` with the derived grant
-  and index-supplied identity. The host holds **zero** users-repo internals (no variant names, no
-  identity paths). Wraps the primitive on the consumer side as `mkUserBindings` does on the
-  producer side. **(built — issue #25)** (ADR-0025)
+  `grant = affordances ∩ offer` (always negotiated), selects the **maximal baked [[variant]] whose
+  grant-key ⊆ grant** (no unique maximum ⇒ hard error), and delegates to the internal
+  [[bindContractPackage]] kernel with the derived grant and index-supplied identity. The host holds
+  **zero** users-repo internals (no variant names, no identity paths). Consumer twin of
+  [[mkContractUser]]. **(built — issue #25; renamed ADR-0026)** (ADR-0025)
 - **coupling guard** — `bindContractPackage`'s assertion `manifest.granted ⊆ grantedNamesOf grants`:
-  you may only bind a [[variant]] whose baked grants you actually grant. Required by ADR-0016 but
-  never enforced until ADR-0025; maximal-subset selection satisfies it by construction, so the
-  check is defense-in-depth for direct callers. **(built — issue #25)** (ADR-0016, ADR-0025)
+  a [[variant]] may bind only if its baked grants are all granted. Required by ADR-0016 but never
+  enforced until ADR-0025; maximal-subset selection in [[bindContractUser]] satisfies it by
+  construction, so the check is defense-in-depth for the internal kernel. **(built — issue #25)**
+  (ADR-0016, ADR-0025)
 
 ## Program scope and package policy
 
@@ -371,10 +376,11 @@ the term is stable, the code is pending (see the cited issue).
 
 - **conformance suite** — the contract's own tests (`conformance/`): synthetic users × the
   umbrella, no host repo. **Eval** (`default.nix`) proves grant/deny, the gui-union
-  *decision*, the clamp, the safe set, the users × archetypes matrix,
-  `mkContractPackage` content, `mkContractPackageForHome`'s home-attribute projection (same
-  content-addressed store path as the direct call), and `bindContractPackage` parity with
-  `bindUserModule`. **VM
+  *decision*, the clamp, the safe set, the users × archetypes matrix, the `traceUser` dry-run
+  kernel, `mkContractPackage` content, `mkContractPackageForHome`'s home-attribute projection (same
+  content-addressed store path as the direct call), `mkContractUser`/`mkContractUsers` parity, and
+  `bindContractPackage` reproducing the `traceUser` kernel's account + gui surface from a pre-built
+  manifest. **VM
   tests** (each a `runNixOSTest` boot): `vm.nix` (gui-union renders), `greeter-vm.nix`
   (provisioning crux), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
   `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
@@ -394,7 +400,7 @@ the term is stable, the code is pending (see the cited issue).
   never call configuration a "grant."
 - **request** (user-emitted, home-side) and **feature configuration** (host-owned,
   system-side) are a **producer→consumer pair**, *not* interchangeable: the user writes a
-  request, `bindUser` bridges granted ones into feature configuration, the realization reads
+  request, the pre-built bind bridges granted ones into feature configuration, the realization reads
   feature configuration. Same shape, different owner and trust-side — never call a user's
   request "feature configuration," or a host-written value a "request."
 - **desktop** vs **session type** — **desktop** (`gui.desktop`) is the user's intent, an
@@ -417,9 +423,11 @@ the term is stable, the code is pending (see the cited issue).
 
 - The contract **depends only on nixpkgs `lib`** — no `self`, no `inputs`, no secrets
   backend, no package. (ADR-0004; the extraction litmus test)
-- **One nixpkgs (inline-eval mode)**: a user pins `inputs.nixpkgs.follows` to the host's —
-  no second nixpkgs. Relaxed in the pre-built binding mode: the user controls their own
-  nixpkgs pin and packages are user-built; see *program scope*. (ADR-0007, ADR-0016)
+- **The user controls their own nixpkgs pin** in the pre-built binding mode — the home is baked by
+  the producer and packages are user-built, so there is no one-nixpkgs constraint; see *program
+  scope*. (ADR-0007, ADR-0016, ADR-0026)
 - **Privilege is build-time-only**; the runtime greeter confers only the safe set.
+- **The grant is negotiated** — the only public path to a grant is `affordances ∩ offer`
+  (`bindContractUser`); no consumer writes a grant unilaterally. (ADR-0026)
 - **A request names a host effect but never performs it** — the host writes, only on grant.
 - **Data before code** — authenticate on `identity.json` before evaluating any user Nix.

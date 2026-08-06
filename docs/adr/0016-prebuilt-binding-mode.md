@@ -7,6 +7,10 @@
 guard ("the grant baked into the home MUST match the grant the host passes") — baked as
 `manifest.granted` but never read — is enforced there as a subset check (`manifest.granted ⊆
 grants`), and the turnkey `bindUserFromFlake`/`mkUserBindings` helpers wrap this primitive.
+**Amended by [ADR-0026](0026-consumer-producer-public-surface.md)**: those wrappers are renamed
+`bindContractUser`/`mkContractUsers` (+ singular `mkContractUser`), and this ADR's primitives
+(`mkContractPackage`, `mkContractPackageForHome`, `bindContractPackage`) become **internal**
+kernels — not flake outputs — since the public surface now speaks only in "contract users."
 
 [ADR-0007](0007-user-flake-shape.md) fixed the user flake shape and `bindUserModule` as the
 real binding mechanism: the host imports the user's home module into `home-manager.users.<u>`
