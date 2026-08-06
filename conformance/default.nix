@@ -34,6 +34,9 @@
   mkContractPackageForHome,
   bindContractPackage,
   mkHostFacts,
+  writeManifest,
+  readManifest,
+  manifestFileName,
   nixosSystem,
   system,
 }:
@@ -102,6 +105,9 @@ let
         mkContractPackage
         mkContractPackageForHome
         bindContractPackage
+        writeManifest
+        readManifest
+        manifestFileName
         greeterGrants
         ;
     })

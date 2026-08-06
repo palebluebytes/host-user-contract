@@ -282,13 +282,25 @@ the term is stable, the code is pending (see the cited issue).
   time it runs the activation then replaces `~/.nix-profile` with a host-built package profile. The
   **one binding mode** (ADR-0026 retired the inline-eval alternative). **(built — issue #16)**
   (ADR-0016; amends ADR-0007)
+- **manifest module** *(internal)* — the single owner of the `contract-requests.json` schema: the
+  seam between the producer [[mkContractPackage]] and the consumer [[bindContractPackage]]. It owns
+  the manifest **version**, its **field set** (`version`, `username`, `requests`, `packages`,
+  `granted`), the seam **filename**, and the **v1→v2 compat read** (v2 added the `granted`
+  coupling-guard field; a v1 manifest predates it and reads back as `[ ]`). `writeManifest`
+  serializes a manifest to a store path at eval time (`builtins.toFile`, no IFD); `readManifest`
+  parses a pinned/realized store path back into the canonical field set. The producer writes
+  *through* `writeManifest` and the consumer reads *through* `readManifest`, so neither re-encodes
+  the shape. Exposed via `kit.internal` so the conformance suite proves the write→read round-trip and
+  generates its `reference-contract-package{,-gui}` fixtures through it. **(built — issue #27)**
+  (ADR-0016)
 - **`mkContractPackage`** *(internal kernel)* — the derivation logic that produces a
   `contractPackage` from an already-evaluated home config:
-  `mkContractPackage { pkgs; activationPackage; requests; packages; username }`. Serializes
-  `config.contract.requests` and the top-level package manifest into `contract-requests.json`
-  (via `builtins.toFile` at eval time, no IFD) and wraps both into a single derivation. **Not a
-  flake output** — the public producer surface is [[mkContractUser]]/[[mkContractUsers]], which bake
-  through it (ADR-0026). **(built — issue #14)** (ADR-0016)
+  `mkContractPackage { pkgs; activationPackage; requests; packages; username }`. Projects
+  `config.contract.requests` and the top-level package manifest into the [[manifest module]]'s
+  `writeManifest` (`builtins.toFile` at eval time, no IFD) and wraps activate + manifest into a
+  single derivation. **Not a flake output** — the public producer surface is
+  [[mkContractUser]]/[[mkContractUsers]], which bake through it (ADR-0026). **(built — issue #14)**
+  (ADR-0016)
 - **`mkContractPackageForHome`** *(internal kernel)* — the home-manager producer adapter:
   `mkContractPackageForHome { home; grants ? { }; pkgs }`. Reads `mkContractPackage`'s four
   primitives off an already-evaluated home (`home.activationPackage`,
@@ -298,7 +310,8 @@ the term is stable, the code is pending (see the cited issue).
   (ADR-0026). **(built — issue #23)** (ADR-0016)
 - **`bindContractPackage`** *(internal kernel)* — the package-level host bind:
   `bindContractPackage { contractPackage; identity; grants }`. Returns a NixOS module that reads
-  `contract-requests.json` at eval time, bridges granted requests via the `mkUserAccount`/
+  `contract-requests.json` at eval time via the [[manifest module]]'s `readManifest`, bridges
+  granted requests via the `mkUserAccount`/
   `bridgeRequests` kernel, and registers a `system.activationScripts` entry that runs
   `contractPackage/activate` at switch time. When `custom.host.packagePolicy.allowedPrograms` is
   non-empty it also builds and links a host-built package profile. **Not a flake output** — the

@@ -10,6 +10,7 @@
 {
   lib,
   registry,
+  manifest,
 }:
 let
   # A feature is runtime/greeter-eligible iff it declares no privilegedGroups (ADR-0002,
@@ -74,9 +75,12 @@ let
   # `bindContractPackage` can prove its own grant matches the baked variant (the secret-bearing
   # coupling, ADR-0016: "the grant baked into the home MUST match the grant the host passes").
   #
-  # The manifest is serialized to a store path at EVAL TIME via `builtins.toFile` (pure, no IFD),
-  # then copied into the derivation during the build. The derivation is content-addressed: the
-  # same home eval always produces the same store path, covering both activate and the requests.
+  # The manifest is serialized to a store path at EVAL TIME via the `manifest` module's `writeManifest`
+  # (`builtins.toFile`, pure, no IFD), then copied into the derivation during the build. The manifest
+  # module OWNS the schema (version, field set, filename); this producer only projects its inputs into
+  # that shape — package DERIVATIONS to package NAMES (the host needs names, not store paths), the grant
+  # attrset to the baked feature-name list. The derivation is content-addressed: the same home eval
+  # always produces the same store path, covering both activate and the requests.
   mkContractPackage =
     {
       pkgs,
@@ -88,21 +92,18 @@ let
     }:
     let
       packageNames = map (p: p.pname or (builtins.parseDrvName p.name).name) packages;
-      manifestFile = builtins.toFile "contract-requests-${username}.json" (
-        builtins.toJSON {
-          version = 2;
-          inherit username requests;
-          packages = packageNames;
-          # The enabled feature names the home was baked with (ADR-0016 coupling guard).
-          granted = grantedNamesOf grants;
-        }
-      );
+      manifestFile = manifest.writeManifest {
+        inherit username requests;
+        packages = packageNames;
+        # The enabled feature names the home was baked with (ADR-0016 coupling guard).
+        granted = grantedNamesOf grants;
+      };
     in
     pkgs.runCommand "contract-package-${username}" { } ''
       mkdir -p $out
       cp ${activationPackage}/activate $out/activate
       chmod +x $out/activate
-      cp ${manifestFile} $out/contract-requests.json
+      cp ${manifestFile} $out/${manifest.manifestFileName}
     '';
 
   # mkContractPackageForHome (ADR-0016, issue #23): the OPTIONAL home-manager producer adapter. It mirrors
@@ -248,10 +249,13 @@ let
     { config, pkgs, ... }:
     let
       username = identity.username;
-      manifest = lib.importJSON "${contractPackage}/contract-requests.json";
-      requests = manifest.requests;
+      # Read the pinned manifest THROUGH the schema owner (the `manifest` module): it applies the
+      # v1→v2 compat (a v1 manifest's absent `granted`/`packages` normalize to `[ ]`), so this
+      # consumer never spells the field set or the filename itself.
+      parsed = manifest.readManifest "${contractPackage}/${manifest.manifestFileName}";
+      requests = parsed.requests;
       allowedPrograms = config.custom.host.packagePolicy.allowedPrograms;
-      userPackages = manifest.packages or [ ];
+      userPackages = parsed.packages;
       approvedNames = lib.filter (n: lib.elem n allowedPrograms) userPackages;
       approvedPkgs = lib.filter (p: p != null) (map (n: pkgs.${n} or null) approvedNames);
       # The coupling guard (ADR-0016, finally enforced by ADR-0025): a host may bind a variant
@@ -262,7 +266,7 @@ let
       # manifest predates the baked field (`granted or [ ]` ⇒ vacuously satisfied). Maximal-subset
       # selection in `bindContractUser` satisfies this by construction; the check is
       # defense-in-depth for the internal kernel.
-      bakedGranted = manifest.granted or [ ];
+      bakedGranted = parsed.granted;
       ungranted = lib.subtractLists (grantedNamesOf grants) bakedGranted;
       guard = lib.assertMsg (subsetOf bakedGranted (grantedNamesOf grants)) (
         "bindContractPackage: the variant for '${username}' was baked with grant(s) "

@@ -1,8 +1,1 @@
-{
-  "version": 1,
-  "username": "ada",
-  "requests": {
-    "gui": { "desktop": "plasma" }
-  },
-  "packages": ["hello"]
-}
+{"packages":["hello"],"requests":{"gui":{"desktop":"plasma"}},"username":"ada","version":1}

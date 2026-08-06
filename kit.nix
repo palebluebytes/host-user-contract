@@ -30,11 +30,16 @@ let
   identityJson = import ./identity-json.nix { inherit lib identityOptions; };
   homeProfileOptions = import ./home-profiles.nix { inherit lib; };
 
+  # The manifest module (ADR-0016, issue #27): the single owner of the `contract-requests.json`
+  # schema — the seam `mkContractPackage` writes through and `bindContractPackage` reads through.
+  manifest = import ./manifest.nix { inherit lib; };
+
   # --- the two substantial pieces, split out for focus ---
   contractLib = import ./lib.nix {
     inherit
       lib
       registry
+      manifest
       ;
   };
   modules = import ./modules.nix {
@@ -123,6 +128,13 @@ in
       mkContractPackageForHome
       bindContractPackage
       mkHostFacts
+      ;
+    # The manifest schema owner (issue #27): the producer/consumer seam, exposed so the
+    # conformance suite proves the write→read round-trip and generates its fixtures through it.
+    inherit (manifest)
+      writeManifest
+      readManifest
+      manifestFileName
       ;
   };
 

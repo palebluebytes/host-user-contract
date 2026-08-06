@@ -87,6 +87,9 @@
             mkContractPackageForHome
             bindContractPackage
             mkHostFacts
+            writeManifest
+            readManifest
+            manifestFileName
             ;
           nixosSystem = nixpkgs.lib.nixosSystem;
         };
