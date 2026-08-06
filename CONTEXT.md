@@ -87,10 +87,21 @@ the term is stable, the code is pending (see the cited issue).
   reads. A request *names* a host effect but never performs it; the user never writes system-side.
   (ADR-0002, ADR-0007; `homeModules.default`)
 - **realization** — the host-invariant module mapping each `custom.users.<u>` to a
-  `users.users` account. Powers route through *grants*, not raw identity. (`realization.nix`,
-  ADR-0001 mechanic 5)
-- **clamp** — the realization filtering privileged groups out of a user's self-declared
-  `identity.extraGroups` (untrusted input). Privileged groups come only from a grant, so a
+  `users.users` account. Powers route through *grants*, not raw identity. Since issue #30 it owns
+  no identity→account field logic itself: it is the **build-time adapter** over the [[accountPlan]],
+  mapping that neutral record into the `users.users` module shape (the `isNormalUser` framing, the
+  `openssh.authorizedKeys.keys` nesting). (`realization.nix`, ADR-0001 mechanic 5)
+- **accountPlan** — the pure `accountPlan (identity, grants) → account record`: the **single
+  description** of how an identity and its grants become a system account — `description`/GECOS,
+  `hashedPassword`, `authorizedKeys` (the primary `sshKey`, dropped when empty, then `trustedKeys`),
+  and `extraGroups` (the [[clamp]]ed self-declared groups ∪ the granted groups). Closed over
+  [[grantLib]] so its clamp + grant→groups fold are single-sourced. It is the plan **both** adapters
+  render: the [[realization]] maps it into `users.users` at build time; the greeter's runtime
+  `provision` will render the same record to data (issue #31) — so the two cannot drift. A neutral
+  record (the four account fields, not a NixOS-module shape), so the runtime side can serialize it.
+  (`account-plan.nix`) **(built — issue #30)**
+- **clamp** — the account plan applying [[grantLib]]'s filter of privileged groups out of a
+  user's self-declared `identity.extraGroups` (untrusted input). Privileged groups come only from a grant, so a
   user can never self-escalate by listing `docker`/`wheel` in its identity — and, under the
   negotiated grant (ADR-0025), never **beyond the host's [[affordance]]s**: the offer completes
   a grant only for features the host affords, and the untrusted/greeter path affords only the

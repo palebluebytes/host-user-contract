@@ -19,12 +19,17 @@
 # MUST grant the matching feature (e.g. `sudo` for wheel, `containers` for docker/podman). The
 # host repo's grant matrix is where those decisions live; this module only enforces the rule.
 #
-# Closes over its contract data (the injected grantLib) rather than reaching through the
-# consumer's `self` (ADR-0004): the kit applies this with the registry-derived grant-projection
-# helpers, so the shipped module depends on neither `self` nor `inputs` — only the NixOS module
-# args. This is what lets the contract become a standalone flake. grantLib (issue #28) is the
-# single owner of the grant→groups fold and the privileged-group clamp used below.
-{ grantLib }:
+# Closes over its contract data (the injected `accountPlan`) rather than reaching through the
+# consumer's `self` (ADR-0004): the kit applies this with the shared account plan (itself closed
+# over the registry-derived grantLib), so the shipped module depends on neither `self` nor
+# `inputs` — only the NixOS module args. This is what lets the contract become a standalone flake.
+#
+# This module is the BUILD-TIME ADAPTER over that plan (issue #30): it owns no identity→account
+# field logic itself — `accountPlan (identity, grants)` derives every account field (GECOS,
+# hashedPassword, authorizedKeys, the clamped+granted groups) — and this module only maps that
+# neutral record into the NixOS `users.users` module shape. The runtime adapter (the greeter's
+# `provision`) renders the SAME plan to data (issue #31), so the clamp cannot drift between them.
+{ accountPlan }:
 {
   lib,
   config,
@@ -38,11 +43,6 @@ let
   # and the user's free-form desktop NAME (ADR-0021, superseding ADR-0018's session-type derivation).
   guiUsers = lib.filter (u: u.granted.gui.enable or false) (lib.attrValues users);
   anyGuiGranted = guiUsers != [ ];
-
-  # Privileged + input groups earned from the features granted to this user (grantLib fold).
-  grantedGroups = u: grantLib.grantedGroups u.granted;
-  # Self-declared groups with privileged ones clamped out (untrusted input — grantLib clamp).
-  safeDeclared = u: grantLib.safeDeclared u.identity.extraGroups;
 in
 {
   # Some gui user is granted ⇒ the host needs a shared display surface. Neutral, session-agnostic
@@ -68,13 +68,22 @@ in
       "/share/applications"
     ];
 
-    users.users = lib.mapAttrs (_name: u: {
-      isNormalUser = true;
-      inherit (u.identity) hashedPassword;
-      extraGroups = lib.unique (safeDeclared u ++ grantedGroups u);
-      description = u.identity.name;
-      openssh.authorizedKeys.keys =
-        lib.optional (u.identity.sshKey != "") u.identity.sshKey ++ u.identity.trustedKeys;
-    }) users;
+    # Map each user's account plan into the NixOS `users.users` shape. All identity→account field
+    # derivation lives in `accountPlan`; this adapter only supplies the module-specific framing
+    # (`isNormalUser`, the `openssh.authorizedKeys.keys` nesting) around the neutral record.
+    users.users = lib.mapAttrs (
+      _name: u:
+      let
+        plan = accountPlan {
+          inherit (u) identity;
+          grants = u.granted;
+        };
+      in
+      {
+        isNormalUser = true;
+        inherit (plan) hashedPassword description extraGroups;
+        openssh.authorizedKeys.keys = plan.authorizedKeys;
+      }
+    ) users;
   };
 }

@@ -46,8 +46,14 @@ let
     map (f: f.config or { }) (lib.attrValues registry)
   );
 
+  # The shared account plan (issue #30): the single pure `accountPlan (identity, grants) → account
+  # record`, closed over grantLib so its clamp + grant→groups fold are single-sourced (issue #28).
+  # `realization.nix` renders it into `users.users` at build time; the greeter's runtime provisioning
+  # renders the same record to data (issue #31), so the two adapters cannot drift.
+  inherit (import ./account-plan.nix { inherit lib grantLib; }) accountPlan;
+
   # --- closed-over modules + option fragments ---
-  realization = import ./realization.nix { inherit grantLib; };
+  realization = import ./realization.nix { inherit accountPlan; };
   identityOptions = import ./identity.nix { inherit lib; };
   identityJson = import ./identity-json.nix { inherit lib identityOptions; };
   homeProfileOptions = import ./home-profiles.nix { inherit lib; };
