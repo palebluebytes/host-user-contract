@@ -16,23 +16,29 @@
 # role a host's gui-desktop binding plays in production. The shipped contract module stays neutral;
 # the *test* picks a backend.
 #
-# Lean by design: the display-manager unit is present but not pulled in at boot (we only assert the
-# assembled session *artifacts* + account activation), so the VM reaches multi-user without starting
-# a graphical greeter.
+# A build-time-binding seat (greeter off, CONTEXT.md): the gui-surface decision is a realization
+# concern, not a greeter one, so it takes ./seat-vm.nix's `greeter = false` boot base. Lean by design:
+# the display-manager
+# unit is present but not pulled in at boot (we only assert the assembled session *artifacts* +
+# account activation), so the VM reaches multi-user without starting a graphical greeter.
 {
   pkgs,
   contractModule,
   system,
 }:
-pkgs.testers.runNixOSTest {
+let
+  inherit
+    (import ./seat-vm.nix {
+      inherit pkgs system contractModule;
+    })
+    mkSeatVM
+    ;
+in
+mkSeatVM {
   name = "contract-gui-surface";
+  greeter = false;
 
-  # The contract umbrella imports insecure-packages.nix, which writes `nixpkgs.config`
-  # (the single permittedInsecurePackages writer). That conflicts with the test driver's
-  # default read-only nixpkgs, so let the node own its pkgs as a real host does.
-  node.pkgsReadOnly = false;
-
-  nodes.machine =
+  seat =
     {
       config,
       lib,
@@ -42,48 +48,33 @@ pkgs.testers.runNixOSTest {
       surface = config.custom.gui.surface;
     in
     {
-      # Brings the `custom.users` schema + the host-invariant realization that derives the
-      # session-agnostic gui-surface decision (custom.gui.surface.enabled). Depends only on lib —
-      # no `self`, no `inputs`, so (unlike the fleet original) the node needs no specialArgs.
-      imports = [ contractModule ];
+      # Keep the boot lean: the greeter need not run for the session files to be
+      # assembled into the system (they come from the session packages, not the DM
+      # unit), so we reach multi-user without a graphical login.
+      systemd.services.display-manager.wantedBy = lib.mkForce [ ];
 
-      config = {
-        system.stateVersion = "25.11";
-        nixpkgs.hostPlatform = system;
-        boot.loader.grub.enable = false;
-        fileSystems."/" = {
-          device = "tmpfs";
-          fsType = "tmpfs";
+      # The suite's OWN test display binding — renders the neutral custom.gui.surface.enabled
+      # flag with SDDM + Plasma 6. This is NOT part of the shipped contract (a real host supplies
+      # its own gui-desktop binding); it lives here so the contract's runtime proof needs no host
+      # repo. The SEAT (this binding) picks the session type — Plasma's default Wayland session —
+      # not the contract (ADR-0021).
+      services = lib.mkIf surface.enabled {
+        displayManager.sddm.enable = lib.mkDefault true;
+        displayManager.defaultSession = lib.mkDefault "plasma";
+        desktopManager.plasma6.enable = lib.mkDefault true;
+      };
+
+      # One gui user on the seat, choosing a desktop by its free-form NAME. The realization sees
+      # the grant and asks for a surface (custom.gui.surface.enabled); the session type its
+      # desktop runs as is the seat binding's concern (ADR-0021).
+      custom.users.aurelia = {
+        identity = {
+          name = "Aurelia Example";
+          email = "aurelia@example.invalid";
+          username = "aurelia";
         };
-
-        # Keep the boot lean: the greeter need not run for the session files to be
-        # assembled into the system (they come from the session packages, not the DM
-        # unit), so we reach multi-user without a graphical login.
-        systemd.services.display-manager.wantedBy = lib.mkForce [ ];
-
-        # The suite's OWN test display binding — renders the neutral custom.gui.surface.enabled
-        # flag with SDDM + Plasma 6. This is NOT part of the shipped contract (a real host supplies
-        # its own gui-desktop binding); it lives here so the contract's runtime proof needs no host
-        # repo. The SEAT (this binding) picks the session type — Plasma's default Wayland session —
-        # not the contract (ADR-0021).
-        services = lib.mkIf surface.enabled {
-          displayManager.sddm.enable = lib.mkDefault true;
-          displayManager.defaultSession = lib.mkDefault "plasma";
-          desktopManager.plasma6.enable = lib.mkDefault true;
-        };
-
-        # One gui user on the seat, choosing a desktop by its free-form NAME. The realization sees
-        # the grant and asks for a surface (custom.gui.surface.enabled); the session type its
-        # desktop runs as is the seat binding's concern (ADR-0021).
-        custom.users.aurelia = {
-          identity = {
-            name = "Aurelia Example";
-            email = "aurelia@example.invalid";
-            username = "aurelia";
-          };
-          granted.gui.enable = true;
-          gui.desktop = "plasma";
-        };
+        granted.gui.enable = true;
+        gui.desktop = "plasma";
       };
     };
 

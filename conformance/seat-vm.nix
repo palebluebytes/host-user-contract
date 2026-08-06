@@ -1,23 +1,30 @@
-# Shared conformance fixtures for the greeter-family runtime VMs — the standing seat-host
-# scaffolding every seat test otherwise re-authors: the bootable base (hostPlatform + no-bootloader
-# + tmpfs root + stateVersion), the greeter-seat preamble (contract + greeter modules,
-# `custom.greeter.enable`, the greetd wiring), the activation stub, and the ssh-signing fixtures. It
-# plays the role ./toolkit.nix plays for the eval side: each greeter VM file (./greeter-vm.nix,
-# ./greeter-session-vm.nix, ./greeter-session-sequence-vm.nix, ./greeter-desktop-vm.nix) becomes a
-# focused record of what it VARIES — the users/grants, the desktop binding, the assertion — handed
-# to `mkSeatVM`. Built per-VM in ./flake.nix (no host repo, no host bindings, ADR-0004 Q5).
+# Shared conformance fixtures for the seat runtime VMs — the standing seat-host scaffolding seat
+# tests otherwise re-author (each posture takes the subset it needs): the bootable base every seat
+# shares (hostPlatform + no-bootloader + tmpfs root + stateVersion), the greeter-seat preamble +
+# greetd wiring (greeter seats), a shared synthetic identity (build-time-binding seats), plus the
+# activation stub and the ssh-signing fixtures. It plays the role ./toolkit.nix plays for the eval
+# side: each seat VM file becomes a focused record of what it VARIES — the users/grants, the binding,
+# the assertion — handed to `mkSeatVM`. Built per-VM in ./flake.nix (no host repo, no host bindings,
+# ADR-0004 Q5).
+#
+# Two binding-mode postures (CONTEXT.md) share the boot base: the RUNTIME-binding seats — the GREETER
+# seats (greeter-provision / -session / -sequence / -desktop / -bind-loop and the fleet integration
+# VM) — add the greeter preamble; the BUILD-TIME-binding seats (prebuilt-bind / daemon-restricted /
+# nix-daemon / gui-surface) keep the greeter off and bind their realization at build time. `greeter ?
+# true` selects between them, so `greeterModule` is required only by the greeter callers (asserted in
+# mkSeatVM).
 {
   pkgs,
   system,
   contractModule,
-  greeterModule,
+  greeterModule ? null,
 }:
 let
   lib = pkgs.lib;
 
-  # The bootable base + greeter-seat preamble every seat host shares (config-only so it composes in
-  # an `imports` list): no bootloader, a tmpfs root, a pinned stateVersion, and the reference greeter
-  # enabled (ADR-0008). The contract umbrella + greeter modules are imported by mkSeatVM alongside it.
+  # The bootable base every seat host shares (config-only so it composes in an `imports` list): no
+  # bootloader, a tmpfs root, a pinned stateVersion. The contract umbrella is imported by mkSeatVM
+  # alongside it; the greeter preamble below is layered on only for greeter seats.
   bootBase = {
     system.stateVersion = "25.11";
     nixpkgs.hostPlatform = system;
@@ -26,6 +33,11 @@ let
       device = "tmpfs";
       fsType = "tmpfs";
     };
+  };
+
+  # The greeter-seat preamble: enable the reference runtime greeter (ADR-0008). Layered on top of the
+  # boot base for greeter seats only; mkSeatVM imports greeterModule alongside it.
+  greeterPreamble = {
     custom.greeter.enable = true;
   };
 
@@ -66,6 +78,16 @@ let
         }
       );
 
+  # A shared synthetic identity — the inert public data (name/email/username/sshKey) a plain-bind seat
+  # materializes an account from. Owned here so the prebuilt-bind / daemon-restricted VMs bind the
+  # same atom rather than re-authoring identical `testIdentity` blocks.
+  testIdentity = {
+    name = "Test User";
+    email = "test@example.invalid";
+    username = "testuser";
+    sshKey = "ssh-ed25519 AAAAtestkey testuser@example";
+  };
+
   # The ssh-signing fixtures — the host's Tier-1 trust anchor (ADR-0011): a signer keypair built at
   # test-build time, with its PUBLIC key surfaced for `custom.greeter.trustedSigners`. Owned here so
   # the seat VMs that drive the signed-auth path (the bind-loop / examples-integration VMs, issue
@@ -77,21 +99,27 @@ let
   signerPub = lib.removeSuffix "\n" (builtins.readFile "${signer}/key.pub");
 in
 {
-  inherit signer signerPub;
+  inherit signer signerPub testIdentity;
 
-  # The seat-VM harness: given a record of what a greeter-family VM VARIES — its name, whether it
-  # needs a graphical (virtio-gpu) boot, whether greetd autologs a user into the session launcher,
-  # the seat module it binds (desktops + defaultDesktop + any per-VM knobs), and its testScript —
-  # assemble the full `runNixOSTest`. Owns the boot base + greeter-seat preamble + greetd wiring, so
-  # each caller declares only its variation.
+  # The seat-VM harness: given a record of what a seat VM VARIES — its name, whether it enables the
+  # reference greeter, whether it needs a graphical (virtio-gpu) boot, whether greetd autologs a user
+  # into the session launcher, the seat module it binds (users/grants/desktops + any per-VM knobs),
+  # and its testScript — assemble the full `runNixOSTest`. Owns the boot base + (for greeter seats)
+  # the greeter preamble + greetd wiring, so each caller declares only its variation.
   mkSeatVM =
     {
       name,
       testScript,
+      greeter ? true,
       graphical ? false,
       autologin ? null,
       seat ? { },
     }:
+    # A greeter seat must be handed the greeter module; otherwise `null` would splice into the
+    # imports list below and fail with a cryptic module-eval error instead of naming the contract.
+    assert lib.assertMsg (
+      greeter -> greeterModule != null
+    ) "mkSeatVM: `greeter = true` requires `greeterModule` to be passed to ./seat-vm.nix";
     pkgs.testers.runNixOSTest (
       {
         inherit name testScript;
@@ -103,11 +131,14 @@ in
         nodes.machine = {
           imports = [
             contractModule
-            greeterModule
             bootBase
-            (greetdWiring autologin)
-            seat
           ]
+          ++ lib.optionals greeter [
+            greeterModule
+            greeterPreamble
+            (greetdWiring autologin)
+          ]
+          ++ [ seat ]
           ++ lib.optional graphical graphicalBase;
         };
       }

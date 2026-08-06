@@ -9,49 +9,30 @@
 # the contract depends only on nixpkgs `lib` (ADR-0004). It is a FOCUSED seat node (like the
 # contract's greeter-provision-vm), not the full desk host config — so the runtime-provisioned account
 # never collides with a declarative one, and the boot stays lean.
+#
+# It runs on the contract's own mkSeatVM harness (passed in from ./flake.nix, reached through the
+# `contract` flake input): the helpers-driven posture (greetd off the console, we drive `provision`
+# by hand), so this file declares only what it VARIES — the real home's closure pinned onto the seat
+# and the runtime provisioning assertion.
 {
-  pkgs,
-  system,
-  contractModule,
-  greeterModule,
+  mkSeatVM,
   homeActivation,
   identityJson,
   username,
 }:
-pkgs.testers.runNixOSTest {
+mkSeatVM {
   name = "reference-fleet-integration";
 
-  # The contract umbrella imports insecure-packages.nix (writes nixpkgs.config), which conflicts
-  # with the driver's default read-only nixpkgs, so let the node own its pkgs as a real host does.
-  node.pkgsReadOnly = false;
+  # Drive the provisioning helper by hand, so keep greetd off the console at boot (the same
+  # helpers-driven posture the contract's greeter tests take).
+  autologin = null;
 
-  nodes.machine =
-    { lib, ... }:
-    {
-      imports = [
-        contractModule
-        greeterModule
-      ];
-
-      system.stateVersion = "25.11";
-      nixpkgs.hostPlatform = system;
-      boot.loader.grub.enable = false;
-      fileSystems."/" = {
-        device = "tmpfs";
-        fsType = "tmpfs";
-      };
-
-      # Enable the reference greeter (puts the provisioning helper on PATH, fixes the grant to the
-      # safe set). We drive the helper directly, so keep boot lean by not pulling the interactive
-      # greetd login in at boot — the same move the contract's greeter tests make.
-      custom.greeter.enable = true;
-      systemd.services.greetd.wantedBy = lib.mkForce [ ];
-
-      # The real home's closure must be on the VM. It is referenced from the testScript (an
-      # interpolated store path), which the driver copies in, but pull it into the system closure
-      # explicitly so the build dependency is unambiguous.
-      environment.etc."reference-fleet-home".source = homeActivation;
-    };
+  seat = {
+    # The real home's closure must be on the VM. It is referenced from the testScript (an
+    # interpolated store path), which the driver copies in, but pull it into the system closure
+    # explicitly so the build dependency is unambiguous.
+    environment.etc."reference-fleet-home".source = homeActivation;
+  };
 
   testScript = ''
     machine.start()

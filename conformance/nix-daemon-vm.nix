@@ -4,62 +4,61 @@
 # — the daemon refuses connections from non-members. The runtime clamp is also proven:
 # a user who self-declares nix-users in identity.extraGroups without the grant does not
 # end up in the group (the realization drops it, as with all privileged groups).
+#
+# A build-time-binding seat (greeter off, CONTEXT.md): it binds users declaratively via `custom.users`
+# and asserts the realization, so ./seat-vm.nix's `greeter = false` boot base is all it needs.
 {
   pkgs,
   contractModule,
   system,
 }:
-pkgs.testers.runNixOSTest {
+let
+  inherit
+    (import ./seat-vm.nix {
+      inherit pkgs system contractModule;
+    })
+    mkSeatVM
+    ;
+in
+mkSeatVM {
   name = "contract-nix-daemon";
-  node.pkgsReadOnly = false;
+  greeter = false;
 
-  nodes.machine =
-    { ... }:
-    {
-      imports = [ contractModule ];
-
-      system.stateVersion = "25.11";
-      nixpkgs.hostPlatform = system;
-      boot.loader.grub.enable = false;
-      fileSystems."/" = {
-        device = "tmpfs";
-        fsType = "tmpfs";
+  seat = {
+    # alice: granted nix-daemon → in nix-users → can use the daemon.
+    custom.users.alice = {
+      identity = {
+        name = "Alice";
+        email = "alice@example.invalid";
+        username = "alice";
       };
-
-      # alice: granted nix-daemon → in nix-users → can use the daemon.
-      custom.users.alice = {
-        identity = {
-          name = "Alice";
-          email = "alice@example.invalid";
-          username = "alice";
-        };
-        granted.nix-daemon.enable = true;
-      };
-
-      # bob: no grant → not in nix-users → daemon-restricted.
-      custom.users.bob = {
-        identity = {
-          name = "Bob";
-          email = "bob@example.invalid";
-          username = "bob";
-        };
-      };
-
-      # carol: self-declares nix-users in identity.extraGroups → realization clamps it.
-      custom.users.carol = {
-        identity = {
-          name = "Carol";
-          email = "carol@example.invalid";
-          username = "carol";
-          extraGroups = [ "nix-users" ];
-        };
-      };
-
-      # The host restricts the daemon to nix-users members.
-      nix.settings.allowed-users = [ "@nix-users" ];
-      # nix-users group must exist for the group check to be meaningful.
-      users.groups.nix-users = { };
+      granted.nix-daemon.enable = true;
     };
+
+    # bob: no grant → not in nix-users → daemon-restricted.
+    custom.users.bob = {
+      identity = {
+        name = "Bob";
+        email = "bob@example.invalid";
+        username = "bob";
+      };
+    };
+
+    # carol: self-declares nix-users in identity.extraGroups → realization clamps it.
+    custom.users.carol = {
+      identity = {
+        name = "Carol";
+        email = "carol@example.invalid";
+        username = "carol";
+        extraGroups = [ "nix-users" ];
+      };
+    };
+
+    # The host restricts the daemon to nix-users members.
+    nix.settings.allowed-users = [ "@nix-users" ];
+    # nix-users group must exist for the group check to be meaningful.
+    users.groups.nix-users = { };
+  };
 
   testScript = ''
     machine.start()

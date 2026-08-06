@@ -14,6 +14,10 @@
 # greeter's pinned restricted-eval posture (ADR-0014) with no network: the fixture's builder is STATIC
 # busybox (no ELF interpreter, so it execs in the bare build sandbox a raw derivation gives), pre-seeded
 # via system.extraDependencies along with the fetched repo and the signer.
+#
+# A GREETER seat driven by hand: it takes ./seat-vm.nix's helpers-driven posture (greetd off the
+# console, autologin = null) and binds the harness's ssh-signing trust anchor (`signer`/`signerPub`),
+# rather than re-authoring the boot base, greeter preamble, and ssh-keygen dance inline.
 {
   pkgs,
   system,
@@ -21,7 +25,16 @@
   greeterModule,
 }:
 let
-  lib = pkgs.lib;
+  seatVM = import ./seat-vm.nix {
+    inherit
+      pkgs
+      system
+      contractModule
+      greeterModule
+      ;
+  };
+  inherit (seatVM) mkSeatVM signer signerPub;
+
   username = "alice";
   password = "bind-loop-pw";
 
@@ -44,14 +57,6 @@ let
     [ -f "$src/flake.nix" ] || { echo "homeBuilder: '$src' is not a flake" >&2; exit 1; }
     printf '%s\n' ${homeDrv}
   '';
-
-  # A test SSH signer — the host's Tier-1 trust anchor (ADR-0011). Generated at build time; its PUBLIC
-  # key is read via IFD into trustedSigners (eval-time), its PRIVATE key signs the fixture repo below.
-  signer = pkgs.runCommand "bind-loop-signer" { nativeBuildInputs = [ pkgs.openssh ]; } ''
-    mkdir -p $out
-    ssh-keygen -q -t ed25519 -N "" -C bind-loop-signer -f $out/key
-  '';
-  signerPub = lib.removeSuffix "\n" (builtins.readFile "${signer}/key.pub");
 
   # The home's activation script — what `provision` runs as the user. It drops a marker so the test can
   # observe the built home activated. The session is secret-free (the contract handles no secrets).
@@ -99,6 +104,7 @@ let
   # The fetched "user repo": flake.nix + a no-input flake.lock (so archive does not regenerate one and
   # change the signed tree) + identity.json (username + a known hashedPassword) + contract.sig, an SSH
   # signature over the tree manifest the auth recomputes (ADR-0011). Exactly the shape auth verifies.
+  # Signed by the harness's Tier-1 trust anchor (`signer`), whose public key seeds trustedSigners below.
   userRepo =
     pkgs.runCommand "bind-loop-user-repo"
       {
@@ -123,28 +129,16 @@ let
         cp "$TMPDIR/manifest.sig" "$out/contract.sig"
       '';
 in
-pkgs.testers.runNixOSTest {
+mkSeatVM {
   name = "contract-greeter-bind-loop";
 
-  node.pkgsReadOnly = false;
-  enableOCR = false;
+  # Drive the orchestrator by hand, so keep greetd from grabbing the console at boot (the
+  # helpers-driven posture, as greeter-provision-vm / integration-vm do).
+  autologin = null;
 
-  nodes.machine =
+  seat =
     { lib, ... }:
     {
-      imports = [
-        contractModule
-        greeterModule
-      ];
-
-      system.stateVersion = "25.11";
-      nixpkgs.hostPlatform = system;
-      boot.loader.grub.enable = false;
-      fileSystems."/" = {
-        device = "tmpfs";
-        fsType = "tmpfs";
-      };
-
       # Runtime nix needs flakes; force offline so the loop proves it runs with no network (the fixture
       # closure is pre-seeded below).
       nix.settings.experimental-features = [
@@ -153,17 +147,13 @@ pkgs.testers.runNixOSTest {
       ];
       nix.settings.substituters = lib.mkForce [ ];
 
-      # Enable the reference greeter and BIND its two host bindings: the homeBuilder and a desktop. We
-      # drive the orchestrator by hand, so keep greetd from grabbing the console at boot (as greeter-provision-vm
-      # / integration-vm do).
-      custom.greeter.enable = true;
+      # BIND the greeter's two host bindings: the homeBuilder and a desktop, plus the Tier-1 trust anchor.
       custom.greeter.tier = "tier1";
       custom.greeter.trustedSigners = [ signerPub ];
       custom.greeter.homeBuilder = "${homeBuilder}";
       custom.greeter.desktops.marker.command =
         "${pkgs.coreutils}/bin/touch /home/${username}/.bind-loop-session";
       custom.greeter.defaultDesktop = "marker";
-      systemd.services.greetd.wantedBy = lib.mkForce [ ];
 
       # Make the runtime `nix build` a cache hit by copying the needed paths into the VM store: homeDrv's
       # OUTPUT (what the fixture flake's identical derivation resolves to, + its runtimeShell/coreutils

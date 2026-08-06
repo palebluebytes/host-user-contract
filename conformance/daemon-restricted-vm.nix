@@ -9,6 +9,9 @@
 # The contractPackage is a synthetic derivation: activate writes a marker and the JSON
 # manifest declares ["hello", "curl"]. The host sets allowedPrograms = ["hello"], so
 # bindContractPackage builds a profile with only pkgs.hello and links it to ~/.nix-profile.
+#
+# A build-time-binding seat (greeter off, CONTEXT.md): it binds the pre-built package (ADR-0016), so
+# ./seat-vm.nix's `greeter = false` boot base + shared synthetic identity are all it needs.
 {
   pkgs,
   contractModule,
@@ -16,6 +19,14 @@
   bindContractPackage,
 }:
 let
+  inherit
+    (import ./seat-vm.nix {
+      inherit pkgs system contractModule;
+    })
+    mkSeatVM
+    testIdentity
+    ;
+
   # Synthetic contractPackage: activate writes a marker; manifest declares hello + curl.
   contractPackage = pkgs.runCommand "daemon-restricted-vm-contract-package" { } ''
     mkdir -p $out
@@ -34,46 +45,28 @@ let
     }
     JSON
   '';
-
-  testIdentity = {
-    name = "Test User";
-    email = "test@example.invalid";
-    username = "testuser";
-    sshKey = "ssh-ed25519 AAAAtestkey testuser@example";
-  };
 in
-pkgs.testers.runNixOSTest {
+mkSeatVM {
   name = "contract-daemon-restricted";
-  node.pkgsReadOnly = false;
+  greeter = false;
 
-  nodes.machine =
-    { ... }:
-    {
-      imports = [
-        contractModule
-        (bindContractPackage {
-          inherit contractPackage;
-          identity = testIdentity;
-          # No nix-daemon grant → testuser is daemon-restricted
-          grants = { };
-        })
-      ];
+  seat = {
+    imports = [
+      (bindContractPackage {
+        inherit contractPackage;
+        identity = testIdentity;
+        # No nix-daemon grant → testuser is daemon-restricted
+        grants = { };
+      })
+    ];
 
-      system.stateVersion = "25.11";
-      nixpkgs.hostPlatform = system;
-      boot.loader.grub.enable = false;
-      fileSystems."/" = {
-        device = "tmpfs";
-        fsType = "tmpfs";
-      };
+    # Package policy: only hello is approved.
+    custom.host.packagePolicy.allowedPrograms = [ "hello" ];
 
-      # Package policy: only hello is approved.
-      custom.host.packagePolicy.allowedPrograms = [ "hello" ];
-
-      # Restrict the Nix daemon to nix-users only (testuser is NOT in nix-users).
-      nix.settings.allowed-users = [ "@nix-users" ];
-      users.groups.nix-users = { };
-    };
+    # Restrict the Nix daemon to nix-users only (testuser is NOT in nix-users).
+    nix.settings.allowed-users = [ "@nix-users" ];
+    users.groups.nix-users = { };
+  };
 
   testScript = ''
     machine.start()

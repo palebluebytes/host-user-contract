@@ -4,6 +4,9 @@
 # The contractPackage is a synthetic derivation: activate writes a marker file, and
 # contract-requests.json carries a gui grant request. After boot, the account exists,
 # the marker is present, and the gui surface decision reflects the bridged request.
+#
+# A build-time-binding seat (greeter off, CONTEXT.md): it binds the pre-built package (ADR-0016), so
+# ./seat-vm.nix's `greeter = false` boot base + shared synthetic identity are all it needs.
 {
   pkgs,
   contractModule,
@@ -11,6 +14,14 @@
   bindContractPackage,
 }:
 let
+  inherit
+    (import ./seat-vm.nix {
+      inherit pkgs system contractModule;
+    })
+    mkSeatVM
+    testIdentity
+    ;
+
   # A synthetic contractPackage: activate writes a marker; JSON carries a gui.desktop request.
   contractPackage = pkgs.runCommand "prebuilt-bind-vm-contract-package" { } ''
     mkdir -p $out
@@ -29,40 +40,20 @@ let
     }
     JSON
   '';
-
-  testIdentity = {
-    name = "Test User";
-    email = "test@example.invalid";
-    username = "testuser";
-    sshKey = "ssh-ed25519 AAAAtestkey testuser@example";
-  };
 in
-pkgs.testers.runNixOSTest {
+mkSeatVM {
   name = "contract-prebuilt-bind";
-  node.pkgsReadOnly = false;
+  greeter = false;
 
-  nodes.machine =
-    { ... }:
-    {
-      imports = [
-        contractModule
-        (bindContractPackage {
-          inherit contractPackage;
-          identity = testIdentity;
-          grants = {
-            gui.enable = true;
-          };
-        })
-      ];
-
-      system.stateVersion = "25.11";
-      nixpkgs.hostPlatform = system;
-      boot.loader.grub.enable = false;
-      fileSystems."/" = {
-        device = "tmpfs";
-        fsType = "tmpfs";
+  seat.imports = [
+    (bindContractPackage {
+      inherit contractPackage;
+      identity = testIdentity;
+      grants = {
+        gui.enable = true;
       };
-    };
+    })
+  ];
 
   testScript = ''
     machine.start()

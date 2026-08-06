@@ -83,9 +83,16 @@
         # greeter-provision-vm), not the full desk host, so the provisioned account never collides with a
         # declarative one.
         fleet-integration = import ./integration-vm.nix {
-          inherit pkgs system;
-          contractModule = contract.nixosModules.default;
-          greeterModule = contract.nixosModules.greeter;
+          # The seat scaffolding (boot base + greeter preamble + greetd wiring) is owned by the
+          # contract's own mkSeatVM harness; reach it through the `contract` flake input's source
+          # tree so this fleet edition binds the SAME atom the contract's greeter-provision-vm does,
+          # rather than re-authoring the seat host inline.
+          mkSeatVM =
+            (import "${contract}/conformance/seat-vm.nix" {
+              inherit pkgs system;
+              contractModule = contract.nixosModules.default;
+              greeterModule = contract.nixosModules.greeter;
+            }).mkSeatVM;
           homeActivation = users.homeConfigurations.ada-greeter.activationPackage;
           identityJson = "${users}/users/ada/identity.json";
           username = "ada";
