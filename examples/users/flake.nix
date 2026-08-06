@@ -37,7 +37,7 @@
       #     single grant-less `base` variant. That is exactly what lets one `ada-contractPackage-base`
       #     be gui on one seat and cli-only on another — the grant rides the bind, never the bake.
       #   - `offer` (ADR-0025): the features this user ASKS a host for. In the turnkey path a host
-      #     declares its `contract.affordances` once and binds each user with `bindUserFromFlake`;
+      #     declares its `contract.affordances` once and binds each user with `bindContractUser`;
       #     the grant is derived as `affordances ∩ offer`. So ada OFFERS gui and RECEIVES it only on
       #     a host that affords gui — the portable-user gui↔cli divergence, now a two-sided
       #     negotiation rather than a hand-written per-host grant.
@@ -85,91 +85,92 @@
         };
       };
 
-      identityOf = name: contract.lib.loadIdentity ./users/${name}/identity.json;
-
-      # The home the contract umbrella + this user's contract-pure module + identity render,
-      # parameterized by the host's grant (hostFacts.granted) and any extra modules. The home.*
-      # fields + home.packages are the home-manager glue a BOUND path gets from the host — kept
-      # HERE (not in the user's home.nix) so home.nix stays contract-pure and evaluates headlessly
-      # against the bare contract umbrella when the conformance tracer harvests its requests
-      # (ADR-0008). home.packages is present so the contractPackage's `packages` manifest is
-      # non-empty and the package-policy intersection stays exercisable end-to-end.
-      mkHome =
-        {
-          name,
-          granted ? { },
-          extra ? [ ],
-        }:
-        home-manager.lib.homeManagerConfiguration {
-          inherit pkgs;
-          modules = [
-            contract.homeModules.default
-            ./users/${name}/home.nix
-            {
-              identity = identityOf name;
-              home.username = name;
-              home.homeDirectory = "/home/${name}";
-              home.stateVersion = "25.11";
-              home.packages = [ pkgs.hello ];
-            }
-          ]
-          ++ extra;
-          extraSpecialArgs = {
-            hostFacts = {
-              exposed = false;
-              platform = system;
-              inherit granted;
-            };
-          };
-        };
-
-      # The greeter-login variant of a home: granted the safe set the runtime path auto-grants
-      # (greeterGrants), importing the desktop-choice helper (ADR-0013) so the home's
-      # contract.requests.gui.desktop surfaces to ~/.contract-desktop, and carrying a marker
-      # dotfile the fleet's integration VM observes to prove a REAL home-manager home activated.
-      mkGreeterHome =
-        name:
-        mkHome {
-          inherit name;
-          granted = contract.greeterGrants;
-          extra = [
-            contract.homeModules.greeterDesktop
-            {
-              home.file.".contract-home-active".text = "greeter-activated for ${(identityOf name).name}";
-            }
-          ];
-        };
-
     in
     {
       # Standalone homes (`nix build .#homeConfigurations.<u>.activationPackage`): each user's
-      # contract-pure home + identity.json build against the contract on their own, granted the
-      # user's baked grants so a real home reacts to its own secret grant where it has one.
+      # contract-pure home + its identity.json, built directly with home-manager's own canonical
+      # `homeManagerConfiguration` (the golden path a real user repo follows) against the contract
+      # umbrella. The home.* fields + home.packages are the home-manager glue a BOUND path gets from
+      # the host — kept HERE, not in the user's home.nix, so home.nix stays contract-pure and
+      # evaluates headlessly against the bare umbrella when the conformance tracer harvests requests
+      # (ADR-0008). Identity is loaded once via the canonical `contract.lib.loadIdentity` and injected
+      # (ADR-0009); hostFacts is the self-scoped host projection the producer supplies inline (there
+      # is no host `config` at bake time — ADR-0026).
       homeConfigurations =
-        (lib.mapAttrs (
+        lib.mapAttrs (
           name: u:
-          mkHome {
-            inherit name;
-            granted = u.bakedGrants;
-            extra = u.homeModules or [ ];
+          let
+            identity = contract.lib.loadIdentity ./users/${name}/identity.json;
+          in
+          home-manager.lib.homeManagerConfiguration {
+            inherit pkgs;
+            modules = [
+              contract.homeModules.default
+              ./users/${name}/home.nix
+              {
+                inherit identity;
+                home.username = name;
+                home.homeDirectory = "/home/${name}";
+                home.stateVersion = "25.11";
+                home.packages = [ pkgs.hello ];
+              }
+            ]
+            ++ (u.homeModules or [ ]);
+            extraSpecialArgs.hostFacts = {
+              exposed = false;
+              platform = system;
+              granted = u.bakedGrants;
+            };
           }
-        ) roster)
-        // (lib.mapAttrs' (name: _: lib.nameValuePair "${name}-greeter" (mkGreeterHome name)) roster);
+        ) roster
+        # The greeter-login variant (<u>-greeter): the SAME home granted the safe set (greeterGrants),
+        # importing the desktop-choice helper (ADR-0013) so contract.requests.gui.desktop surfaces to
+        # ~/.contract-desktop, plus a marker dotfile the fleet's integration VM observes.
+        // lib.mapAttrs' (
+          name: _:
+          let
+            identity = contract.lib.loadIdentity ./users/${name}/identity.json;
+          in
+          lib.nameValuePair "${name}-greeter" (
+            home-manager.lib.homeManagerConfiguration {
+              inherit pkgs;
+              modules = [
+                contract.homeModules.default
+                contract.homeModules.greeterDesktop
+                ./users/${name}/home.nix
+                {
+                  inherit identity;
+                  home.username = name;
+                  home.homeDirectory = "/home/${name}";
+                  home.stateVersion = "25.11";
+                  home.packages = [ pkgs.hello ];
+                  home.file.".contract-home-active".text = "greeter-activated for ${identity.name}";
+                }
+              ];
+              extraSpecialArgs.hostFacts = {
+                exposed = false;
+                platform = system;
+                granted = contract.greeterGrants;
+              };
+            }
+          )
+        ) roster;
 
-      # The turnkey PRODUCER surface (ADR-0025, issue #25): `mkUserBindings` maps the whole roster
+      # The turnkey PRODUCER surface (ADR-0025, issue #25): `mkContractUsers` maps the whole roster
       # ONCE into BOTH the per-user pre-built binding artifacts AND the pure `contractUsers` binding
-      # index a host selects a variant from. It replaces the hand-rolled `mkContractPackageForHome`
-      # loop the fleet used to write (issue #23) — the producer twin of the host's `bindUserFromFlake`.
+      # index a host selects a variant from. It is `mkContractUser` (the singular per-user producer,
+      # the twin of the host's `bindContractUser`) mapped over the roster and merged — one call bakes
+      # the multi-user repo (ADR-0020).
       #
       # Each user declares its `offer` and its `variants` (here a single grant-less `base` variant,
-      # since these reference homes don't fan out on any grant). mkUserBindings bakes each variant
-      # via mkContractPackageForHome (still package-free — it only READS the already-evaluated home),
+      # since these reference homes don't fan out on any grant). mkContractUsers bakes each variant
+      # via the internal package kernels (only READING the already-evaluated home, so package-free),
       # names it `<user>-contractPackage-<variantName>` (empty grant-key ⇒ `base`), resolves each
       # identity once from `users/<u>/identity.json`, and emits the index `contractUsers.<sys>.<u> =
       # { identity; offer; variants = [{ granted; package }] }` as plain data (no IFD) so a host
       # picks a variant without building any of them.
       inherit
-        (contract.lib.mkUserBindings {
+        (contract.lib.mkContractUsers {
           inherit pkgs system;
           usersDir = ./users;
           users = lib.mapAttrs (name: u: {

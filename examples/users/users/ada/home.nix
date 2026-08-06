@@ -4,7 +4,7 @@
 # headless host — whether she gets a gui or cli session is decided by each HOST's grant, never by
 # ada. This home
 # does nothing to make that happen beyond OFFERING its desktop choice: the contract bridges the
-# gui request into the account ONLY where the host granted gui (bindUser's `bridgeRequests`), so
+# gui request into the account ONLY where the host granted gui (the contract's `bridgeRequests`), so
 # the SAME contractPackage yields a gui account on the seat host `desk` and a silently-degraded cli
 # account on `agent` — the home-side of the contract's silent-degradation promise (ADR-0002),
 # with no per-host branching in the home at all.

@@ -9,11 +9,17 @@
 #     no input groups. One identity, one flake, opposite session because the HOST did not afford it
 #     (ADR-0002 silent degradation, now expressed as the affordance veto).
 #   - svc: the cli-only automation account, at home on an exposed box; offers nothing anyway.
-{ bindUserTurnkey, ... }:
+{ contract, users, ... }:
 {
   imports = [
-    (bindUserTurnkey "ada")
-    (bindUserTurnkey "svc")
+    (contract.lib.bindContractUser {
+      usersFlake = users;
+      username = "ada";
+    })
+    (contract.lib.bindContractUser {
+      usersFlake = users;
+      username = "svc";
+    })
   ];
 
   networking.hostName = "agent";

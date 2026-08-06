@@ -1,6 +1,6 @@
 # desk — a SEAT host (non-exposed) with the reference greeter enabled.
 #
-# It declares its `contract.affordances` ONCE and binds three users turnkey via `bindUserFromFlake`
+# It declares its `contract.affordances` ONCE and binds three users turnkey via `bindContractUser`
 # (ADR-0025) — no per-user grants, no variant names, no identity paths. Each user's grant is
 # derived as `affordances ∩ offer`:
 #   - ada OFFERS gui; desk affords gui ⇒ she gets it — her gui.desktop request bridges in, the
@@ -17,13 +17,22 @@
 # It also enables the reference greeter (a seat concern): the runtime login path. The greeter's
 # end-to-end provisioning is exercised by the fleet-integration VM, which consumes the same ada
 # output at runtime — declarative here, runtime there, one convention.
-{ contract, bindUserTurnkey, ... }:
+{ contract, users, ... }:
 {
   imports = [
     contract.nixosModules.greeter
-    (bindUserTurnkey "ada")
-    (bindUserTurnkey "cleo")
-    (bindUserTurnkey "admin")
+    (contract.lib.bindContractUser {
+      usersFlake = users;
+      username = "ada";
+    })
+    (contract.lib.bindContractUser {
+      usersFlake = users;
+      username = "cleo";
+    })
+    (contract.lib.bindContractUser {
+      usersFlake = users;
+      username = "admin";
+    })
   ];
 
   contract.affordances = {

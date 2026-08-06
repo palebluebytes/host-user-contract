@@ -5,11 +5,17 @@
 #   - svc: a cli-only automation account (offers nothing).
 #
 # Non-exposed and headless: affords no gui, so no display surface.
-{ bindUserTurnkey, ... }:
+{ contract, users, ... }:
 {
   imports = [
-    (bindUserTurnkey "ben")
-    (bindUserTurnkey "svc")
+    (contract.lib.bindContractUser {
+      usersFlake = users;
+      username = "ben";
+    })
+    (contract.lib.bindContractUser {
+      usersFlake = users;
+      username = "svc";
+    })
   ];
 
   networking.hostName = "vault";

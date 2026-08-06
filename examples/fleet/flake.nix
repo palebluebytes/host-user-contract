@@ -1,5 +1,5 @@
 {
-  description = "Reference HOST FLEET — a NixOS machine fleet that consumes the contract by binding the reference user fleet (examples/users) per user, turnkey, via bindUserFromFlake + contract.affordances (ADR-0025). It shows the contract's reason to exist: two independently-owned repos (hosts, users) meeting at the binding. Positive-space reference with its own smoke/coherence checks (docs/adr/0022); it never re-bases the contract's synthetic conformance suite.";
+  description = "Reference HOST FLEET — a NixOS machine fleet that consumes the contract by binding the reference user fleet (examples/users) per user, turnkey, via bindContractUser + contract.affordances (ADR-0025). It shows the contract's reason to exist: two independently-owned repos (hosts, users) meeting at the binding. Positive-space reference with its own smoke/coherence checks (docs/adr/0022); it never re-bases the contract's synthetic conformance suite.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -25,21 +25,6 @@
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
 
-      # The turnkey consumption convention (ADR-0025): a host declares its `contract.affordances`
-      # ONCE and binds each user with `bindUserFromFlake { usersFlake; username }` — no per-user
-      # grant matrix, no variant names, no identity paths. The grant is DERIVED as `affordances ∩
-      # offer`: the host's affordance is the absolute veto, the user's offer (in the pinned users
-      # flake) completes it. The SAME user bound under different affordances on different hosts is
-      # what makes any-host×any-user real — ada offers gui and gets it only where gui is afforded.
-      # Named `bindUserTurnkey` (not `bindUser`) — `bindUser` is a distinct contract function (the
-      # headless tracer, CONTEXT.md); this local helper wraps the turnkey `bindUserFromFlake`.
-      bindUserTurnkey =
-        username:
-        contract.lib.bindUserFromFlake {
-          inherit username;
-          usersFlake = users;
-        };
-
       # Host boilerplate shared by every machine (not part of any "example" — just enough to boot
       # an eval): tmpfs root, no bootloader.
       commonBase = {
@@ -53,15 +38,21 @@
       };
 
       # Each host lives in its own file (hosts/<name>.nix) and declares only what is DISTINCTIVE —
-      # which users it binds, what it affords them, whether it is a seat or exposed. The contract
-      # umbrella + the shared base are merged in here.
+      # which users it binds, what it affords them, whether it is a seat or exposed. It gets the
+      # `contract` and the pinned `users` flake, and binds each user with the canonical
+      # `contract.lib.bindContractUser { usersFlake = users; username }` (ADR-0025/0026) — the
+      # turnkey consumption convention: declare `contract.affordances` once, and each user's grant
+      # is DERIVED as `affordances ∩ offer` (the host's affordance is the absolute veto; the user's
+      # offer in the pinned flake completes it). The SAME user bound under different affordances on
+      # different hosts is what makes any-host×any-user real — ada offers gui and gets it only where
+      # gui is afforded. The contract umbrella + the shared base are merged in here.
       mkHost =
         hostFile:
         lib.nixosSystem {
           modules = [
             contract.nixosModules.default
             commonBase
-            (import hostFile { inherit contract bindUserTurnkey; })
+            (import hostFile { inherit contract users; })
           ];
         };
 
@@ -87,7 +78,7 @@
         # `-greeter` home output (a sibling of `ada-contractPackage-base`, built from the same user
         # with the safe-set grant) and observes her real home activate — the runtime half of the
         # uniform flake-output consumption convention (declarative binds the contractPackage via
-        # bindUserFromFlake, the greeter builds the greeter home), the
+        # bindContractUser, the greeter builds the greeter home), the
         # counterpart to the declarative binds above. Focused seat node (like the contract's own
         # greeter-vm), not the full desk host, so the provisioned account never collides with a
         # declarative one.
