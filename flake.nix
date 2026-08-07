@@ -86,7 +86,6 @@
             mkContractPackage
             mkContractPackageForHome
             bindContractPackage
-            mkHostFacts
             writeManifest
             readManifest
             manifestFileName

@@ -33,7 +33,7 @@ The ex-`bindUser` tracer becomes **`traceUser`**: the home-manager-free dry-run 
 
 - **Inline-eval bind (`bindUserModule`): deleted.** The build-time path is pre-built only; the greeter builds the user's own home output. [ADR-0008](0008-greeter-is-a-contract-deliverable.md)'s greeter mechanism condition (2) is reworded from "bind via `bindUserModule`" to "build the user's own home output through the contract umbrella."
 - **Unilateral direct-grant: retired.** The public grant model is **negotiation-only** — `grant = affordances ∩ offer` via `bindContractUser`. `bindContractPackage` (which takes `grants` verbatim) becomes an **internal kernel**; there is no public path to grant a feature a user did not offer.
-- **`bindContractPackage`, `mkContractPackage`, `mkContractPackageForHome`, `mkHostFacts`: internalized.** Not flake outputs. Exposed to the in-repo conformance suite via `kit.internal` so they are still proven in isolation.
+- **`bindContractPackage`, `mkContractPackage`, `mkContractPackageForHome`, `mkHostFacts`: internalized.** Not flake outputs. Exposed to the in-repo conformance suite via `kit.internal` so they are still proven in isolation. *(Amendment: `mkHostFacts` was subsequently **deleted** as caller-less — the producer hand-builds the `{exposed,platform,granted}` literal inline, so the config-projector re-derived nothing; re-add it from git history if a host-side-eval caller returns.)*
 
 The resulting public `lib`: `mkContractUser` · `mkContractUsers` · `bindContractUser` · `traceUser` · `loadIdentity` · `renderNixConfig`.
 

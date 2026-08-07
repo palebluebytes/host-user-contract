@@ -152,9 +152,11 @@ the term is stable, the code is pending (see the cited issue).
 - **hostFacts** — the restricted, read-only, **self-scoped** projection of host state a
   user's home module may read: `{ exposed, platform, granted }`. Deliberately excludes
   `hostName` so adaptation keys on *semantic* facts, not host identity. The value is supplied by
-  whoever builds the home (the producer bakes it per variant). `mkHostFacts` — the helper that
-  projects it safely from a NixOS host `config` — is **internal** since the pre-built path never
-  evaluates a home host-side (ADR-0026). (ADR-0002)
+  whoever builds the home (the producer bakes it per variant, hand-built inline — there is no host
+  `config` at bake time). The `mkHostFacts` config-projector was **deleted** as caller-less (the
+  pre-built path never evaluates a home host-side, ADR-0026); the no-`hostName` confinement is now a
+  **convention** the producer keeps, unenforced until `hostFacts` is a typed option rather than a
+  bare `specialArg`. (ADR-0002, ADR-0026)
 
 ## The greeter and binding
 
