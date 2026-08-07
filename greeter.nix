@@ -28,8 +28,9 @@
 # `provision` enrolls the account into them. `provision` is the runtime, shell-side equivalent of
 # `realization.nix` (ADR-0012): it fully realizes the account from identity.json + the safe-set
 # grant (password, authorizedKeys, GECOS, the CLAMPED safe groups) so a greeter user realizes
-# IDENTICALLY to a build-time one — the portable-user north star: same identity, any seat, same
-# experience.
+# IDENTICALLY to a build-time one — modulo the `greeter-users` seat marker, which is seat
+# infrastructure layered on top, not part of the portable account — the portable-user north star:
+# same identity, any seat, same experience.
 {
   lib,
   privilegedGroups,

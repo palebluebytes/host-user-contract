@@ -74,6 +74,24 @@ let
   expectedKeysFile = pkgs.writeText "expected-authorized-keys" (
     lib.concatMapStrings (k: "${k}\n") buildTimePlan.authorizedKeys
   );
+
+  # Empty-sshKey coverage (issue #31): the shared authorizedKeys rule drops the primary `sshKey`
+  # when it is "" and keeps only trustedKeys. The main fixture ships a NON-EMPTY sshKey, so it never
+  # exercises that "drop when empty" branch — the one branch of the jq reproduction otherwise left
+  # unguarded against drift. A second identity with `sshKey = ""` closes it, still proven from the
+  # shared accountPlan rather than by a hand-written expectation.
+  identityAttrsNoKey = identityAttrs // {
+    username = "nokey";
+    sshKey = "";
+  };
+  identityJsonNoKey = pkgs.writeText "identity-nokey.json" (builtins.toJSON identityAttrsNoKey);
+  expectedKeysFileNoKey = pkgs.writeText "expected-authorized-keys-nokey" (
+    lib.concatMapStrings (k: "${k}\n")
+      (accountPlan {
+        identity = identityAttrsNoKey;
+        grants = greeterGrants;
+      }).authorizedKeys
+  );
 in
 mkSeatVM {
   name = "contract-greeter-provision";
@@ -123,6 +141,13 @@ mkSeatVM {
     )
     # - the home activated AS the user
     machine.succeed("test -f /home/example/.contract-home-activated")
+
+    # Empty-sshKey branch of the shared rule (issue #31): a second identity with sshKey = "" must
+    # realize authorized_keys as trustedKeys ALONE — the primary key DROPPED, not written as a blank
+    # line. The `example` fixture ships a non-empty sshKey, so this guards the one rule branch it
+    # never exercises, still diffed against what the shared accountPlan renders for this identity.
+    machine.succeed("contract-greeter-provision nokey ${identityJsonNoKey} ${activationStub} tier1")
+    machine.succeed("diff ${expectedKeysFileNoKey} /home/nokey/.ssh/authorized_keys")
 
     # Per-user desktop SELECTION (ADR-0013): no home choice ⇒ the seat default (plasma) launches.
     machine.succeed("contract-greeter-session example /home/example")

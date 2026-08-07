@@ -87,6 +87,10 @@
           # contract's own mkSeatVM harness; reach it through the `contract` flake input's source
           # tree so this fleet edition binds the SAME atom the contract's greeter-provision-vm does,
           # rather than re-authoring the seat host inline.
+          # NOTE (deliberate first-consumer coupling): this reaches a conformance-internal helper by
+          # RAW PATH into the contract's source tree, so it breaks if `conformance/seat-vm.nix` moves.
+          # Acceptable while this is the only external consumer; promote `mkSeatVM` to a named surface
+          # (a flake output / testlib path) the moment a second consumer needs it.
           mkSeatVM =
             (import "${contract}/conformance/seat-vm.nix" {
               inherit pkgs system;
