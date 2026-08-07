@@ -33,7 +33,6 @@
 # same identity, any seat, same experience.
 {
   lib,
-  privilegedGroups,
   grantLib,
   greeterGrants,
   tier1EvalConfig,
@@ -47,28 +46,12 @@ let
   # baseline this module declares + `provision` enrolls each account into. Single-sourced through
   # grantLib's grant→groups fold over greeterGrants (issue #28) — the same fold realization.nix uses
   # for a build-time account, so the greeter-seat baseline and a realized account earn groups
-  # identically.
+  # identically. `accountPlan` (which `provision` now evaluates) already folds these into the record
+  # for `grants = greeterGrants`; `enrolledGroups` re-adds them alongside the `greeter-users` seat
+  # MARKER — the one group beyond the portable account (a build-time user never gets it, ADR-0010),
+  # which is why the marker lives here on the seat side, not inside the seat-agnostic accountPlan.
   baselineGroups = lib.unique (grantLib.grantedGroups greeterGrants);
   enrolledGroups = baselineGroups ++ [ "greeter-users" ];
-
-  # The runtime accountPlan adapter's DATA (issue #31): accountPlan's grant-side + clamp + the
-  # identity field-name projection, rendered so the shell `provision` reproduces the account record
-  # WITHOUT hardcoding any field name or the privileged-group clamp set. Single-sourced through
-  # grantLib (the privileged-group clamp set + the grant→groups baseline fold — the same folds
-  # realization.nix reads build-time) and `identityFields` (the identity.nix option names), so the
-  # runtime clamp cannot drift from the build-time one — it is the same definition on both sides.
-  provisionPlan = {
-    identityFields = {
-      inherit (identityFields)
-        name
-        hashedPassword
-        sshKey
-        trustedKeys
-        extraGroups
-        ;
-    };
-    inherit privilegedGroups enrolledGroups;
-  };
 
   # The Tier-1 restricted-eval posture (ADR-0014), rendered to a NIX_CONFIG body the greeter
   # exports to the host's homeBuilder. Single-sourced from the contract's canonical tier1EvalConfig
@@ -86,7 +69,24 @@ let
   # The shipped programs, one per file (the canonical mechanism + the replaceable UI). Each is
   # a writeShellApplication closed over only what it needs; bind orchestrates the rest.
   authScript = import ./greeter/auth.nix { inherit pkgs identityFile identityFields; };
-  provisionScript = import ./greeter/provision.nix { inherit pkgs provisionPlan; };
+
+  # The account-plan evaluator (issue #31 follow-up): the tool `provision` execs to compute the
+  # account record from the ONE shared `accountPlan`, instead of re-spelling the fold in jq. Built
+  # here (it needs `pkgs`, which the pure kit lacks) exactly as auth/provision/session are.
+  accountPlanEval = import ./greeter/account-plan-eval.nix { inherit pkgs; };
+  # The fixed runtime grant + the seat's enrolled groups, frozen to store JSON the renderer reads:
+  # `provision` passes `greeterGrantsFile` to the evaluator and unions the record's groups with
+  # `seatGroupsFile` (the baseline ∪ the `greeter-users` marker) before enrolling.
+  greeterGrantsFile = pkgs.writeText "greeter-grants.json" (builtins.toJSON greeterGrants);
+  seatGroupsFile = pkgs.writeText "greeter-seat-groups.json" (builtins.toJSON enrolledGroups);
+  provisionScript = import ./greeter/provision.nix {
+    inherit
+      pkgs
+      accountPlanEval
+      greeterGrantsFile
+      seatGroupsFile
+      ;
+  };
   sessionScript = import ./greeter/session.nix {
     inherit pkgs lib;
     inherit (cfg) desktops defaultDesktop;
@@ -244,6 +244,7 @@ in
       authScript
       provisionScript
       sessionScript
+      accountPlanEval
     ];
   };
 }

@@ -9,29 +9,27 @@
 # for activation. The activated session is secret-free: the contract handles no secrets beyond the
 # login credential.
 #
-# It is the RUNTIME ADAPTER over accountPlan (issue #31), the twin of realization.nix's build-time
-# adapter. It owns none of accountPlan's identity→account DATA: the greeter renders accountPlan's
-# grant-side to a build-time plan (`provisionPlan`) — the privileged-group CLAMP SET and the
-# greeter-seat baseline groups (both from the injected grantLib, so identical to the build-time
-# side) plus the identity FIELD-NAME projection (from identity.nix) — and this script reads all of
-# those from the plan; no privileged group, no baseline group, and no identity field name is
-# hardcoded here. What it does REPRODUCE is accountPlan's four-field COMBINING RULE, in jq: a shell
-# login cannot call the Nix function and the identity is known only at runtime, so the rule (not its
-# inputs) is necessarily expressed twice. The single-sourced clamp SET makes a hostile identity.json
-# unable to smuggle a privileged group at runtime; the greeter-provision VM asserts the realized
-# account matches the build-time accountPlan record FIELD FOR FIELD, guarding the reproduced rule
-# against drift by construction rather than trusting the two jq/Nix spellings to stay in step.
+# It is the RUNTIME ADAPTER over accountPlan (ADR-0012), the twin of realization.nix's build-time
+# adapter — and, since issue #31's follow-up, a PURE RENDERER: it owns NO account-combining logic.
+# The four-field rule (clamp ∪ grant, drop-empty-sshKey, GECOS, password) lives in ONE place —
+# `accountPlan` — which this script EVALUATES via the `contract-account-plan` tool (which re-imports
+# the contract and runs the same pure function build-time realization uses). This replaces the jq
+# re-spelling that issue #31 had to keep in step by booting a VM; there is now a single source, so
+# the greeter-provision VM proves this renderer SURFACES the record faithfully, not that two
+# spellings agree, and the rule's own guarantees (the clamp, the empty-sshKey drop) are proven
+# without a boot in conformance/account-plan.nix. What remains here is strictly RENDER: run the
+# evaluator, then write GECOS, the password, authorizedKeys, and the groups (the record's groups ∪
+# the greeter-seat groups — the baseline plus the `greeter-users` seat MARKER, which is seat
+# infrastructure layered on top of the portable account, not part of it, ADR-0010).
 {
   pkgs,
-  provisionPlan,
+  accountPlanEval,
+  # The fixed runtime grant (greeterGrants) and the seat's enrolled groups, both frozen to store
+  # JSON by greeter.nix. `provision` hands the grant to the evaluator and unions the seat groups
+  # (baseline ∪ the `greeter-users` marker) into the record's groups before enrolling.
+  greeterGrantsFile,
+  seatGroupsFile,
 }:
-let
-  # accountPlan's grant-side + clamp + identity field projection, rendered to data at BUILD TIME
-  # (issue #31): `{ identityFields; privilegedGroups; enrolledGroups }`. Serializable because the
-  # plan is a neutral record (ADR-0012). The script reads it back with jq — no field name or clamp
-  # list is hardcoded in the shell.
-  planFile = pkgs.writeText "contract-greeter-provision-plan.json" (builtins.toJSON provisionPlan);
-in
 pkgs.writeShellApplication {
   name = "contract-greeter-provision";
   runtimeInputs = [
@@ -39,13 +37,13 @@ pkgs.writeShellApplication {
     pkgs.shadow
     pkgs.coreutils
     pkgs.util-linux
+    accountPlanEval
   ];
   text = ''
     username=$1
     identity=$2
     activation=$3
     tier=$4
-    plan=${planFile}
 
     [ "$(id -u)" = 0 ] || { echo "provision: must run as root" >&2; exit 1; }
     [ -f "$identity" ] || { echo "provision: no identity.json at '$identity'" >&2; exit 1; }
@@ -63,26 +61,17 @@ pkgs.writeShellApplication {
         --user-group "$username"
     fi
 
-    # --- runtime adapter over accountPlan (ADR-0012, issue #31) ---
-    # Reproduce accountPlan's (identity + safe-set grant) ⇒ account record from the BUILD-TIME
-    # rendered plan: GECOS ← name; hashedPassword verbatim; authorizedKeys = the primary sshKey
-    # (dropped when empty) then trustedKeys; extraGroups = the self-declared groups with the plan's
-    # privileged set CLAMPED out, unioned with the greeter-seat baseline. Field names, the clamp set,
-    # and the baseline all come from the plan (single-sourced through grantLib/identityOptions) — no
-    # bespoke jq field paths, no hand-listed privileged groups.
-    record=$(jq -n --slurpfile plan "$plan" --slurpfile id "$identity" '
-      $plan[0] as $p
-      | $id[0] as $i
-      | $p.identityFields as $f
-      | {
-          description: ($i[$f.name] // ""),
-          hashedPassword: ($i[$f.hashedPassword] // ""),
-          authorizedKeys: ([ ($i[$f.sshKey] // "") ] | map(select(. != "")))
-                          + ($i[$f.trustedKeys] // []),
-          extraGroups: ((($i[$f.extraGroups] // []) - $p.privilegedGroups) + $p.enrolledGroups | unique)
-        }')
+    # --- runtime adapter over accountPlan (ADR-0012): evaluate, then render ---
+    # Compute the account record from the ONE shared accountPlan (identity + the safe-set grant),
+    # via the contract's own evaluator — no combining logic is reproduced here. Fail-CLOSED: if the
+    # evaluation fails (a malformed identity that slipped past auth, a contract bug), abort before
+    # touching the account rather than realize a half-account.
+    if ! record=$(contract-account-plan "$identity" ${greeterGrantsFile}); then
+      echo "provision: account-plan evaluation failed for '$username'" >&2
+      exit 1
+    fi
 
-    # GECOS = the account record's description.
+    # GECOS = the record's description.
     name=$(jq -r '.description // empty' <<<"$record")
     [ -n "$name" ] && usermod -c "$name" "$username"
 
@@ -90,11 +79,16 @@ pkgs.writeShellApplication {
     hash=$(jq -r '.hashedPassword // empty' <<<"$record")
     [ -n "$hash" ] && printf '%s:%s\n' "$username" "$hash" | chpasswd -e
 
-    # Groups = the record's (clamped ∪ baseline) set, restricted to groups that exist on the seat
-    # (the greeter-seat baseline is pre-realized declaratively; a stray name is skipped, not created).
+    # Groups = the record's (clamped ∪ granted) groups ∪ the greeter-seat groups (the baseline plus
+    # the `greeter-users` marker), restricted to groups that exist on the seat (the baseline is
+    # pre-realized declaratively; a stray name is skipped, not created). The clamp already happened
+    # inside accountPlan — a privileged group declared in identity.json is absent from the record.
     readarray -t want < <(jq -r '.extraGroups[]?' <<<"$record")
+    readarray -t seat < <(jq -r '.[]?' ${seatGroupsFile})
     add=()
-    for g in "''${want[@]}"; do getent group "$g" >/dev/null 2>&1 && add+=("$g"); done
+    for g in "''${want[@]}" "''${seat[@]}"; do
+      getent group "$g" >/dev/null 2>&1 && add+=("$g")
+    done
     [ "''${#add[@]}" -gt 0 ] && usermod -aG "$(IFS=,; echo "''${add[*]}")" "$username"
 
     # authorizedKeys = the record's SSH login keys (sshKey + trustedKeys).

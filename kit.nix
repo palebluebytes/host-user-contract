@@ -88,7 +88,7 @@ let
   # `pkgs`, so the contract FLAKE still inputs only nixpkgs `lib` (ADR-0004). It is closed
   # over the fixed runtime grant + the identity.json filename it authenticates on.
   greeterModule = import ./greeter.nix {
-    inherit lib privilegedGroups grantLib;
+    inherit lib grantLib;
     inherit (contractLib)
       greeterGrants
       tier1EvalConfig
