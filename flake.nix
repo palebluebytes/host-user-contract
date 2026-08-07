@@ -87,6 +87,7 @@
             mkContractPackageForHome
             bindContractPackage
             mkHostFacts
+            accountPlan
             writeManifest
             readManifest
             manifestFileName

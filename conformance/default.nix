@@ -34,6 +34,7 @@
   mkContractPackageForHome,
   bindContractPackage,
   mkHostFacts,
+  accountPlan,
   writeManifest,
   readManifest,
   manifestFileName,
@@ -98,6 +99,7 @@ let
         ;
     })
     (import ./matrix.nix { inherit lib toolkit; })
+    (import ./account-plan.nix { inherit lib accountPlan; })
     (import ./contract-package.nix {
       inherit
         pkgs

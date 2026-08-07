@@ -6,12 +6,14 @@
 #
 # It boots ONE seat host with `nixosModules.greeter` enabled (via ./seat-vm.nix's helpers-driven
 # posture, greetd kept off the console) and drives the privileged helpers directly against a synthetic
-# identity.json. It asserts that `provision` is the runtime adapter over the shared `accountPlan`
-# (ADR-0012, issue #31): the account it realizes at runtime — password (so PAM works), GECOS,
-# authorizedKeys, the clamped declared groups + the greeter-seat baseline — reproduces, FIELD FOR
-# FIELD, the BUILD-TIME account the same `accountPlan` renders for this identity. The privileged-group
-# CLAMP is thus proven from the ONE shared plan (a hostile `docker` in identity.json is dropped), and
-# build↔runtime parity is proven by construction, not by parallel hand-checks. It then proves session SELECTION
+# identity.json. `provision` no longer reproduces the account rule — it EVALUATES the shared
+# `accountPlan` via `contract-account-plan` and renders the result (issue #31 follow-up). So this VM's
+# job narrowed: it proves the shell RENDERER SURFACES that record onto a real account — password (so
+# PAM works), GECOS, authorizedKeys, and groups — matching, FIELD FOR FIELD, the BUILD-TIME account
+# the same `accountPlan` renders for this identity. The rule's OWN guarantees (the clamp, the
+# empty-sshKey drop, key ordering) are proven WITHOUT a boot in ./account-plan.nix; here the observable
+# clamp (a hostile `docker` dropped from the realized account) is the renderer surfacing that rule.
+# It then proves session SELECTION
 # (ADR-0010 step 8): the launcher picks the seat-default type, a home override flips it, and each
 # execs the host-bound backend. Building a real home needs home-manager (the contract has none,
 # ADR-0004), so the home here is the harness's stub activation package — the real-home end-to-end
@@ -55,12 +57,11 @@ let
   identityJson = pkgs.writeText "identity.json" (builtins.toJSON identityAttrs);
 
   # The BUILD-TIME account for the SAME identity + the safe-set grant, rendered from the ONE shared
-  # accountPlan the build-time realization.nix also renders (ADR-0012, issue #31). The runtime
-  # `provision` is a second adapter over this exact plan, so its realized account must reproduce it
-  # field-for-field — that is the build↔runtime parity this VM proves, from the shared plan rather
-  # than by parallel hand-checks. `provision` adds the greeter-seat marker (`greeter-users`) on top
-  # of the plan's groups (the standing baseline it enrolls into), so the expected supplementary
-  # group set is the plan's `extraGroups` ∪ that marker.
+  # accountPlan (ADR-0012). `provision` now EVALUATES this same accountPlan at runtime (via
+  # contract-account-plan) and renders it, so its realized account must match this record
+  # field-for-field — the renderer-faithfulness this VM proves. `provision` adds the greeter-seat
+  # marker (`greeter-users`) on top of the record's groups (the standing baseline it enrolls into),
+  # so the expected supplementary group set is the record's `extraGroups` ∪ that marker.
   buildTimePlan = accountPlan {
     identity = identityAttrs;
     grants = greeterGrants;
@@ -73,24 +74,6 @@ let
   # as a store file so the exact-and-in-order comparison needs no multi-line Python string literal.
   expectedKeysFile = pkgs.writeText "expected-authorized-keys" (
     lib.concatMapStrings (k: "${k}\n") buildTimePlan.authorizedKeys
-  );
-
-  # Empty-sshKey coverage (issue #31): the shared authorizedKeys rule drops the primary `sshKey`
-  # when it is "" and keeps only trustedKeys. The main fixture ships a NON-EMPTY sshKey, so it never
-  # exercises that "drop when empty" branch — the one branch of the jq reproduction otherwise left
-  # unguarded against drift. A second identity with `sshKey = ""` closes it, still proven from the
-  # shared accountPlan rather than by a hand-written expectation.
-  identityAttrsNoKey = identityAttrs // {
-    username = "nokey";
-    sshKey = "";
-  };
-  identityJsonNoKey = pkgs.writeText "identity-nokey.json" (builtins.toJSON identityAttrsNoKey);
-  expectedKeysFileNoKey = pkgs.writeText "expected-authorized-keys-nokey" (
-    lib.concatMapStrings (k: "${k}\n")
-      (accountPlan {
-        identity = identityAttrsNoKey;
-        grants = greeterGrants;
-      }).authorizedKeys
   );
 in
 mkSeatVM {
@@ -121,9 +104,9 @@ mkSeatVM {
     machine.succeed("contract-greeter-provision example ${identityJson} ${activationStub} tier1")
     machine.succeed("getent passwd example")
 
-    # Account fully realized from identity.json + the safe-set grant, and — the issue #31 claim —
-    # realized IDENTICALLY to the build-time account the shared accountPlan renders for this identity
-    # (ADR-0012 build↔runtime parity), field for field:
+    # Account fully realized by RENDERING the record the shared accountPlan evaluates for this
+    # identity + the safe-set grant (contract-account-plan) — so the realized account matches the
+    # build-time accountPlan record (ADR-0012 build↔runtime parity), field for field:
     # - GECOS = the plan's description
     machine.succeed("getent passwd example | cut -d: -f5 | grep -qx '${buildTimePlan.description}'")
     # - password = the plan's hashedPassword (so PAM works — not a locked '!' entry)
@@ -142,12 +125,9 @@ mkSeatVM {
     # - the home activated AS the user
     machine.succeed("test -f /home/example/.contract-home-activated")
 
-    # Empty-sshKey branch of the shared rule (issue #31): a second identity with sshKey = "" must
-    # realize authorized_keys as trustedKeys ALONE — the primary key DROPPED, not written as a blank
-    # line. The `example` fixture ships a non-empty sshKey, so this guards the one rule branch it
-    # never exercises, still diffed against what the shared accountPlan renders for this identity.
-    machine.succeed("contract-greeter-provision nokey ${identityJsonNoKey} ${activationStub} tier1")
-    machine.succeed("diff ${expectedKeysFileNoKey} /home/nokey/.ssh/authorized_keys")
+    # (The empty-sshKey branch of the rule — primary dropped, trustedKeys alone — is proven without a
+    # boot in ./account-plan.nix now that the rule has a single source; the VM no longer carries a
+    # second `nokey` fixture for it.)
 
     # Per-user desktop SELECTION (ADR-0013): no home choice ⇒ the seat default (plasma) launches.
     machine.succeed("contract-greeter-session example /home/example")
