@@ -96,11 +96,21 @@ the term is stable, the code is pending (see the cited issue).
   `hashedPassword`, `authorizedKeys` (the primary `sshKey`, dropped when empty, then `trustedKeys`),
   and `extraGroups` (the [[clamp]]ed self-declared groups ∪ the granted groups). Closed over
   [[grantLib]] so its clamp + grant→groups fold are single-sourced. It is the plan **both** adapters
-  render: the [[realization]] maps it into `users.users` at build time; the greeter's runtime
-  `provision` reproduces the same record from a build-time-rendered plan (the clamp set + the
-  greeter-seat baseline + the identity field-name projection, serialized to JSON) — so the two
-  cannot drift. A neutral record (the four account fields, not a NixOS-module shape), so the runtime
-  side can serialize it. (`account-plan.nix`) **(built — issues #30, #31)**
+  render — and, since ADR-0027, the **one rule** both *execute*, not two spellings kept in step: the
+  [[realization]] maps it into `users.users` at build time; the greeter's runtime `provision`
+  **evaluates the same `accountPlan`** at login via the [[contract-account-plan]] tool (which
+  re-imports this function from the pinned contract source) and renders the result. It is a neutral
+  record (the four account fields, not a NixOS-module shape), so both the build-time mapping and the
+  runtime rendering read it plainly. (`account-plan.nix`) **(built — issues #30, #31; ADR-0027)**
+- **contract-account-plan** — the greeter-scoped **evaluator** that makes [[accountPlan]] the ONE
+  owner of the account rule (ADR-0027). Given `identity.json` + a grant set it pins the contract
+  source + a nixpkgs `lib` in-store, re-imports `kit.internal.accountPlan`, and prints the neutral
+  record as JSON — contract-owned code over *already-authenticated* data, run **after** the eval-free
+  auth gate (it evaluates no user Nix). `provision` execs it and renders the record, so the four-field
+  fold is expressed **once** (in Nix) rather than reproduced in jq. Identity defaulting single-sources
+  too: the raw JSON is resolved through the real `identity.nix` submodule. Internal (it needs a
+  package, which the pure kit lacks), assembled in the greeter beside auth/provision/session.
+  (`greeter/account-plan-eval.nix`) **(built — ADR-0027)**
 - **clamp** — the account plan applying [[grantLib]]'s filter of privileged groups out of a
   user's self-declared `identity.extraGroups` (untrusted input). Privileged groups come only from a grant, so a
   user can never self-escalate by listing `docker`/`wheel` in its identity — and, under the
@@ -108,14 +118,15 @@ the term is stable, the code is pending (see the cited issue).
   a grant only for features the host affords, and the untrusted/greeter path affords only the
   safe set (no privileged feature), so a stranger's offer can never reach privilege. The clamp
   remains defense-in-depth: any privileged group not backed by the derived grant is dropped.
-  At eval time the clamp is [[grantLib]]'s `safeDeclared` fold; the greeter's runtime `provision`
-  filters against the **same** privileged-group *set* — [[grantLib]] renders that set into
-  `provision`'s build-time plan, so the security-critical input is single-sourced, not a re-listed
-  shell copy. The filtering *rule* itself is still reproduced (a login shell cannot call the Nix
-  fold, so `provision` re-expresses `safeDeclared` in jq); what is one definition on both sides is
-  the privileged set the rule reads, and the greeter-provision VM guards the runtime rule against
-  drift from the build-time record (a greeter user is never built into the system, so
-  `realization.nix` never runs for it). (issue #31)
+  The clamp is [[grantLib]]'s `safeDeclared` fold inside [[accountPlan]], and since ADR-0027 it is
+  **one definition executed on both sides**, not one set with two rule spellings: the build-time
+  [[realization]] and the greeter's runtime `provision` both run the *same* `accountPlan` — `provision`
+  by evaluating it via [[contract-account-plan]] — so a login shell no longer re-expresses the fold in
+  jq. The clamp's own guarantee (a hostile `docker`/`wheel` in `identity.json` is dropped) is proven
+  **without a boot** in `conformance/account-plan.nix`, driving `accountPlan` directly; the
+  greeter-provision VM then proves the runtime renderer *surfaces* that clamped record onto a real
+  account (a greeter user is never built into the system, so `realization.nix` never runs for it).
+  (issue #31; ADR-0027)
 - **gui-session union** *(REMOVED, ADR-0021)* — the realization used to derive the host's display
   surface's session types (`custom.gui.surface.{wayland,x11}`) as the union of every granted gui
   user's session type. **Removed:** the contract is now **display-server-agnostic** — it exposes only
@@ -201,11 +212,12 @@ the term is stable, the code is pending (see the cited issue).
   the **canonical eval-free** step (`jq` over `identity.json` + libc-crypt password + Tier-1 SSH
   signature, running zero user Nix, with the identity field names it reads projected from
   `identity.nix`); `provision` is the **runtime-provisioning helper** — the privileged crux that is
-  the **runtime adapter over [[accountPlan]]** (the twin of [[realization]]'s build-time adapter): it
-  reproduces the account record from the build-time-rendered plan + `identity.json` and realizes it
-  (password, `authorizedKeys`, GECOS, the **clamped** safe groups + the greeter-seat baseline)
-  **and** activates the built home AS the user, all before the session starts, outside NixOS's
-  declarative build-time model; `bind` is the greetd orchestrator tying the ordering together.
+  the **runtime adapter over [[accountPlan]]** (the twin of [[realization]]'s build-time adapter). Since
+  ADR-0027 it is a **pure renderer**: it *evaluates* the shared `accountPlan` via [[contract-account-plan]]
+  (owning none of the combining rule) and realizes the returned record (password, `authorizedKeys`,
+  GECOS, the **clamped** safe groups + the greeter-seat baseline) **and** activates the built home AS
+  the user, all before the session starts, outside NixOS's declarative build-time model; `bind` is the
+  greetd orchestrator tying the ordering together.
   (`greeter.nix`; ADR-0006, ADR-0012)
 - **homeBuilder** — the greeter's one **host binding** (`custom.greeter.homeBuilder`, null by
   default): the command that evaluates + builds a user's home *through the contract* under the
@@ -417,13 +429,15 @@ the term is stable, the code is pending (see the cited issue).
 
 - **conformance suite** — the contract's own tests (`conformance/`): synthetic users × the
   umbrella, no host repo. **Eval** (`default.nix`) proves grant/deny, the gui-union
-  *decision*, the clamp, the safe set, the users × archetypes matrix, the `traceUser` dry-run
-  kernel, `mkContractPackage` content, `mkContractPackageForHome`'s home-attribute projection (same
-  content-addressed store path as the direct call), `mkContractUser`/`mkContractUsers` parity, and
-  `bindContractPackage` reproducing the `traceUser` kernel's account + gui surface from a pre-built
-  manifest. **VM
+  *decision*, the clamp, the safe set, the users × archetypes matrix, the [[accountPlan]] **rule**
+  itself (`account-plan.nix`: the clamp, the empty-`sshKey` drop, and key ordering, driven directly
+  with no boot — ADR-0027), the `traceUser` dry-run kernel, `mkContractPackage` content,
+  `mkContractPackageForHome`'s home-attribute projection (same content-addressed store path as the
+  direct call), `mkContractUser`/`mkContractUsers` parity, and `bindContractPackage` reproducing the
+  `traceUser` kernel's account + gui surface from a pre-built manifest. **VM
   tests** (each a `runNixOSTest` boot): `vm.nix` (gui-union renders), `greeter-vm.nix`
-  (provisioning crux), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
+  (provisioning crux — now proving the runtime **renderer** surfaces the `accountPlan` record the
+  same plan evaluates, ADR-0027), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
   `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
   `daemon-restricted-vm.nix` (hello on PATH, curl absent, daemon refused).
 - **coherence gate** — the thin host-side check (in the consuming repo) that every real host's

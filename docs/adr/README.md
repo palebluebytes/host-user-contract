@@ -35,10 +35,11 @@ contract ships).
 | [0024](0024-split-workstation-into-atomic-capabilities.md) | Split the `workstation` role into atomic capability features (`sudo` + `containers`); a privileged group is conferred by exactly one feature |
 | [0025](0025-turnkey-host-side-bind.md) | Turnkey host-side bind: `grant = affordances ∩ offer`, variant selection from the baked set, the ADR-0016 coupling guard enforced (extends 0016/0020/0007) |
 | [0026](0026-consumer-producer-public-surface.md) | The public surface is the coin `mkContractUser`/`mkContractUsers`/`bindContractUser` + `traceUser`; retires inline-eval and unilateral direct-grant, internalizes the package kernels (amends 0007/0008/0016/0025) |
+| [0027](0027-runtime-provision-evaluates-the-shared-rule.md) | Runtime provision *evaluates* the shared `accountPlan` (via `contract-account-plan`) instead of re-spelling it in jq; the rule has one source, the clamp is proven without a boot (extends 0012, completes #30/#31) |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0026`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0027`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme
