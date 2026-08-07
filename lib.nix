@@ -4,9 +4,8 @@
 # binds one indexed user, grant = affordances ∩ offer); `traceUser` is the home-manager-free
 # dry-run inspector. `mkContractPackageForHome`/`mkContractPackage`/`bindContractPackage` are
 # the INTERNAL kernels those speak through (package-level, one rung below the user-level public
-# surface), as is `mkHostFacts` (no host-side inline eval consumes it post-ADR-0026) and
-# `runtimeEligibleFeature` (the kit's `safeSet` closes over it). `renderNixConfig` is the one
-# public greeter helper here; `safeSet` is the derived value.
+# surface), as is `runtimeEligibleFeature` (the kit's `safeSet` closes over it). `renderNixConfig`
+# is the one public greeter helper here; `safeSet` is the derived value.
 {
   lib,
   registry,
@@ -460,15 +459,6 @@ in
         n: v: "${n} = ${if lib.isBool v then lib.boolToString v else toString v}"
       ) settings
     );
-
-  # The restricted projection of host state a user's home modules may read (ADR-0002,
-  # slice 12): self-scoped, no hostName. `exposed` is a plain host fact a home may adapt to;
-  # the contract enforces nothing on it (it carries no secret-bearing features).
-  mkHostFacts = config: userName: {
-    exposed = config.custom.host.exposed;
-    platform = config.nixpkgs.hostPlatform.system;
-    granted = config.custom.users.${userName}.granted;
-  };
 
   # traceUser (ADR-0007, ADR-0026): the home-manager-free DRY-RUN inspector, and the sole
   # request→grant→bridge tool that sits OUTSIDE the contractUser produce/consume coin. Given a

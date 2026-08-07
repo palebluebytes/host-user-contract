@@ -33,7 +33,6 @@
   mkContractPackage,
   mkContractPackageForHome,
   bindContractPackage,
-  mkHostFacts,
   accountPlan,
   writeManifest,
   readManifest,
@@ -59,7 +58,6 @@ let
         lib
         toolkit
         loadIdentity
-        mkHostFacts
         safeSet
         featureGroups
         privilegedGroups

@@ -146,16 +146,11 @@ in
   #   - the package-level kernels the public `bindContractUser`/`mkContractUser` bind and bake
   #     THROUGH — a consumer never calls them directly (the grant model is negotiation-only; a bare
   #     contractPackage has no public consumer).
-  #   - mkHostFacts: the safe {exposed,platform,granted} host projection. It needs a NixOS host
-  #     `config` at the point a home is evaluated — which the pre-built path never has (the host
-  #     binds a baked home; the producer is not a host). With inline host-side eval retired
-  #     (ADR-0026), it has no production caller, so it stays internal (conformance still proves it).
   internal = {
     inherit (contractLib)
       mkContractPackage
       mkContractPackageForHome
       bindContractPackage
-      mkHostFacts
       ;
     # The shared account plan (issue #30/#31), exposed so the greeter-provision VM can render the
     # BUILD-TIME account for a fixture identity and assert the runtime `provision` reproduces it —
