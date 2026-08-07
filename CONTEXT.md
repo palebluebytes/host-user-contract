@@ -109,9 +109,13 @@ the term is stable, the code is pending (see the cited issue).
   safe set (no privileged feature), so a stranger's offer can never reach privilege. The clamp
   remains defense-in-depth: any privileged group not backed by the derived grant is dropped.
   At eval time the clamp is [[grantLib]]'s `safeDeclared` fold; the greeter's runtime `provision`
-  applies the **same** privileged-group set — [[grantLib]] renders it into `provision`'s build-time
-  plan, so the clamp is one definition on both sides, not a re-listed shell copy (a greeter user is
-  never built into the system, so `realization.nix` never runs for it). (issue #31)
+  filters against the **same** privileged-group *set* — [[grantLib]] renders that set into
+  `provision`'s build-time plan, so the security-critical input is single-sourced, not a re-listed
+  shell copy. The filtering *rule* itself is still reproduced (a login shell cannot call the Nix
+  fold, so `provision` re-expresses `safeDeclared` in jq); what is one definition on both sides is
+  the privileged set the rule reads, and the greeter-provision VM guards the runtime rule against
+  drift from the build-time record (a greeter user is never built into the system, so
+  `realization.nix` never runs for it). (issue #31)
 - **gui-session union** *(REMOVED, ADR-0021)* — the realization used to derive the host's display
   surface's session types (`custom.gui.surface.{wayland,x11}`) as the union of every granted gui
   user's session type. **Removed:** the contract is now **display-server-agnostic** — it exposes only
