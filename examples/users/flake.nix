@@ -32,10 +32,13 @@
       #
       # ONE per-user knob remains here:
       #   - `bakedGrants`: the grants the contractPackage is BUILT with. No grant is secret-bearing
-      #     (the contract handles no secrets) and these reference homes don't FAN OUT on any grant
-      #     (they are trivial, contract-pure), so nothing is home-affecting and every user bakes a
-      #     single grant-less `base` variant. That is exactly what lets one `ada-contractPackage-base`
-      #     be gui on one seat and cli-only on another — the grant rides the bind, never the bake.
+      #     (the contract handles no secrets). The contract's HOME-AFFECTING set — the upper bound
+      #     on what a home may even see, `contract.homeAffecting` — is `{gui}`, so a repo whose homes
+      #     fan out bakes `powerset(homeAffecting)` = a base + a gui variant. These reference homes
+      #     are trivial and contract-pure: not one of them reads `hostFacts.granted`, so none fans
+      #     out and every user bakes a single grant-less `base` variant. That is exactly what lets
+      #     one `ada-contractPackage-base` be gui on one seat and cli-only on another — the grant
+      #     rides the bind, never the bake.
       #
       # The `offer` (ADR-0025) — the features a user ASKS a host for — is NO LONGER declared here.
       # Since ADR-0028 each user declares `contract.wants` in its OWN home and `mkContractUsers`
@@ -70,6 +73,17 @@
         admin.bakedGrants = { };
       };
 
+      # The self-scoped hostFacts a bake supplies to a home (ADR-0002). There is no host `config`
+      # at bake time (ADR-0026/0027), so the producer builds the literal — and NARROWS `granted`
+      # with the contract's `homeAffecting` surface (ADR-0028): a home may only see the grants
+      # something bakes for, so a home reading `granted.sudo` structurally gets false forever and
+      # cannot become grant-sensitive on a feature that rides the bind. The rule is the contract's
+      # data, not a comment kept in step by hand.
+      hostFactsFor = grants: {
+        exposed = false;
+        platform = system;
+        granted = lib.filterAttrs (f: _: lib.elem f contract.homeAffecting) grants;
+      };
     in
     {
       # Standalone homes (`nix build .#homeConfigurations.<u>.activationPackage`): each user's
@@ -80,7 +94,7 @@
       # evaluates headlessly against the bare umbrella when the conformance tracer harvests requests
       # (ADR-0008). Identity is loaded once via the canonical `contract.lib.loadIdentity` and injected
       # (ADR-0009); hostFacts is the self-scoped host projection the producer supplies inline (there
-      # is no host `config` at bake time — ADR-0026).
+      # is no host `config` at bake time — ADR-0026), built by `hostFactsFor` below.
       homeConfigurations =
         lib.mapAttrs (
           name: u:
@@ -101,11 +115,7 @@
               }
             ]
             ++ (u.homeModules or [ ]);
-            extraSpecialArgs.hostFacts = {
-              exposed = false;
-              platform = system;
-              granted = u.bakedGrants;
-            };
+            extraSpecialArgs.hostFacts = hostFactsFor u.bakedGrants;
           }
         ) roster
         # The greeter-login variant (<u>-greeter): the SAME home granted the safe set (greeterGrants),
@@ -132,11 +142,7 @@
                   home.file.".contract-home-active".text = "greeter-activated for ${identity.name}";
                 }
               ];
-              extraSpecialArgs.hostFacts = {
-                exposed = false;
-                platform = system;
-                granted = contract.greeterGrants;
-              };
+              extraSpecialArgs.hostFacts = hostFactsFor contract.greeterGrants;
             }
           )
         ) roster;

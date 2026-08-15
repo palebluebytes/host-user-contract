@@ -120,7 +120,12 @@ in
     featureGroups
     privilegedGroups
     ;
-  inherit (contractLib) safeSet greeterGrants tier1EvalConfig;
+  inherit (contractLib)
+    safeSet
+    homeAffecting
+    greeterGrants
+    tier1EvalConfig
+    ;
 
   # The identity.json schema, exposed so a host/greeter can introspect the jq-readable
   # shape it authenticates against before any eval (ADR-0007, issue #5).

@@ -6,6 +6,7 @@
   toolkit,
   loadIdentity,
   safeSet,
+  homeAffecting,
   featureGroups,
   privilegedGroups,
 }:
@@ -151,6 +152,23 @@ let
     "bob"
     "carol"
   ];
+
+  # --- the home-affecting feature set (ADR-0028) ---
+  # The public data surface a PRODUCER narrows `hostFacts.granted` with (and derives its baked
+  # variant set from). Model the narrowing here on a maximal grant: whatever a host grants, a home
+  # may only SEE the home-affecting features, so a home reading `granted.sudo` structurally gets
+  # false forever and cannot become grant-sensitive on a feature nothing bakes for.
+  everyFeature = [
+    "gui"
+    "containers"
+    "sudo"
+    "virtualization"
+    "nix-daemon"
+  ];
+  fullGrant = lib.genAttrs everyFeature (_: {
+    enable = true;
+  });
+  narrowedFacts = lib.filterAttrs (f: _: lib.elem f homeAffecting) fullGrant;
 in
 {
   assertions = [
@@ -262,6 +280,33 @@ in
         "virtualization"
         "nix-daemon"
       ];
+    }
+    # --- the home-affecting feature set (ADR-0028) ---
+    {
+      # gui is the only feature with a home channel today: it carries request params the home
+      # emits, so a home can legitimately fan out on the gui grant.
+      name = "homeAffecting: gui is home-affecting (its grant may change the baked home)";
+      ok = homeAffecting == [ "gui" ];
+    }
+    {
+      # The pure privileged-group grants confer host-side powers and touch no home content, so
+      # they ride the BIND and never multiply a producer's variants.
+      name = "homeAffecting: pure privileged-group grants are not home-affecting (they ride the bind)";
+      ok = lib.all (f: !(lib.elem f homeAffecting)) [
+        "containers"
+        "sudo"
+        "virtualization"
+        "nix-daemon"
+      ];
+    }
+    {
+      # The narrowing a producer performs with this surface: a home may see only what something
+      # bakes for. `granted.sudo` is then structurally absent ⇒ `or false` forever.
+      name = "homeAffecting: narrowing a full grant leaves only the home-affecting features visible";
+      ok =
+        narrowedFacts.gui.enable
+        && !(narrowedFacts.sudo.enable or false)
+        && lib.attrNames narrowedFacts == homeAffecting;
     }
     {
       name = "gui confers no privileged group";

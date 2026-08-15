@@ -29,6 +29,17 @@ let
   # The runtime-eligible feature names — the safe set (ADR-0002, slice 15).
   safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
 
+  # The HOME-AFFECTING feature names (ADR-0028) — the safe set's sibling data surface, and the
+  # answer to "which grants may a home even see?". A feature is home-affecting iff the registry
+  # says its grant can reach home CONTENT (`homeAffecting`); the rest confer host-side powers only
+  # and ride the bind. Two producer jobs run off this ONE surface, so neither is re-implemented in
+  # prose per repo:
+  #   - `hostFacts.granted` is NARROWED to it, so a home reading a grant nothing bakes for
+  #     structurally gets `false` forever and cannot become grant-sensitive on it; and
+  #   - the baked variant set is `powerset(homeAffecting)` — the taxonomy ADR-0025 left to each
+  #     producer's hand-written comment, now a contract constant.
+  homeAffecting = lib.filter (f: registry.${f}.homeAffecting or false) (lib.attrNames registry);
+
   # The request→feature-configuration bridge, shared by BOTH binding shapes (the headless
   # tracer below and the real `bindContractPackage`). Given a user's harvested `contract.requests`
   # and the set of features the host GRANTED, copy each granted feature's request params into
@@ -440,7 +451,7 @@ let
       { inherit config pkgs; };
 in
 {
-  inherit runtimeEligibleFeature safeSet;
+  inherit runtimeEligibleFeature safeSet homeAffecting;
 
   # The runtime/greeter grant (ADR-0006, ADR-0008): "default-open over the safe set". The
   # greeter does not let an operator choose features — it auto-grants every runtime-eligible
