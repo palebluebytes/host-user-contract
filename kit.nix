@@ -50,9 +50,12 @@ let
   # from the user's side, and a future non-privileged feature inherits it with no new special case.
   # The default is per-FEATURE, not a whole-submodule default: a home asking for `sudo` must not
   # thereby discard the safe-set default (a submodule default is replaced by any definition).
+  # The description is re-worded rather than inherited: `grant`'s text names a HOST GRANT, and a
+  # want is only ever an ASK (CONTEXT.md keeps the two words distinct).
   wantedOptions = lib.mapAttrs (name: opts: {
     enable = opts.enable // {
       default = lib.elem name contractLib.safeSet;
+      description = "Whether this user asks a host for the ${name} feature. An ask, never a grant: it is enabled only where the host also affords it (grant = affordances ∩ offer).";
     };
   }) grantedOptions;
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (

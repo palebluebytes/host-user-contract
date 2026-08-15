@@ -207,8 +207,8 @@ let
       # The harvested offer + its variant-invariance guard. Compared as the enabled-name PROJECTION
       # (what the index publishes and `bindContractUser` intersects), which is the whole observable
       # content of a want set.
-      harvested = map (v: v.home.config.contract.wants) variants;
-      offeredNames = map grantedNamesOf harvested;
+      harvestedWants = map (v: v.home.config.contract.wants) variants;
+      offeredNames = map grantedNamesOf harvestedWants;
       offer =
         if variants == [ ] then
           throw (
@@ -216,7 +216,7 @@ let
             + "harvest `contract.wants` from — a user must bake at least one variant."
           )
         else if lib.all (o: o == lib.head offeredNames) offeredNames then
-          lib.head harvested
+          lib.head harvestedWants
         else
           throw (
             "mkContractUser: variant-varying offer for '${name}' — its `contract.wants` differs "
@@ -543,6 +543,8 @@ in
       # unioning their modules — so this ADDS a freeform to the umbrella's own typed options
       # rather than restating them, and every known key keeps its type (a malformed KNOWN
       # request still errors, even here).
+      # Each carries a TYPE only: the description and default belong to the umbrella's own
+      # declaration, which this merges into (restating either would be a second owner of them).
       permissiveVoice = {
         options.contract.requests = lib.mkOption {
           type = lib.types.submodule { freeformType = lib.types.attrsOf lib.types.anything; };
@@ -567,8 +569,9 @@ in
       };
       requests = home.config.contract.requests;
       wants = home.config.contract.wants;
-      # The feature keys this contract revision declares, read from the SAME option fragments the
-      # umbrella declares them with — so "unknown" cannot drift from "undeclared".
+      # The feature keys this contract revision declares, read from the very values the umbrella
+      # declares these namespaces FROM — the request option fragments, and the registry the want
+      # options are one `mapAttrs` off — so "unknown" cannot drift from "undeclared".
       unknownIn = known: value: lib.filter (k: !lib.elem k known) (lib.attrNames value);
     in
     {

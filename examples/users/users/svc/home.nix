@@ -8,7 +8,7 @@
 # Contract-pure (ADR-0008).
 { ... }:
 {
-  # svc's OFFER (ADR-0028): the explicit OPT-OUT. Every non-privileged (safe-set) feature is wanted
+  # What svc asks a host for (ADR-0028): nothing — the explicit OPT-OUT. Every non-privileged (safe-set) feature is wanted
   # by default, so an account that must never take a seat says so — this is the one line that keeps
   # "never gui" true even on a host that affords gui.
   contract.wants.gui.enable = false;

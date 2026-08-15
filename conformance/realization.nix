@@ -155,9 +155,12 @@ let
 
   # --- the home-affecting feature set (ADR-0028) ---
   # The public data surface a PRODUCER narrows `hostFacts.granted` with (and derives its baked
-  # variant set from). Model the narrowing here on a maximal grant: whatever a host grants, a home
-  # may only SEE the home-affecting features, so a home reading `granted.sudo` structurally gets
-  # false forever and cannot become grant-sensitive on a feature nothing bakes for.
+  # variant set from). The FOLD is the producer's — the contract exposes the set, not a helper
+  # (there is no host config at bake time, so the producer builds the facts literal itself) — so
+  # what is pinned here is the surface and the RESULT the idiom must yield on a maximal grant: a
+  # home may only SEE the home-affecting features, so one reading `granted.sudo` structurally gets
+  # false forever and cannot become grant-sensitive on a feature nothing bakes for. The reference
+  # producer applies exactly this fold in `examples/users/flake.nix`'s `hostFactsFor`.
   everyFeature = [
     "gui"
     "containers"
@@ -302,7 +305,7 @@ in
     {
       # The narrowing a producer performs with this surface: a home may see only what something
       # bakes for. `granted.sudo` is then structurally absent ⇒ `or false` forever.
-      name = "homeAffecting: narrowing a full grant leaves only the home-affecting features visible";
+      name = "homeAffecting: the producer's narrowing idiom drops every bind-riding grant";
       ok =
         narrowedFacts.gui.enable
         && !(narrowedFacts.sudo.enable or false)

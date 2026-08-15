@@ -253,6 +253,17 @@ let
   # A user whose two baked variants harvest DIFFERENT wants — exactly what a home branching on
   # `hostFacts.granted` produces. The offer is what the grant is derived from, so a grant-dependent
   # want is circular and must fail the BAKE with a named error, not silently publish one variant's.
+  # The other end of the harvest: with NO variants there is no evaluated home to read `wants` off,
+  # so the index has no offer to publish. That is a named bake error too, never an empty offer
+  # (which would silently negotiate down to no grant at all).
+  noVariantUser = builtins.tryEval (
+    (mkContractUser {
+      inherit pkgs system;
+      usersDir = ../examples/users/users;
+      name = "ada";
+      variants = [ ];
+    }).contractUsers.${system}.ada.offer
+  );
   varyingUser = builtins.tryEval (
     (mkContractUser {
       inherit pkgs system;
@@ -340,6 +351,10 @@ in
     {
       name = "mkContractUser: an offer that varies across baked variants is a hard bake error";
       ok = !varyingUser.success;
+    }
+    {
+      name = "mkContractUser: a user with no variants has no home to harvest ⇒ hard bake error";
+      ok = !noVariantUser.success;
     }
     {
       name = "mkContractUsers: the index variant carries its grant-key names + package";
