@@ -112,6 +112,34 @@
         platform = system;
         granted = lib.filterAttrs (f: _: lib.elem f contract.homeAffecting) grants;
       };
+
+      # This repo's OWN home builder, named rather than inlined so the real `homeConfigurations`
+      # and the contract's confinement check drive the SAME module set (issue #35). A check that
+      # ran over a module set assembled separately would prove nothing about what actually ships.
+      # `extraModules` is the seam the check needs: it appends one probe module at a time and asks
+      # whether the home still evaluates.
+      mkHome =
+        {
+          name,
+          bakedGrants ? { },
+          extraModules ? [ ],
+        }:
+        home-manager.lib.homeManagerConfiguration {
+          inherit pkgs;
+          modules = [
+            contract.homeModules.default
+            ./users/${name}/home.nix
+            {
+              identity = contract.lib.loadIdentity ./users/${name}/identity.json;
+              home.username = name;
+              home.homeDirectory = "/home/${name}";
+              home.stateVersion = "25.11";
+              home.packages = [ pkgs.hello ];
+            }
+          ]
+          ++ extraModules;
+          extraSpecialArgs.hostFacts = hostFactsFor bakedGrants;
+        };
     in
     {
       # Standalone homes (`nix build .#homeConfigurations.<u>.activationPackage`): each user's home +
@@ -128,24 +156,9 @@
       homeConfigurations =
         lib.mapAttrs (
           name: u:
-          let
-            identity = contract.lib.loadIdentity ./users/${name}/identity.json;
-          in
-          home-manager.lib.homeManagerConfiguration {
-            inherit pkgs;
-            modules = [
-              contract.homeModules.default
-              ./users/${name}/home.nix
-              {
-                inherit identity;
-                home.username = name;
-                home.homeDirectory = "/home/${name}";
-                home.stateVersion = "25.11";
-                home.packages = [ pkgs.hello ];
-              }
-            ]
-            ++ (u.homeModules or [ ]);
-            extraSpecialArgs.hostFacts = hostFactsFor u.bakedGrants;
+          mkHome {
+            inherit name;
+            inherit (u) bakedGrants;
           }
         ) roster
         # The greeter-login variant (<u>-greeter): the SAME home granted the safe set (greeterGrants),
@@ -218,6 +231,27 @@
           name: _: lib.nameValuePair "home-build-${name}" self.homeConfigurations.${name}.activationPackage
         ) roster
         // {
+          # The CONSUMER half of the confinement promise (issue #35). `conformance/confinement.nix`
+          # proves the contract UMBRELLA declares no system channel; that is the contract's own
+          # promise, and it says nothing about whether THIS repo's imports smuggled one back in.
+          # `mkConfinementCheck` closes that half by probing the real `mkHome` above.
+          #
+          # Run over duo-a deliberately: it is the ONLY home with non-trivial imports (the shared
+          # module and the shared overlay), which is exactly the hazard the check exists for. ada
+          # imports nothing, so a check over her would merely re-prove the umbrella in a costlier
+          # way. This call site is also what exercises the helper's two DEFAULTS — the
+          # `activationPackage.drvPath` force and the `home.sessionVariables` positive control —
+          # which the contract's own suite structurally cannot reach (it has no home-manager).
+          home-confinement = contract.lib.mkConfinementCheck {
+            inherit pkgs;
+            buildHome =
+              extraModules:
+              mkHome {
+                name = "duo-a";
+                inherit extraModules;
+              };
+          };
+
           # The ADR-0020 claim the duo pair exists to prove: SHARED CODE, PER-USER DATA. "Both homes
           # build" would not prove it — a shared module that baked duo-a's identity into duo-b would
           # still build. So this check pins the two halves separately, on the REALIZED homes:
