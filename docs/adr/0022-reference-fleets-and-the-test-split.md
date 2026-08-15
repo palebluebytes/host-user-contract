@@ -59,10 +59,9 @@ never a replacement for it.**
   boundary `examples/user/` already sat behind. Running everything means `nix flake check` in three
   targets (`.`, `examples/users`, `examples/fleet`); a CI matrix walks all three.
 - **No shared home modules in `examples/users/`** — *now with one named exception; see the amendment
-  below.* The contract stops at handing the home a *signal*
-  (`config.identity`, the read-only `hostFacts.granted` projection); what a home *does* with it (git,
-  mail, a signing backend) is application policy that varies per user, so there is nothing universal
-  to factor. Each reference user is **self-contained** (identity + home, secrets only where needed) —
+  below.* The contract stops at handing the home a *signal* (`config.identity`, the read-only
+  `hostFacts.granted` projection); what a home *does* with it (git, mail, a signing backend) is
+  application policy that varies per user, so there is nothing universal to factor. Each reference user is **self-contained** (identity + home, secrets only where needed) —
   which also keeps it a clean standalone teaching artifact. (This does not contradict
   [ADR-0020](0020-multi-user-repo-shape.md)'s "shared code, per-user data": that is a real operator
   repo's *ergonomics*; a reference example's job is to demonstrate the *contract*.)

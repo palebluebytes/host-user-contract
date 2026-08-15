@@ -16,15 +16,14 @@
   # The shared setup, opted into per user — one module, one overlay, both from `../../shared/`.
   imports = [ ../../shared/module.nix ];
 
-  # A home may declare its OWN overlays even though the producer passes `pkgs` explicitly:
-  # home-manager rebinds `_module.args.pkgs` at priority 100, beating the passed pkgs' mkDefault
-  # (1000), so this list MERGES with the producer's rather than replacing it. This overlay closes
-  # over nothing external, so no `inputs` specialArg is needed (ADR-0020's amendment).
+  # A home may declare its OWN overlays even though the producer passes `pkgs` explicitly — this
+  # list MERGES with the producer's rather than replacing it. Why that holds, and why this overlay
+  # needs no `inputs` specialArg, is spelled out once in `shared/overlay.nix`.
   nixpkgs.overlays = [ (import ../../shared/overlay.nix) ];
 
-  # duo-a asks for nothing privileged, so it declares no `contract.wants` (ADR-0028) and its offer is
-  # the safe-set default. Its desktop choice differs from duo-b's only to show that sharing a module
-  # costs a user none of its own voice.
+  # duo-a asks for nothing privileged, so it declares no `contract.wants` (ADR-0028) and its offer
+  # is the safe-set default. Its desktop choice differs from duo-b's only to show that sharing a
+  # module costs a user none of its own voice.
   contract.requests.gui.desktop = "sway";
   custom.home.profiles.gui.enable = true;
 }

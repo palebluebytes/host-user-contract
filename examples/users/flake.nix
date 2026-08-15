@@ -64,7 +64,7 @@
       # flake. The negotiation is unchanged: a host declares `contract.affordances` once and each
       # grant is derived as `affordances ∩ offer`, so ada is gui on a seat that affords gui and
       # cli-only on a headless host. What each user asks for now reads out of `users/<u>/home.nix`:
-      #   - ada, ben: no `wants` line — the safe-set default (gui) is their whole offer;
+      #   - ada, ben, duo-a, duo-b: no `wants` line — the safe-set default (gui) is their whole offer;
       #   - cleo: `containers`, admin: `sudo` — privileged, so asked for explicitly;
       #   - svc: `gui.enable = false` — the explicit opt-out that keeps an automation account
       #     cli-only even where a seat affords gui.
@@ -112,13 +112,15 @@
       };
     in
     {
-      # Standalone homes (`nix build .#homeConfigurations.<u>.activationPackage`): each user's
-      # contract-pure home + its identity.json, built directly with home-manager's own canonical
+      # Standalone homes (`nix build .#homeConfigurations.<u>.activationPackage`): each user's home +
+      # its identity.json, built directly with home-manager's own canonical
       # `homeManagerConfiguration` (the golden path a real user repo follows) against the contract
       # umbrella. The home.* fields + home.packages are the home-manager glue a BOUND path gets from
-      # the host — kept HERE, not in the user's home.nix, so home.nix stays contract-pure and
-      # evaluates headlessly against the bare umbrella when the conformance tracer harvests requests
-      # (ADR-0008). Identity is loaded once via the canonical `contract.lib.loadIdentity` and injected
+      # the host — kept HERE, not in the five self-contained users' home.nix, so those stay
+      # contract-pure and evaluate headlessly against the bare umbrella when the conformance tracer
+      # harvests requests (ADR-0008). The duo pair is the deliberate exception: its shared module sets
+      # home-manager options of its own, so it needs home-manager and is never borrowed headlessly.
+      # Identity is loaded once via the canonical `contract.lib.loadIdentity` and injected
       # (ADR-0009); hostFacts is the self-scoped host projection the producer supplies inline (there
       # is no host `config` at bake time — ADR-0026), built by `hostFactsFor` below.
       homeConfigurations =
@@ -233,7 +235,9 @@
             let
               duoA = self.homeConfigurations.duo-a;
               duoB = self.homeConfigurations.duo-b;
-              cardOf = home: home.config.home.file.".contract-shared-card".source;
+              # Both halves are read out of the REALIZED activation package, never off the evaluated
+              # config: the point is what actually lands in the user's home, not what the module said.
+              cardOf = home: "${home.activationPackage}/home-files/.contract-shared-card";
               markerOf = home: "${home.activationPackage}/home-path/bin/contract-shared-marker";
             in
             pkgs.runCommand "shared-code-per-user-data" { } ''
@@ -251,8 +255,12 @@
               "$markerA" | grep -q 'shared/overlay.nix' || fail "the marker in the closure did not come from the shared overlay"
 
               # --- per-user DATA: same module, two identities, two different outputs ---
-              cardA=${cardOf duoA}
-              cardB=${cardOf duoB}
+              # Each home's card is a symlink into the store, so resolving it gives the derivation the
+              # shared module rendered for THAT identity. Two distinct paths ⇒ genuinely keyed output.
+              cardA=$(readlink -f ${cardOf duoA})
+              cardB=$(readlink -f ${cardOf duoB})
+              [ -f "$cardA" ] || fail "duo-a's realized home has no shared-module card"
+              [ -f "$cardB" ] || fail "duo-b's realized home has no shared-module card"
               [ "$cardA" != "$cardB" ] || fail "the shared module rendered ONE output for two identities — it is not keyed on config.identity.username"
 
               grep -q '^username=duo-a$' "$cardA" || fail "duo-a's card is not keyed on duo-a's username"

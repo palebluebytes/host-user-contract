@@ -1,9 +1,11 @@
 # The SHARED OVERLAY of the reference user fleet (ADR-0020, amended 2026-08-15 by issue #36).
 #
-# One overlay, imported by every user that opts into the shared setup — the `overlays/` half of
-# ADR-0020's layout block, made real. It is deliberately trivial: a marker program, so the fixture
-# realizes for nearly free while still putting a package from the overlay into each opting-in user's
-# CLOSURE. An overlay proof that never reaches a closure proves nothing.
+# One overlay, imported by every user that opts into the shared setup — the overlay half of the
+# sharing mechanism ADR-0020 blesses. (Its layout block draws root-level `overlays/`; the amendment
+# says the block illustrates an arrangement rather than fixing one, so this fixture keeps the module
+# and its overlay together under `shared/`.) It is deliberately trivial: a marker program, so the
+# fixture realizes for nearly free while still putting a package from the overlay into each
+# opting-in user's CLOSURE. An overlay proof that never reaches a closure proves nothing.
 #
 # It is IDENTITY-FREE by construction: an overlay runs before any home is evaluated and has no
 # `config`, so it cannot key on a user. That is the point of the split — the overlay is the shared
