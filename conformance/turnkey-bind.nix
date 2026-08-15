@@ -195,29 +195,39 @@ let
     })
   ];
 
-  # --- (e) mkContractUsers: the emitted shape + no-IFD selection ---
+  # --- (e) mkContractUsers: the emitted shape, the HARVESTED offer, + no-IFD selection ---
   # A synthetic already-evaluated home (attribute paths mirror a homeManagerConfiguration result),
-  # exactly as ./contract-package.nix stands one in for mkContractPackageForHome. One base variant.
+  # exactly as ./contract-package.nix stands one in for mkContractPackageForHome. Its
+  # `contract.wants` is what mkContractUser harvests as the index's offer (ADR-0028) — the `offer`
+  # ARGUMENT is gone, so a synthetic user declares its offer in its home like a real one. One base
+  # variant.
   activationStub = pkgs.runCommand "turnkey-activation-stub" { } ''
     mkdir -p $out
     printf '#!/bin/sh\necho activated\n' > $out/activate
     chmod +x $out/activate
   '';
-  syntheticHome = {
+  mkSyntheticHome = wants: {
     activationPackage = activationStub;
     config = {
       contract.requests = {
         gui.desktop = "plasma";
       };
+      contract.wants = wants;
       home = {
         packages = [ pkgs.hello ];
         username = "ada";
       };
     };
   };
-  adaOffer = {
+  # The full want set a real home eval yields: every registry feature present, `.enable` a bool.
+  adaWants = {
     gui.enable = true;
+    sudo.enable = false;
+    containers.enable = false;
+    virtualization.enable = false;
+    nix-daemon.enable = false;
   };
+  syntheticHome = mkSyntheticHome adaWants;
   adaVariants = [
     {
       grants = { };
@@ -228,10 +238,7 @@ let
     inherit pkgs;
     inherit system;
     usersDir = ../examples/users/users;
-    users.ada = {
-      offer = adaOffer;
-      variants = adaVariants;
-    };
+    users.ada.variants = adaVariants;
   };
   emittedIndex = bindings.contractUsers.${system}.ada;
   # The SINGULAR partner: mkContractUser bakes ONE user and must emit byte-identical outputs to the
@@ -240,9 +247,42 @@ let
     inherit pkgs system;
     usersDir = ../examples/users/users;
     name = "ada";
-    offer = adaOffer;
     variants = adaVariants;
   };
+  # --- (f) the offer must be variant-INVARIANT (ADR-0028) ---
+  # A user whose two baked variants harvest DIFFERENT wants — exactly what a home branching on
+  # `hostFacts.granted` produces. The offer is what the grant is derived from, so a grant-dependent
+  # want is circular and must fail the BAKE with a named error, not silently publish one variant's.
+  # The other end of the harvest: with NO variants there is no evaluated home to read `wants` off,
+  # so the index has no offer to publish. That is a named bake error too, never an empty offer
+  # (which would silently negotiate down to no grant at all).
+  noVariantUser = builtins.tryEval (
+    (mkContractUser {
+      inherit pkgs system;
+      usersDir = ../examples/users/users;
+      name = "ada";
+      variants = [ ];
+    }).contractUsers.${system}.ada.offer
+  );
+  varyingUser = builtins.tryEval (
+    (mkContractUser {
+      inherit pkgs system;
+      usersDir = ../examples/users/users;
+      name = "ada";
+      variants = [
+        {
+          grants = { };
+          home = mkSyntheticHome adaWants;
+        }
+        {
+          grants = {
+            gui.enable = true;
+          };
+          home = mkSyntheticHome (adaWants // { containers.enable = true; });
+        }
+      ];
+    }).contractUsers.${system}.ada.offer
+  );
 in
 {
   assertions = [
@@ -302,6 +342,19 @@ in
         && (emittedIndex ? offer)
         && (emittedIndex ? variants)
         && emittedIndex.identity.username == "ada";
+    }
+    {
+      # ADR-0028: the offer is HARVESTED off the home's contract.wants, not passed in.
+      name = "mkContractUsers: the index offer is the home's harvested contract.wants";
+      ok = emittedIndex.offer == adaWants;
+    }
+    {
+      name = "mkContractUser: an offer that varies across baked variants is a hard bake error";
+      ok = !varyingUser.success;
+    }
+    {
+      name = "mkContractUser: a user with no variants has no home to harvest ⇒ hard bake error";
+      ok = !noVariantUser.success;
     }
     {
       name = "mkContractUsers: the index variant carries its grant-key names + package";

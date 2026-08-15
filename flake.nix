@@ -38,13 +38,15 @@
       # The contract derivation functions (ADR-0004 Q4).
       inherit (kit) lib;
 
-      # Data surface the host reads where it wires grants and the safe set, plus the
-      # identity.json convention (filename + schema) a greeter authenticates on.
+      # Data surface the host reads where it wires grants and the safe set, the home-affecting
+      # feature set a PRODUCER narrows hostFacts.granted with (and derives its variant set from,
+      # ADR-0028), plus the identity.json convention (filename + schema) a greeter authenticates on.
       inherit (kit)
         features
         featureGroups
         privilegedGroups
         safeSet
+        homeAffecting
         greeterGrants
         tier1EvalConfig
         identityFile
@@ -67,6 +69,7 @@
           homeGreeterDesktopModule = self.homeModules.greeterDesktop;
           inherit (self)
             safeSet
+            homeAffecting
             greeterGrants
             tier1EvalConfig
             featureGroups

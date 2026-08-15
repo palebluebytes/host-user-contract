@@ -52,7 +52,7 @@ let
         lib.elem "docker" g && !(lib.elem "wheel" g);
     }
     {
-      name = "sudo: admin gets wheel and NOTHING more (the minimal grant — no docker, that is the containers grant)";
+      name = "sudo: admin's sudo grant confers wheel and no docker (atomic — docker is the containers grant)";
       ok =
         let
           g = (acct "desk" "admin").extraGroups;

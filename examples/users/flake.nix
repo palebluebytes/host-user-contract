@@ -30,61 +30,60 @@
       # nothing reaches sideways between users. What distinguishes the users is not their homes
       # (deliberately thin, contract-pure) but what the FLEET grants each of them per host.
       #
-      # Two per-user knobs here:
+      # ONE per-user knob remains here:
       #   - `bakedGrants`: the grants the contractPackage is BUILT with. No grant is secret-bearing
-      #     (the contract handles no secrets) and these reference homes don't FAN OUT on any grant
-      #     (they are trivial, contract-pure), so nothing is home-affecting and every user bakes a
-      #     single grant-less `base` variant. That is exactly what lets one `ada-contractPackage-base`
-      #     be gui on one seat and cli-only on another — the grant rides the bind, never the bake.
-      #   - `offer` (ADR-0025): the features this user ASKS a host for. In the turnkey path a host
-      #     declares its `contract.affordances` once and binds each user with `bindContractUser`;
-      #     the grant is derived as `affordances ∩ offer`. So ada OFFERS gui and RECEIVES it only on
-      #     a host that affords gui — the portable-user gui↔cli divergence, now a two-sided
-      #     negotiation rather than a hand-written per-host grant.
+      #     (the contract handles no secrets). The contract's HOME-AFFECTING set — the upper bound
+      #     on what a home may even see, `contract.homeAffecting` — is `{gui}`, so a repo whose homes
+      #     fan out bakes `powerset(homeAffecting)` = a base + a gui variant. These reference homes
+      #     are trivial and contract-pure: not one of them reads `hostFacts.granted`, so none fans
+      #     out and every user bakes a single grant-less `base` variant. That is exactly what lets
+      #     one `ada-contractPackage-base` be gui on one seat and cli-only on another — the grant
+      #     rides the bind, never the bake.
+      #
+      # The `offer` (ADR-0025) — the features a user ASKS a host for — is NO LONGER declared here.
+      # Since ADR-0028 each user declares `contract.wants` in its OWN home and `mkContractUsers`
+      # HARVESTS it into the binding index, so a user's voice is not split between its home and this
+      # flake. The negotiation is unchanged: a host declares `contract.affordances` once and each
+      # grant is derived as `affordances ∩ offer`, so ada is gui on a seat that affords gui and
+      # cli-only on a headless host. What each user asks for now reads out of `users/<u>/home.nix`:
+      #   - ada, ben: no `wants` line — the safe-set default (gui) is their whole offer;
+      #   - cleo: `containers`, admin: `sudo` — privileged, so asked for explicitly;
+      #   - svc: `gui.enable = false` — the explicit opt-out that keeps an automation account
+      #     cli-only even where a seat affords gui.
       roster = {
         # ada — the multi-machine user (the contract's portable-user north star): ONE identity,
-        # ONE home, OFFERS gui — she gets a gui session on a seat that affords gui and cli-only on a
-        # headless host that does not. Whether she gets gui is a per-host AFFORDANCE ∩ her offer,
-        # never a user trait.
-        ada = {
-          bakedGrants = { };
-          offer = {
-            gui.enable = true;
-          };
-        };
-        # ben — a second cli reference user (a plain, contract-pure home): distinct identity, offers
-        # nothing. Useful as a co-resident on the same host as a privileged account.
-        ben = {
-          bakedGrants = { };
-          offer = { };
-        };
-        # cleo — the privileged-group user: declares `docker` in identity.extraGroups and OFFERS
+        # ONE home, wants gui (the default) — she gets a gui session on a seat that affords gui and
+        # cli-only on a headless host that does not. Whether she gets gui is a per-host AFFORDANCE ∩
+        # her offer, never a user trait.
+        ada.bakedGrants = { };
+        # ben — a second cli reference user (a plain, contract-pure home): distinct identity, asks
+        # for nothing privileged. Useful as a co-resident on the same host as a privileged account.
+        ben.bakedGrants = { };
+        # cleo — the privileged-group user: declares `docker` in identity.extraGroups and wants
         # `containers`; she receives docker ONLY on a host that affords containers (the clamp +
         # negotiation, positive direction). containers is non-secret, so nothing is baked.
-        cleo = {
-          bakedGrants = { };
-          offer = {
-            containers.enable = true;
-          };
-        };
-        # svc — a pure automation account: cli-only on every host that runs it, never gui. Offers
-        # nothing. The minimal home; nothing secret.
-        svc = {
-          bakedGrants = { };
-          offer = { };
-        };
-        # admin — a break-glass administrative account: OFFERS `sudo`, so on a host that affords sudo
+        cleo.bakedGrants = { };
+        # svc — a pure automation account: cli-only on every host that runs it, never gui (it opts
+        # out of the safe-set default). The minimal home; nothing secret.
+        svc.bakedGrants = { };
+        # admin — a break-glass administrative account: wants `sudo`, so on a host that affords sudo
         # it gets `wheel` and nothing more (the minimal privileged grant, ADR-0020). Its login
         # password is the well-known "password" (ADR-0019: the credential travels with the user).
         # sudo is privileged but non-secret, so nothing is baked.
-        admin = {
-          bakedGrants = { };
-          offer = {
-            sudo.enable = true;
-          };
-        };
+        admin.bakedGrants = { };
       };
 
+      # The self-scoped hostFacts a bake supplies to a home (ADR-0002). There is no host `config`
+      # at bake time (ADR-0026/0027), so the producer builds the literal — and NARROWS `granted`
+      # with the contract's `homeAffecting` surface (ADR-0028): a home may only see the grants
+      # something bakes for, so a home reading `granted.sudo` structurally gets false forever and
+      # cannot become grant-sensitive on a feature that rides the bind. The rule is the contract's
+      # data, not a comment kept in step by hand.
+      hostFactsFor = grants: {
+        exposed = false;
+        platform = system;
+        granted = lib.filterAttrs (f: _: lib.elem f contract.homeAffecting) grants;
+      };
     in
     {
       # Standalone homes (`nix build .#homeConfigurations.<u>.activationPackage`): each user's
@@ -95,7 +94,7 @@
       # evaluates headlessly against the bare umbrella when the conformance tracer harvests requests
       # (ADR-0008). Identity is loaded once via the canonical `contract.lib.loadIdentity` and injected
       # (ADR-0009); hostFacts is the self-scoped host projection the producer supplies inline (there
-      # is no host `config` at bake time — ADR-0026).
+      # is no host `config` at bake time — ADR-0026), built by `hostFactsFor` below.
       homeConfigurations =
         lib.mapAttrs (
           name: u:
@@ -116,11 +115,7 @@
               }
             ]
             ++ (u.homeModules or [ ]);
-            extraSpecialArgs.hostFacts = {
-              exposed = false;
-              platform = system;
-              granted = u.bakedGrants;
-            };
+            extraSpecialArgs.hostFacts = hostFactsFor u.bakedGrants;
           }
         ) roster
         # The greeter-login variant (<u>-greeter): the SAME home granted the safe set (greeterGrants),
@@ -147,11 +142,7 @@
                   home.file.".contract-home-active".text = "greeter-activated for ${identity.name}";
                 }
               ];
-              extraSpecialArgs.hostFacts = {
-                exposed = false;
-                platform = system;
-                granted = contract.greeterGrants;
-              };
+              extraSpecialArgs.hostFacts = hostFactsFor contract.greeterGrants;
             }
           )
         ) roster;
@@ -162,8 +153,9 @@
       # the twin of the host's `bindContractUser`) mapped over the roster and merged — one call bakes
       # the multi-user repo (ADR-0020).
       #
-      # Each user declares its `offer` and its `variants` (here a single grant-less `base` variant,
-      # since these reference homes don't fan out on any grant). mkContractUsers bakes each variant
+      # Each user declares only its `variants` (here a single grant-less `base` variant, since these
+      # reference homes don't fan out on any grant); its OFFER is harvested from each variant's home
+      # (`contract.wants`, ADR-0028) rather than passed. mkContractUsers bakes each variant
       # via the internal package kernels (only READING the already-evaluated home, so package-free),
       # names it `<user>-contractPackage-<variantName>` (empty grant-key ⇒ `base`), resolves each
       # identity once from `users/<u>/identity.json`, and emits the index `contractUsers.<sys>.<u> =
@@ -174,7 +166,6 @@
           inherit pkgs system;
           usersDir = ./users;
           users = lib.mapAttrs (name: u: {
-            inherit (u) offer;
             variants = [
               {
                 grants = u.bakedGrants;

@@ -11,6 +11,7 @@
   registry,
   manifest,
   grantLib,
+  featureConfigOptions,
 }:
 let
   # A feature is runtime/greeter-eligible iff it declares no privilegedGroups (ADR-0002,
@@ -27,6 +28,17 @@ let
 
   # The runtime-eligible feature names — the safe set (ADR-0002, slice 15).
   safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
+
+  # The HOME-AFFECTING feature names (ADR-0028) — the safe set's sibling data surface, and the
+  # answer to "which grants may a home even see?". A feature is home-affecting iff the registry
+  # says its grant can reach home CONTENT (`homeAffecting`); the rest confer host-side powers only
+  # and ride the bind. Two producer jobs run off this ONE surface, so neither is re-implemented in
+  # prose per repo:
+  #   - `hostFacts.granted` is NARROWED to it, so a home reading a grant nothing bakes for
+  #     structurally gets `false` forever and cannot become grant-sensitive on it; and
+  #   - the baked variant set is `powerset(homeAffecting)` — the taxonomy ADR-0025 left to each
+  #     producer's hand-written comment, now a contract constant.
+  homeAffecting = lib.filter (f: registry.${f}.homeAffecting or false) (lib.attrNames registry);
 
   # The request→feature-configuration bridge, shared by BOTH binding shapes (the headless
   # tracer below and the real `bindContractPackage`). Given a user's harvested `contract.requests`
@@ -166,6 +178,13 @@ let
   # consumes); it is projected to the index's `granted` NAME LIST by `grantedNamesOf`. `loadIdentity`
   # is injected by the kit (like `homeModule` for `traceUser`) so the users flake calls this without
   # wiring the loader itself. `pkgs`/`system` stay parameters so one call can emit multi-arch outputs.
+  #
+  # The `offer` is HARVESTED, never passed (ADR-0028): it is `contract.wants` read off the already-
+  # evaluated home, so the user's voice lives in the user's own home rather than in the producer's
+  # flake. Because the offer is what the grant is DERIVED from (`affordances ∩ offer`), a want that
+  # depends on `hostFacts.granted` is circular — the harvest would differ per variant and the
+  # published offer would be whichever variant happened to be first. That is a bake-time error here,
+  # not a subtle mis-negotiation later.
   mkContractUser =
     {
       loadIdentity,
@@ -173,7 +192,6 @@ let
       system,
       usersDir,
       name,
-      offer ? { },
       variants,
     }:
     let
@@ -186,6 +204,27 @@ let
         };
         label = variantName v.grants;
       }) variants;
+      # The harvested offer + its variant-invariance guard. Compared as the enabled-name PROJECTION
+      # (what the index publishes and `bindContractUser` intersects), which is the whole observable
+      # content of a want set.
+      harvestedWants = map (v: v.home.config.contract.wants) variants;
+      offeredNames = map grantedNamesOf harvestedWants;
+      offer =
+        if variants == [ ] then
+          throw (
+            "mkContractUser: '${name}' declares no variants, so there is no evaluated home to "
+            + "harvest `contract.wants` from — a user must bake at least one variant."
+          )
+        else if lib.all (o: o == lib.head offeredNames) offeredNames then
+          lib.head harvestedWants
+        else
+          throw (
+            "mkContractUser: variant-varying offer for '${name}' — its `contract.wants` differs "
+            + "across baked variants ("
+            + lib.concatMapStringsSep "; " (o: "[${lib.concatStringsSep ", " o}]") offeredNames
+            + "). An offer that depends on `hostFacts.granted` is circular: the grant is DERIVED "
+            + "from the offer (affordances ∩ offer), so it cannot also be an input to it."
+          );
     in
     {
       packages.${system} = lib.listToAttrs (
@@ -202,8 +241,9 @@ let
   # whole multi-user repo and its outputs merged, so a `users` flake bakes its entire roster in ONE
   # call and `inherit … packages contractUsers`. It is the turnkey producer for the multi-user shape
   # (ADR-0020) exactly as `bindContractUser` is the turnkey consumer; the singular `mkContractUser`
-  # is the true per-user partner underneath. Each input user is `{ offer; variants }`, forwarded to
-  # `mkContractUser`. Adds no logic of its own beyond the roster fold — the per-user bake, naming,
+  # is the true per-user partner underneath. Each input user is `{ variants }`, forwarded to
+  # `mkContractUser` (the offer is harvested from each variant's home, ADR-0028 — a roster carries
+  # no `offer` field). Adds no logic of its own beyond the roster fold — the per-user bake, naming,
   # and index shape all live in `mkContractUser`.
   mkContractUsers =
     {
@@ -224,7 +264,7 @@ let
             usersDir
             name
             ;
-          inherit (u) offer variants;
+          inherit (u) variants;
         }
       ) users;
     in
@@ -411,7 +451,7 @@ let
       { inherit config pkgs; };
 in
 {
-  inherit runtimeEligibleFeature safeSet;
+  inherit runtimeEligibleFeature safeSet homeAffecting;
 
   # The runtime/greeter grant (ADR-0006, ADR-0008): "default-open over the safe set". The
   # greeter does not let an operator choose features — it auto-grants every runtime-eligible
@@ -478,6 +518,14 @@ in
   # bridge?" WITHOUT a build. It is the logic-level proof the conformance suite drives and the
   # public tool a home author dry-runs against; it is NOT a deployment path (real binds are
   # pre-built: `bindContractUser`, ADR-0026).
+  #
+  # PERMISSIVE MODE (ADR-0028) — `permissive = true` tolerates a home written against a NEWER
+  # contract: feature keys this revision does not declare land as DATA (reported in `unknown`)
+  # instead of throwing. Tolerance is confined to this inspector — the bind path is fully typed
+  # (`contract.wants`/`contract.requests` carry no freeform) — because traceUser is the one place
+  # that co-evaluates a roaming home with a possibly-older host umbrella, so it is the one place
+  # cross-revision skew is real; and an inspector that dies on the question it exists to answer
+  # ("what does this home ask for?") turns a diagnosis into a dead end.
   traceUser =
     {
       homeModule,
@@ -486,9 +534,25 @@ in
       grants ? { },
       hostFacts ? { },
       pkgs ? null,
+      permissive ? false,
     }:
     let
       username = identity.username;
+      # The permissive overlay: re-declare the two user-voice namespaces with a freeform type.
+      # Declaring an option twice MERGES the declarations, and two submodule types merge by
+      # unioning their modules — so this ADDS a freeform to the umbrella's own typed options
+      # rather than restating them, and every known key keeps its type (a malformed KNOWN
+      # request still errors, even here).
+      # Each carries a TYPE only: the description and default belong to the umbrella's own
+      # declaration, which this merges into (restating either would be a second owner of them).
+      permissiveVoice = {
+        options.contract.requests = lib.mkOption {
+          type = lib.types.submodule { freeformType = lib.types.attrsOf lib.types.anything; };
+        };
+        options.contract.wants = lib.mkOption {
+          type = lib.types.submodule { freeformType = lib.types.attrsOf lib.types.anything; };
+        };
+      };
       # Evaluate the user's home against the contract home umbrella. traceUser is the SINGLE
       # reader of the loaded identity (ADR-0009): it injects the same value into the home it
       # gives the system account, so the home HOLDS its identity (e.g. for git name/email)
@@ -499,13 +563,30 @@ in
           homeModule
           { inherit identity; }
           userModule
-        ];
+        ]
+        ++ lib.optional permissive permissiveVoice;
         specialArgs = { inherit hostFacts pkgs lib; };
       };
       requests = home.config.contract.requests;
+      wants = home.config.contract.wants;
+      # The feature keys this contract revision declares, read from the very values the umbrella
+      # declares these namespaces FROM — the request option fragments, and the registry the want
+      # options are one `mapAttrs` off — so "unknown" cannot drift from "undeclared".
+      unknownIn = known: value: lib.filter (k: !lib.elem k known) (lib.attrNames value);
     in
     {
-      inherit username home requests;
+      inherit
+        username
+        home
+        requests
+        wants
+        ;
+      # What this home asked for that this contract revision does not know — the skew report an
+      # inspector exists to produce. Always [ ] in strict mode (an unknown key throws first).
+      unknown = {
+        requests = unknownIn (lib.attrNames featureConfigOptions) requests;
+        wants = unknownIn (lib.attrNames registry) wants;
+      };
       # The system module a host merges to realize this user (the account, its powers, and the
       # bridged request params that feed the display surface) — see `mkUserAccount`.
       system.custom.users.${username} = mkUserAccount { inherit identity grants requests; };

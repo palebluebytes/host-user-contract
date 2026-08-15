@@ -1,4 +1,4 @@
-# Conformance domain: the traceUser inspector (ADR-0007/0026). traceUser is the home-manager-free
+# Conformance domain: the traceUser inspector (ADR-0007/0026/0028). traceUser is the home-manager-free
 # DRY-RUN — harvest a contract-pure home with bare evalModules and report what the contract resolves
 # to, WITHOUT a build. It sits outside the contractUser produce/consume coin; it proves the
 # request→grant→bridge kernel at the logic level. Proving that a NON-contract-pure home (one that
@@ -35,6 +35,31 @@ let
   };
   # Realize traceUser's system fragment on a synthetic host ⇒ exercises realization + the surface.
   boundHost = eval [ boundRuntime.system ];
+
+  # --- cross-revision skew: the inspector's permissive mode (ADR-0028) ---
+  # A ROAMING home written against a NEWER contract: it wants a feature and requests a parameter
+  # this revision has no registry entry for. traceUser is the one place that co-evaluates a foreign
+  # home with this contract's umbrella, so it is the one place skew is real. Strict (the bind
+  # posture) must throw; permissive (the inspector posture) must REPORT — an inspector exists to
+  # answer "what does this home ask for?", and dying turns a diagnosis into a dead end.
+  foreignHome = {
+    contract.requests.gui.desktop = "plasma";
+    contract.requests.timeMachine.era = "1885";
+    contract.wants.timeMachine.enable = true;
+  };
+  traceForeign =
+    args:
+    traceUser (
+      {
+        userModule = foreignHome;
+        identity = referenceIdentity;
+        grants = greeterGrants;
+        hostFacts = referenceHostFacts;
+      }
+      // args
+    );
+  strictForeign = builtins.tryEval (builtins.deepSeq (traceForeign { }).requests true);
+  permissiveForeign = traceForeign { permissive = true; };
 in
 {
   assertions = [
@@ -58,6 +83,32 @@ in
     {
       name = "traceUser: an ungranted request is inert (no system feature config bridged)";
       ok = !(boundNone.system.custom.users.ada ? gui);
+    }
+    {
+      name = "traceUser: the home's contract.wants is harvested (the offer a producer bakes)";
+      ok = boundRuntime.wants.gui.enable && !boundRuntime.wants.sudo.enable;
+    }
+
+    # --- permissive inspector mode (ADR-0028) ---
+    {
+      name = "traceUser: strict mode throws on a home from a newer contract (the bind posture)";
+      ok = !strictForeign.success;
+    }
+    {
+      name = "traceUser: permissive mode reports the unknown feature keys as DATA, not a throw";
+      ok =
+        permissiveForeign.unknown.requests == [ "timeMachine" ]
+        && permissiveForeign.unknown.wants == [ "timeMachine" ];
+    }
+    {
+      name = "traceUser: permissive mode still resolves the KNOWN request and bridges it";
+      ok =
+        permissiveForeign.requests.gui.desktop == "plasma"
+        && permissiveForeign.system.custom.users.ada.gui.desktop == "plasma";
+    }
+    {
+      name = "traceUser: a home with no unknown keys reports none (permissive is not a blanket)";
+      ok = boundRuntime.unknown.requests == [ ] && boundRuntime.unknown.wants == [ ];
     }
   ];
 }

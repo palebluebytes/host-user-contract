@@ -23,6 +23,14 @@
 #                      path. Features with only these may be runtime-eligible (safe set).
 #   config           : user-owned option fragment merged into `custom.users.<u>` — the
 #                      feature's *parameters* (host-affecting ones aggregate, ADR-0003).
+#   homeAffecting    : this grant may change the CONTENT of a user's home, so a home may see it
+#                      in `hostFacts.granted` and fan out on it — and a producer bakes a variant
+#                      per subset of these (ADR-0028). Absent/false (the default) means the grant
+#                      confers host-side powers ONLY (a privileged group), so it rides the bind
+#                      and can never multiply variants. Declared, not derived: "does a grant reach
+#                      home content?" is a property of the feature, not of its group list — a
+#                      privileged feature could one day ship home content, and a group-conferring
+#                      one need not. kit.nix derives the `homeAffecting` public surface from these.
 { lib }:
 {
   # gui: desktop environment. Its host effects are two contract-neutral things only —
@@ -33,6 +41,10 @@
   # display-server-agnostic (ADR-0021). In the safe set: no secret, no privileged group.
   gui = {
     grant = "the GUI feature for this user (host grant)";
+    # The one feature with a HOME channel (ADR-0028): it carries user-emitted request params and a
+    # desktop's home content, so a home may legitimately branch on the gui grant — hence a home may
+    # SEE it in hostFacts.granted, and a producer whose home fans out bakes a gui variant.
+    homeAffecting = true;
     groups = [
       "input"
       "uinput"

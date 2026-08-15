@@ -20,6 +20,7 @@
   homeModule,
   homeGreeterDesktopModule,
   safeSet,
+  homeAffecting,
   greeterGrants,
   tier1EvalConfig,
   renderNixConfig,
@@ -59,6 +60,7 @@ let
         toolkit
         loadIdentity
         safeSet
+        homeAffecting
         featureGroups
         privilegedGroups
         ;
@@ -69,6 +71,7 @@ let
         toolkit
         homeModule
         homeGreeterDesktopModule
+        safeSet
         ;
     })
     (import ./confinement.nix {

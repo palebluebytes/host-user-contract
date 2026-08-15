@@ -42,6 +42,22 @@ let
       safeDeclared = declared: lib.filter (g: !lib.elem g privilegedGroups) declared;
     };
   grantedOptions = lib.mapAttrs (_: f: { enable = lib.mkEnableOption f.grant; }) registry;
+  # The `contract.wants` option fragment (ADR-0028): the USER's voice, home-side — which features
+  # this user asks a host for. DERIVED from grantedOptions so the two shapes can never drift (the
+  # grant algebra is written against `.enable`, and one shape spans wants/affordances/granted/offer),
+  # with one change: each SAFE-SET feature defaults to WANTED. Non-privileged features are wanted by
+  # default; privileged ones must be asked for — ADR-0002's "one mechanism, opposite defaults" read
+  # from the user's side, and a future non-privileged feature inherits it with no new special case.
+  # The default is per-FEATURE, not a whole-submodule default: a home asking for `sudo` must not
+  # thereby discard the safe-set default (a submodule default is replaced by any definition).
+  # The description is re-worded rather than inherited: `grant`'s text names a HOST GRANT, and a
+  # want is only ever an ASK (CONTEXT.md keeps the two words distinct).
+  wantedOptions = lib.mapAttrs (name: opts: {
+    enable = opts.enable // {
+      default = lib.elem name contractLib.safeSet;
+      description = "Whether this user asks a host for the ${name} feature. An ask, never a grant: it is enabled only where the host also affords it (grant = affordances ∩ offer).";
+    };
+  }) grantedOptions;
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (
     map (f: f.config or { }) (lib.attrValues registry)
   );
@@ -69,6 +85,7 @@ let
       registry
       manifest
       grantLib
+      featureConfigOptions
       ;
   };
   modules = import ./modules.nix {
@@ -78,6 +95,7 @@ let
       identityOptions
       homeProfileOptions
       grantedOptions
+      wantedOptions
       featureConfigOptions
       ;
   };
@@ -105,7 +123,12 @@ in
     featureGroups
     privilegedGroups
     ;
-  inherit (contractLib) safeSet greeterGrants tier1EvalConfig;
+  inherit (contractLib)
+    safeSet
+    homeAffecting
+    greeterGrants
+    tier1EvalConfig
+    ;
 
   # The identity.json schema, exposed so a host/greeter can introspect the jq-readable
   # shape it authenticates against before any eval (ADR-0007, issue #5).
@@ -119,10 +142,12 @@ in
     # The identity.json loader (ADR-0007): lossless over identity.nix, used by a user's home
     # module and by the producer coin below.
     inherit (identityJson) loadIdentity;
-    # traceUser (ADR-0007/0026): the home-manager-free dry-run inspector, partially applied over
+    # traceUser (ADR-0007/0026/0028): the home-manager-free dry-run inspector, partially applied over
     # the contract's own homeModule so a caller passes only { userModule, identity, grants, … }.
-    # Harvests a contract-pure home via bare evalModules → { username, home, requests, system }.
-    # Sits OUTSIDE the produce/consume coin (it inspects a home, it never touches the index).
+    # Harvests a contract-pure home via bare evalModules → { username, home, requests, wants,
+    # unknown, system }. Its `permissive` mode reports feature keys from a NEWER contract as data
+    # (`unknown`) instead of throwing — the one tolerant reader of the otherwise fully-typed user
+    # voice. Sits OUTSIDE the produce/consume coin (it inspects a home, it never touches the index).
     traceUser = args: contractLib.traceUser (args // { homeModule = modules.homeModule; });
     # The turnkey producer/consumer COIN over the contractUsers binding index (ADR-0025/0026):
     #   - mkContractUser (producer, singular): bake ONE user's variants into contractPackages +
