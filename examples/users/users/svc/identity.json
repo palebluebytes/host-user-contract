@@ -3,7 +3,7 @@
   "email": "svc@example.invalid",
   "username": "svc",
   "sshKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIADAexamplekeysvc svc@example.invalid",
-  "hashedPassword": "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/",
+  "hashedPassword": "$y$j9T$A5WpCOX3TaFRciO.ILZsD1$pHwIEiJI6anN/oQwAS6C6fK8Y.AZXErGHI/U7aTbaA4",
   "extraGroups": [],
   "trustedKeys": []
 }

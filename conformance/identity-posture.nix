@@ -11,21 +11,29 @@
   lib,
   pkgs,
   toolkit,
+  loadIdentity,
   mkIdentityPostureCheck,
 }:
 let
   # `referenceIdentity` IS `loadIdentity examples/users/users/ada/identity.json` (../conformance/
   # toolkit.nix) — the loader's own output, reused rather than re-loaded, so this domain reads the
-  # one load the suite already makes. Ada ships `$6$` (a private-repo-legal hash, ADR-0019), which
-  # makes the same value both the loader's no-policy witness and the rejecting case under a
-  # yescrypt requirement.
+  # one load the suite already makes. Ada ships `$y$` yescrypt: `examples/users` lives in a PUBLIC
+  # repo, and ADR-0019 assigns a public/shared repo the yescrypt posture. So the REAL reference
+  # identity is the SATISFYING case here, and the rejecting case is synthetic.
+  #
+  # That is the right way round. The value the suite proves the loader returns untouched is a real
+  # shipped credential, while the hash that must FAIL a posture is a fixture nobody ships — rather
+  # than the reverse, which would have required the reference fleet to keep shipping a hash its own
+  # ADR tells a public repo not to use, purely to serve a test.
   inherit (toolkit) referenceIdentity;
-  sha512Identity = referenceIdentity;
-  yescryptIdentity = referenceIdentity // {
-    username = "yara";
-    # A syntactically real yescrypt hash: `$y$<params>$<salt>$<hash>`. Nothing verifies it here —
-    # the posture is a PREFIX claim about the algorithm, not a crypt() round-trip.
-    hashedPassword = "$y$j9T$sQ8Zx0mHXqk4hM1p2rE3d.$hZTLbC4y6r0Wl9nQvJ7sKxYf1TdA2mR8eN5uG3bV0oC";
+  yescryptIdentity = referenceIdentity;
+  sha512Identity = referenceIdentity // {
+    username = "sixto";
+    # A syntactically real sha512crypt hash: `$6$<salt>$<hash>`. Nothing verifies it here — the
+    # posture is a PREFIX claim about the algorithm, not a crypt() round-trip. Legal under
+    # ADR-0019's PRIVATE-repo posture, which is exactly why it must fail a `yescrypt` requirement
+    # and pass a `libc` one: the posture is a parameter, not a global rule.
+    hashedPassword = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
   };
   # A passwordless identity: no hash at all satisfies no posture — an account with an empty
   # credential must never read as "posture ok". Synthetic on purpose: no reference user has this
@@ -126,14 +134,15 @@ in
         });
     }
     {
-      # THE ADR-0019 claim: the loader carries no policy. `referenceIdentity` is what
-      # `loadIdentity` RETURNED for a real identity.json shipping a `$6$` hash — the loader
+      # THE ADR-0019 claim: the loader carries no policy. This must be driven by a NON-yescrypt
+      # hash going through the REAL loader, or it proves nothing — a loader that DID bake in the
+      # public-repo posture would accept a `$y$` identity just as happily, so asserting over
+      # `referenceIdentity` (now yescrypt, since examples/users is a public repo) would pass
+      # vacuously. Hence a dedicated `$6$` fixture, loaded rather than hand-written: the loader
       # neither rejected it (a hash policy would throw, taking this whole domain with it) nor
       # rewrote it. A private repo is not forced onto a public repo's posture.
-      # The corollary — that this same loaded identity IS rejected once a repo asks for yescrypt —
-      # is the `$6$`-fails-yescrypt claim above, driven by this very value.
       name = "loadIdentity imposes no hash policy: it returns a `$6$` identity.json unchanged (ADR-0019, posture is consumer-owned)";
-      ok = lib.hasPrefix "$6$" referenceIdentity.hashedPassword;
+      ok = lib.hasPrefix "$6$" (loadIdentity ./fixtures/private-repo-identity.json).hashedPassword;
     }
   ];
 

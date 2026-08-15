@@ -29,7 +29,17 @@
       #
       # What IS invariant is the self-contained USER: a user's identity and its login credential
       # travel with the user (ADR-0019/0023) — no host owns them, and no user's secrets are ever
-      # readable by another (ADR-0020's per-user secret isolation). What is a CHOICE is whether users
+      # readable by another (ADR-0020's per-user secret isolation).
+      #
+      # This fleet lives in a PUBLIC repo, so it follows the posture ADR-0019 assigns a public repo:
+      # every identity.json ships a `$y$` YESCRYPT hash, not `$6$` sha512crypt. The reference fleet
+      # is what consumers copy, so it models the rule rather than merely citing it — and the
+      # `identity-posture` check below enforces it, so a member added with a weaker hash fails the
+      # build. (The cleartexts are published on purpose — "correct-horse-battery-staple", and
+      # "password" for admin — because these are teaching fixtures; the posture is modelled for the
+      # shape a real repo must copy, not because these particular hashes guard anything.)
+      #
+      # What is a CHOICE is whether users
       # share CODE. Since ADR-0020's 2026-08-15 amendment (issue #36) sharing home modules and
       # overlays is permitted, not required, so this roster deliberately shows BOTH arrangements:
       #   - ada, ben, cleo, svc, admin — the self-contained five. They share no module and no

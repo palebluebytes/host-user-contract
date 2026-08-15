@@ -67,30 +67,34 @@ let
           echo "FAIL: a mismatched username was accepted" >&2; exit 1
         fi
 
-        # --- yescrypt hash format (issue #22, ADR-0019) ---
-        # ada's stored hash is $6$ (sha512); real user identities ship yescrypt ($y$). The auth
-        # script re-hashes with libc crypt (via perl), which handles $y$ exactly as /etc/shadow
-        # does — but that branch is unexercised unless a $y$ fixture drives it. Bind a synthetic
-        # yescrypt identity and assert the SAME accept/reject behaviour the $6$ fixture asserts,
-        # so a format-handling regression can't pass conformance unnoticed. The cleartext is the
-        # same canonical secret; only the stored format differs.
-        mkdir yescrypt-src
-        cat > yescrypt-src/identity.json <<'IDENTITY'
+        # --- sha512crypt hash format (issue #22, ADR-0019) ---
+        # The auth script re-hashes with libc crypt (via perl), which is ALGORITHM-AGNOSTIC: it
+        # reads the stored `$id$` prefix and applies the matching KDF, exactly as /etc/shadow does.
+        # Proving that needs both branches driven, so the two fixtures are deliberately split by
+        # algorithm:
+        #   - ada (above) carries $y$ yescrypt — the REAL reference identity, since examples/users
+        #     is a public repo and ADR-0019 assigns a public repo the yescrypt posture;
+        #   - this synthetic fixture carries $6$ sha512crypt — legal under ADR-0019's PRIVATE-repo
+        #     posture, and the branch a roaming user from a private repo will arrive with.
+        # A format-handling regression on either therefore cannot pass conformance unnoticed. The
+        # cleartext is the same canonical secret; only the stored format differs.
+        mkdir sha512-src
+        cat > sha512-src/identity.json <<'IDENTITY'
         {
-          "name": "Yescrypt Fixture",
-          "username": "yola",
-          "hashedPassword": "$y$j9T$y4lDWR0CJ4BGpctDjIbuG1$URzSLledzsqlsmLKANrADmvBphvYbfaAtBgXPcSLiI1"
+          "name": "Sha512 Fixture",
+          "username": "sixto",
+          "hashedPassword": "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/"
         }
         IDENTITY
 
-        echo "# yescrypt: right password ⇒ accepts (the \$y\$ branch)"
+        echo "# sha512crypt: right password ⇒ accepts (the \$6\$ branch)"
         printf '%s\n' 'correct-horse-battery-staple' \
-          | contract-greeter-auth yescrypt-src yola tier2 /dev/null
+          | contract-greeter-auth sha512-src sixto tier2 /dev/null
 
-        echo "# yescrypt: wrong password ⇒ rejects"
+        echo "# sha512crypt: wrong password ⇒ rejects"
         if printf '%s\n' 'wrong-password' \
-          | contract-greeter-auth yescrypt-src yola tier2 /dev/null 2>/dev/null; then
-          echo "FAIL: a wrong password was accepted against the yescrypt fixture" >&2; exit 1
+          | contract-greeter-auth sha512-src sixto tier2 /dev/null 2>/dev/null; then
+          echo "FAIL: a wrong password was accepted against the sha512crypt fixture" >&2; exit 1
         fi
 
         # --- Tier 1: the repo must be SIGNED by a host-trusted key (ADR-0006) ---
