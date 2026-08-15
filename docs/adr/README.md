@@ -36,10 +36,11 @@ contract ships).
 | [0025](0025-turnkey-host-side-bind.md) | Turnkey host-side bind: `grant = affordances ∩ offer`, variant selection from the baked set, the ADR-0016 coupling guard enforced (extends 0016/0020/0007) |
 | [0026](0026-consumer-producer-public-surface.md) | The public surface is the coin `mkContractUser`/`mkContractUsers`/`bindContractUser` + `traceUser`; retires inline-eval and unilateral direct-grant, internalizes the package kernels (amends 0007/0008/0016/0025) |
 | [0027](0027-runtime-provision-evaluates-the-shared-rule.md) | Runtime provision *evaluates* the shared `accountPlan` (via `contract-account-plan`) instead of re-spelling it in jq; the rule has one source, the clamp is proven without a boot (extends 0012, completes #30/#31) |
+| [0028](0028-user-voice-is-typed-and-lives-in-the-home.md) | The user's voice is typed and lives in the home: `contract.wants` harvested as the offer, `hostFacts.granted` narrowed to the home-affecting features, no freeform in `contract.requests` (supersedes 0002's ignore-overreach half; amends 0025) |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0027`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0028`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme

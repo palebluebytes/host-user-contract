@@ -18,7 +18,7 @@ the term is stable, the code is pending (see the cited issue).
 - **the contract** — the shared schema + host-invariant realization + derivation logic both
   sides agree on. Ships as `nixosModules.default` / `homeModules.default` (the umbrella),
   `lib` (the functions), and a data surface (`features`, `featureGroups`,
-  `privilegedGroups`, `safeSet`). Neither host nor user. (ADR-0001, ADR-0004)
+  `privilegedGroups`, `safeSet`, [[homeAffecting]]). Neither host nor user. (ADR-0001, ADR-0004)
 - **host** — a machine config that imports the contract, materializes user accounts,
   **grants** features, and supplies **bindings**. Sovereign: it runs only what it grants.
 - **user** — a public identity + home config + the features it *offers*; host-agnostic (it
@@ -26,9 +26,10 @@ the term is stable, the code is pending (see the cited issue).
   provisioned by its own home module — never through the contract. Target shape: a
   home-manager config repo consumed via `bindContractUser` (ADR-0007/0025); today still in-repo in the consuming host repo.
 - **umbrella / kit** — the assembled shipped surface (`kit.nix`). `nixosModules.default` =
-  the `custom.users` schema + `custom.host.exposed` + realization + the insecure-package
-  aggregator. `nixosModules.greeter` = the opt-in reference runtime greeter (a seat host
-  enables it). `homeModules.default` = identity + home profiles.
+  the `custom.users` schema + `custom.host.exposed` + [[affordance]]s + realization + the
+  insecure-package aggregator. `nixosModules.greeter` = the opt-in reference runtime greeter (a seat
+  host enables it). `homeModules.default` = identity + home profiles + the user's voice
+  ([[wants]] + [[request]]).
 - **mechanism vs binding** — the contract ships generic **mechanism**; the host supplies
   only **bindings** (the display/theme, *which* hosts, the trust-tier policy). The split
   keeps every fleet from re-implementing — and drifting on — the security-critical parts. (ADR-0008)
@@ -40,8 +41,8 @@ the term is stable, the code is pending (see the cited issue).
   `privilegedGroups`, `config`. (`features.nix`)
 - **registry** — `features.nix`, the **single source of truth** for the feature vocabulary.
 - **projection** — any surface *derived* from the registry (`featureGroups`,
-  `grantedOptions`, `featureConfigOptions`, `safeSet`). Keys can't drift across projections
-  because there is one set of keys. (`kit.nix`)
+  `grantedOptions`, `wantedOptions`, `featureConfigOptions`, `safeSet`, [[homeAffecting]]). Keys
+  can't drift across projections because there is one set of keys. (`kit.nix`)
 - **grantLib** — the grant-projection **helper set** computed once in the kit and *injected* into
   the realization and greeter modules and the derivation logic (`lib.nix`), the same way the
   [[projection]] data (`featureGroups`/`privilegedGroups`) is. It single-sources the three folds
@@ -49,11 +50,19 @@ the term is stable, the code is pending (see the cited issue).
   grant), `grantedGroups` (the grant→groups fold), and `safeDeclared` (the privileged-group
   [[clamp]]). One owner ⇒ the security-critical clamp cannot drift between eval sites. (`kit.nix`)
 - **offer** — the **user's** voice on *which* features it asks for (distinct from [[request]],
-  the parameters of a feature). *Implicit* for a home emitting a `contract.requests` entry;
-  **formalised** per-user by the `users` flake in the turnkey path — the "formal `offers` field
-  until the separate-repo future needs one" that future being now (ADR-0020/0025). A grant is
-  derived as host [[affordance]] ∩ offer; the home-affecting subset of the offer is what the
-  producer bakes as [[variant]]s. (ADR-0002, ADR-0025)
+  the parameters of a feature). *Implicit* for a home emitting a `contract.requests` entry until
+  ADR-0025 formalised it per-user in the `users` flake; since ADR-0028 it is **declared in the
+  user's own home** as [[wants]] and **harvested** into the [[binding index]] by
+  [[mkContractUser]] — the producer passes no `offer`. A grant is derived as host [[affordance]] ∩
+  offer; the home-affecting subset of the offer is what the producer bakes as [[variant]]s.
+  (ADR-0002, ADR-0025, ADR-0028)
+- **homeAffecting** — the contract's public name list of features whose grant may reach HOME
+  content, so a home may legitimately fan out on them (`{gui}` today; the per-feature
+  `homeAffecting` registry flag, **declared**, not derived from the group lists). It is the upper
+  bound on what a home may even see: a producer NARROWS [[hostFacts]]`.granted` with it (so a home
+  reading a bind-riding grant like `sudo` structurally gets `false` forever) and derives its baked
+  set as `powerset(homeAffecting)`. One surface, so no producer re-implements the rule in prose.
+  (ADR-0028; `lib.nix`)
 
 ## Grants and confinement
 
@@ -71,6 +80,15 @@ the term is stable, the code is pending (see the cited issue).
   safe set *is* the greeter's affordance). A **necessary** condition for a derived grant — the
   host's absolute veto: a feature it does not afford is never granted, whatever a user offers.
   (ADR-0025; consumed by `bindContractUser`)
+- **wants** / **`contract.wants`** — the **user's** voice on *which* features (home-side), the
+  symmetric counterpart of the host's [[affordance]] and the typed form of the [[offer]]: a
+  submodule over `grantedOptions` (same `{ <feature>.enable = bool; }` shape, **no freeform**)
+  declared in the user's own `home.nix`. [[mkContractUser]] **harvests** it off the evaluated home
+  and publishes it as the index's `offer`. It defaults to the **[[safe set]]** — non-privileged
+  features are wanted by default, privileged ones must be asked for — per FEATURE, so asking for
+  one keeps the rest; a user wanting no desktop writes `contract.wants.gui.enable = false`. It must
+  be **variant-invariant**: a want that reads [[hostFacts]]`.granted` is circular (the grant is
+  derived *from* the offer) and fails the bake with a named error. (ADR-0028; `homeModules.default`)
 - **deny** — the **absence of a grant**. Not a veto, not a default-open block — a host runs
   only what it grants (derived within its [[affordance]]s).
 - **feature configuration** *(a feature's **parameters**)* — the **host-owned** parameters the
@@ -79,9 +97,12 @@ the term is stable, the code is pending (see the cited issue).
   written only host-side — operator grant-data, or the pre-built bind bridging a granted request —
   **never** by the user across the trust boundary. Host-affecting parameters **aggregate**
   across granted users. (ADR-0003, `featureConfigOptions`)
-- **request** / **`contract.requests`** — the **user's** voice: the home-side namespace a
+- **request** / **`contract.requests`** — the **user's** voice on a feature's *parameters*
+  (distinct from [[wants]], which features): the home-side namespace a
   user's home module *emits* (read-only data inside home-manager's sandbox) to ask for a
-  feature's parameters. The **producer** end of the pair with **feature configuration**:
+  feature's parameters. **Fully typed** since ADR-0028 — the freeform that accepted (and ignored)
+  unknown keys is gone, so a misspelled feature key or param is an eval error, not a silent
+  seat-default. The **producer** end of the pair with **feature configuration**:
   the pre-built bind reads it from the baked manifest (and `traceUser` harvests it in a dry-run) and
   bridges only the **granted** ones into the system-side feature configuration the realization
   reads. A request *names* a host effect but never performs it; the user never writes system-side.
@@ -162,7 +183,9 @@ the term is stable, the code is pending (see the cited issue).
   the word keeps its weight; don't model "no screen" as a ban. (ADR-0002)
 - **hostFacts** — the restricted, read-only, **self-scoped** projection of host state a
   user's home module may read: `{ exposed, platform, granted }`. Deliberately excludes
-  `hostName` so adaptation keys on *semantic* facts, not host identity. The value is supplied by
+  `hostName` so adaptation keys on *semantic* facts, not host identity. `granted` is **narrowed to
+  [[homeAffecting]]** (ADR-0028) — a home may only see the grants something bakes for, so it cannot
+  become grant-sensitive on a bind-riding feature. The value is supplied by
   whoever builds the home (the producer bakes it per variant, hand-built inline — there is no host
   `config` at bake time). The `mkHostFacts` config-projector was **deleted** as caller-less (the
   pre-built path never evaluates a home host-side, ADR-0026); the no-`hostName` confinement is now a
@@ -186,8 +209,12 @@ the term is stable, the code is pending (see the cited issue).
 - **`traceUser`** — the home-manager-free **dry-run inspector**, and the one request→grant→bridge
   tool **outside** the contractUser produce/consume coin. Given a *contract-pure* home module +
   identity + grants it harvests via bare `evalModules` (no home-manager, not even a stub — ADR-0004)
-  and returns a record `{ username; home; requests; system }`: what does my home request under these
-  grants, and does it bridge? It is the conformance suite's logic-level proof and the public tool a
+  and returns a record `{ username; home; requests; wants; unknown; system }`: what does my home
+  want and request under these grants, and does it bridge? Its `permissive` mode is the **one
+  tolerant reader** of the otherwise fully-typed user voice: feature keys from a newer contract land
+  in `unknown = { requests; wants; }` as data instead of throwing, because traceUser is the only
+  place a roaming home meets a possibly-older umbrella and an inspector that dies on that question
+  is a dead end (ADR-0028). It is the conformance suite's logic-level proof and the public tool a
   home author dry-runs against — **not a deployment path** (real binds are pre-built). A real home
   that sets `programs.*`/`home.*` throws here by design; it binds through the pre-built path instead.
   **(built — issue #5)** (ADR-0007, ADR-0026)
@@ -364,17 +391,21 @@ the term is stable, the code is pending (see the cited issue).
   freezes `activationPackage`, so a grant that *changes the baked home* (a **home-affecting**
   grant — one the user's `home.nix` fans out on, e.g. `gui` → emacs/ai) must be its own variant,
   while a grant conferring only host-side effects (a privileged group) rides the bind and needs
-  no bake. Home-affecting-ness is **per-repo** (whether *that* repo's home branches on the grant),
-  so the contract owns no `home` flag: the producer's **baked variant set is the taxonomy**. A
+  no bake. Which grants a home *may* branch on is contract data since ADR-0028 ([[homeAffecting]],
+  the upper bound `hostFacts.granted` is narrowed to, so the baked set is
+  `powerset(homeAffecting)`); whether *that* repo's home actually branches stays the producer's
+  call, so a repo whose homes read no grant still bakes a single `base`. A
   variant's name (`<user>-contractPackage-<key>`, key = sorted home-affecting grant names, empty
   ⇒ `base`) is a cosmetic label, not a parse target. **(built — issue #25)** (ADR-0025)
 - **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
   = { identity; offer; variants = [{ granted; package }] }`. Plain data (no IFD), so a host
   selects a [[variant]] without building any of them. Identity is resolved once from the ADR-0020
-  path. **(built — issue #25)** (ADR-0025)
+  path; the `offer` is harvested from the home's [[wants]] (ADR-0028). **(built — issue #25)**
+  (ADR-0025)
 - **`mkContractUser`** — the **singular public producer** and the twin of the consumer's
-  [[bindContractUser]] (make one contract-user ⇄ bind one): `{ name; offer; variants; pkgs; system;
-  usersDir }`. Bakes ONE user's [[variant]]s into the named packages and its
+  [[bindContractUser]] (make one contract-user ⇄ bind one): `{ name; variants; pkgs; system;
+  usersDir }` — no `offer`, it is harvested from each variant's home and must be
+  variant-invariant (ADR-0028). Bakes ONE user's [[variant]]s into the named packages and its
   `contractUsers.<sys>.<user>` [[binding index]] entry — the ready-to-`inherit … packages
   contractUsers` flake-output shape, so a single-user repo needs no roster. **(built — ADR-0026)**
 - **`mkContractUsers`** — the **roster public producer**: [[mkContractUser]] mapped over a whole
@@ -433,7 +464,9 @@ the term is stable, the code is pending (see the cited issue).
   umbrella, no host repo. **Eval** (`default.nix`) proves grant/deny, the gui-union
   *decision*, the clamp, the safe set, the users × archetypes matrix, the [[accountPlan]] **rule**
   itself (`account-plan.nix`: the clamp, the empty-`sshKey` drop, and key ordering, driven directly
-  with no boot — ADR-0027), the `traceUser` dry-run kernel, `mkContractPackage` content,
+  with no boot — ADR-0027), the typed user voice ([[wants]]' safe-set default and shape, the
+  eval error a misspelled request key now is, and `traceUser`'s permissive skew report — ADR-0028),
+  the `traceUser` dry-run kernel, `mkContractPackage` content,
   `mkContractPackageForHome`'s home-attribute projection (same content-addressed store path as the
   direct call), `mkContractUser`/`mkContractUsers` parity, and `bindContractPackage` reproducing the
   `traceUser` kernel's account + gui surface from a pre-built manifest. **VM
@@ -455,6 +488,10 @@ the term is stable, the code is pending (see the cited issue).
   keep the word disciplined for when one returns.)
 - a feature's **grant** (the yes/no) vs its **configuration / parameters** (the knobs):
   never call configuration a "grant."
+- **wants** (which features a user asks for) vs **requests** (the parameters of a feature) —
+  both are the user's voice, home-side, but only [[wants]] feeds the negotiation. Say "wants" (or
+  its published form, the [[offer]]) when you mean the feature selection; never call a request an
+  offer. Neither is a **grant**: both are asks the host may refuse.
 - **request** (user-emitted, home-side) and **feature configuration** (host-owned,
   system-side) are a **producer→consumer pair**, *not* interchangeable: the user writes a
   request, the pre-built bind bridges granted ones into feature configuration, the realization reads
@@ -486,5 +523,10 @@ the term is stable, the code is pending (see the cited issue).
 - **Privilege is build-time-only**; the runtime greeter confers only the safe set.
 - **The grant is negotiated** — the only public path to a grant is `affordances ∩ offer`
   (`bindContractUser`); no consumer writes a grant unilaterally. (ADR-0026)
+- **The user's voice is typed and lives in the home** — both halves ([[wants]] and [[request]])
+  are declared in the user's own home and carry no freeform, so a typo is an eval error; the
+  producer passes neither. The one tolerant reader is the `traceUser` inspector. (ADR-0028)
+- **A user can only see what it may vary on** — `hostFacts.granted` is narrowed to
+  [[homeAffecting]], and an offer that varies across variants fails the bake. (ADR-0028)
 - **A request names a host effect but never performs it** — the host writes, only on grant.
 - **Data before code** — authenticate on `identity.json` before evaluating any user Nix.

@@ -12,15 +12,17 @@ user-flake shape that consume it).
 ## What it ships
 
 - `nixosModules.default` / `homeModules.default` — the umbrella kit (the `custom.users`
-  schema, the host-invariant **realization**, the `custom.host.exposed` fact). A host imports
-  these and supplies only its display/package bindings. The contract handles no secrets
-  beyond the login credential (ADR-0023).
+  schema, the host-invariant **realization**, the `custom.host.exposed` fact, and the user's own
+  typed voice: `contract.wants` — which features it asks for — plus `contract.requests`, their
+  parameters). A host imports these and supplies only its display/package bindings. The contract
+  handles no secrets beyond the login credential (ADR-0023).
 - `lib` — the derivation functions: the producer/consumer coin `mkContractUser`/`mkContractUsers`
   (a user fleet bakes its contractPackages + binding index) and `bindContractUser` (a host binds one
   indexed user, grant = affordances ∩ offer), plus `traceUser` (dry-run inspect), `loadIdentity`,
   and `renderNixConfig`.
 - data surface — `features` (the single registry), `featureGroups`,
-  `privilegedGroups`, `safeSet`.
+  `privilegedGroups`, `safeSet`, `homeAffecting` (the grants a home may see — a producer narrows
+  `hostFacts.granted` with it and bakes `powerset(homeAffecting)`, ADR-0028).
 - `checks.<system>.conformance` — the contract's own conformance suite (synthetic users ×
   the umbrella, no host repo).
 
@@ -43,10 +45,11 @@ Two sibling flakes show a canonical implementation of the contract — the posit
 counterpart to the synthetic conformance suite (ADR-0022):
 
 - [`examples/users/`](examples/users/) — the reference **user fleet** (ADR-0020): the operator's
-  own accounts in one flake, each exported as a per-user `<u>-contractPackage` output. Users:
-  `ada` (portable — gui on one host, cli on another), `ben` (cli-only), `cleo`
-  (privileged-group clamp), `svc` (cli-only automation), `admin` (break-glass — the minimal
-  `sudo`/wheel grant, login password `password`).
+  own accounts in one flake, each exported as a per-user `<u>-contractPackage` output. Each declares
+  what it asks a host for in its own `home.nix` (`contract.wants`, ADR-0028). Users: `ada` (portable
+  — gui on one host, cli on another), `ben` (rides the safe-set default), `cleo` (privileged-group
+  clamp — asks for `containers`), `svc` (automation — opts out of gui), `admin` (break-glass — asks
+  for the minimal `sudo`/wheel grant, login password `password`).
 - [`examples/fleet/`](examples/fleet/) — the reference **host fleet**: `nixosConfigurations`
   (`desk`, `vault`, `agent`) that bind those users via `bindContractUser` + `contract.affordances`,
   showing the two-repo world meeting at the binding. Its `checks` prove the fleet evaluates coherently,

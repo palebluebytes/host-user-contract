@@ -49,14 +49,18 @@ the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
 
 - `identity.json` — pure data (`name`, `email`, `username`). Loaded by the *binding*, never
   by the home (ADR-0009); the home reads `config.identity.{name,email}` for its dotfiles.
-- `home.nix` — a **contract-parameterized home-manager module**: it USES contract options and
-  EMITS `contract.requests.*`, imports NO contract, writes NO system config. It branches
-  read-only on `hostFacts` (`exposed`, `platform`, `granted`), never on `osConfig`/`hostName`.
+- `home.nix` — a **contract-parameterized home-manager module**: it declares what it asks for
+  (`contract.wants.*`, defaulting to the safe set) and EMITS `contract.requests.*`, imports NO
+  contract, writes NO system config. It branches read-only on `hostFacts` (`exposed`, `platform`,
+  and `granted` — narrowed to `contract.homeAffecting`), never on `osConfig`/`hostName`. Its
+  `wants` must NOT depend on `hostFacts.granted` (ADR-0028: the grant is derived from the offer).
 - `flake.nix` — inputs `contract` + `home-manager` (with `nixpkgs.follows` so there is ONE
   nixpkgs, ADR-0004); a `checks.home-build` that builds the real home (this is the home-manager
   build the contract's own package-free suite cannot host); and its contractPackages + binding
-  index via `contract.lib.mkContractUser { name; offer; variants; pkgs; system; usersDir }` (the
+  index via `contract.lib.mkContractUser { name; variants; pkgs; system; usersDir }` (the
   singular producer; `mkContractUsers` for a multi-user repo) — the pre-built path (ADR-0016/0026).
+  The offer is harvested from the home, not passed; the variant set is bounded by
+  `powerset(contract.homeAffecting)`.
 
 > **Confinement is structural (acceptance criterion 2), and it is now regression-proven** in
 > `conformance/confinement.nix`: the home umbrella declares no `users.users`, `security.sudo`,
