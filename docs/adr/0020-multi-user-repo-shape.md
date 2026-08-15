@@ -80,13 +80,14 @@ block illustrates one arrangement, it does not fix where a module may live.
 
 An operator who *wants* to enforce a common setup across a set of users still can, and this ADR's
 mechanism is still how: key the shared home module on `config.identity.username` and import it from
-each user's `home.nix`. The worked example is the shared-module/overlay reference pair **being
-added** to `examples/users/shared/` (issue #37). *Conflicts with*
+each user's `home.nix`. The worked example is the shared-module/overlay reference pair in
+`examples/users/shared/`, imported by the `duo-a`/`duo-b` roster members and proved by that flake's
+`shared-code-per-user-data` check (issue #37). *Conflicts with*
 [ADR-0022](0022-reference-fleets-and-the-test-split.md)'s "no shared home modules in
 `examples/users/`" — deliberately: that decision reasoned there was nothing *universal* to factor
 across the reference users, which stands; the pair is added to demonstrate the **permitted**
-mechanism, not to factor the reference homes. ADR-0022 should record the exception when the pair
-lands.
+mechanism, not to factor the reference homes. ADR-0022 records the exception in its own 2026-08-15
+amendment.
 
 **The `inputs` specialArg.** A home's parameterization gains `inputs`:
 `{ config, lib, hostFacts, inputs, ... }`. [ADR-0007](0007-user-flake-shape.md) fixes the home as
@@ -96,8 +97,9 @@ overlays close over — otherwise a per-user overlay list is not expressible at 
 supplies it exactly as it supplies `hostFacts`: `extraSpecialArgs.inputs = inputs` in the `users`
 flake. This is a **producer-side convention, not a contract surface** — the contract depends only on
 nixpkgs `lib` ([ADR-0004](0004-extract-contract-flake.md)) and neither reads nor requires `inputs`,
-and a home declaring no overlays never asks for it (which is why `examples/users` passes `hostFacts`
-alone). It is recorded here, rather than as an edit to [ADR-0007](0007-user-flake-shape.md), for two
+and an overlay that closes over nothing external never asks for it — which is why `examples/users`
+still passes `hostFacts` alone even now that `duo-a`/`duo-b` declare `nixpkgs.overlays`: their shared
+overlay closes over `prev` only. It is recorded here, rather than as an edit to [ADR-0007](0007-user-flake-shape.md), for two
 reasons: the multi-user shape is where per-user overlay lists arise, and ADR-0007's
 `{ config, lib, hostFacts, ... }` already admits the argument — the `...` is literal, so naming
 `inputs` adds a convention, not a contradiction.
