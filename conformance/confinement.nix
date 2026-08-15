@@ -15,7 +15,7 @@
 # impossible because the vocabulary to request it does not exist — structural, not a blocklist.
 #
 # It ALSO proves the shipped `mkConfinementCheck` (issue #35) — the same technique lifted into
-# `../checks.nix` so a CONSUMER can run it over its OWN real module set (this suite can only reach
+# `../check-kit.nix` so a CONSUMER can run it over its OWN real module set (this suite can only reach
 # the umbrella; a consumer's imports are where a system channel actually gets smuggled back in).
 # The helper's own failure modes are the point: it must reject a smuggled channel, and it must NOT
 # pass by rejecting everything (the positive control) or by never forcing the home at all.
@@ -37,7 +37,7 @@ let
   evaluates = mod: (builtins.tryEval ((evalHome [ mod ]).contract.requests.gui.desktop)).success;
 
   # The system options ADR-0002 names as out-of-universe — the negative space itself, read from
-  # `../checks.nix` (via kit.internal) so the umbrella's proof here and the probe set the shipped
+  # `../check-kit.nix` (via kit.internal) so the umbrella's proof here and the probe set the shipped
   # `mkConfinementCheck` runs at a consumer are ONE list. Two copies of "what a user must not be
   # able to say" would drift the day a new escalation path is added to only one of them.
   unexpressibleAssertions = lib.mapAttrsToList (path: mod: {

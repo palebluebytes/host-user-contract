@@ -82,7 +82,7 @@ let
   # set stays confined, and its own roster carries the credential posture it has chosen. Lib-only
   # and package-free like everything else here (each check takes the caller's `pkgs`, and the
   # confinement one takes the caller's home BUILDER, so the contract never needs home-manager).
-  checks = import ./checks.nix { inherit lib; };
+  checkKit = import ./check-kit.nix { inherit lib; };
 
   # --- the two substantial pieces, split out for focus ---
   contractLib = import ./lib.nix {
@@ -181,7 +181,7 @@ in
     #   - mkIdentityPostureCheck: does this repo's own roster carry the credential posture THIS
     #     repo has chosen? Opt-in and parameterized (`require`) because ADR-0019 makes the posture
     #     conditional and consumer-owned — which is also why `loadIdentity` imposes no hash policy.
-    inherit (checks) mkConfinementCheck mkIdentityPostureCheck;
+    inherit (checkKit) mkConfinementCheck mkIdentityPostureCheck;
   };
 
   # INTERNAL derivation logic (ADR-0016/0026): NOT flake outputs, exposed here only so the in-repo
@@ -209,7 +209,7 @@ in
     # The out-of-universe probe set (issue #35): the negative space `mkConfinementCheck` defaults
     # to, exposed so the umbrella's own proof (`conformance/confinement.nix`) reads the SAME list
     # rather than keeping a second copy of "what a user must not be able to say".
-    inherit (checks) outOfUniverseProbes;
+    inherit (checkKit) outOfUniverseProbes;
   };
 
   # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0008) + the

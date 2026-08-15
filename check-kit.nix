@@ -39,23 +39,21 @@ let
     };
   };
 
-  # The login-credential postures ADR-0019 names, as PREFIX rules over `identity.json`'s
-  # `hashedPassword`. A posture is identified by the algorithm a repo requires, never by "strong
-  # enough": the choice is the consumer's (see mkIdentityPostureCheck), this table only spells
-  # each choice once so no repo hand-writes a `$y$` string comparison.
-  passwordPostures = {
-    # Public / shared repo (ADR-0019): the hash is world-readable, so it must be memory-hard.
+  # The credential postures — exactly the TWO ADR-0019 names, as prefix rules over
+  # `identity.json`'s `hashedPassword` (a crypt hash's `$id$` prefix IS its algorithm label):
+  # "**Private repo** — any libc-`crypt` hash (`$6$` sha512crypt is fine) … **Public / shared
+  # repo** — **yescrypt** (`$y$`)". No third posture is invented here: a posture a repo can ask
+  # for is a decision ADR-0019 made, and this table only spells each one once so no repo
+  # hand-writes a `$y$` comparison. Each carries its remedy, so a failure says how to fix itself.
+  credentialPostures = {
+    # Public / shared repo: the hash is world-readable, so it must be memory-hard.
     yescrypt = {
       prefixes = [ "$y$" ];
       description = "yescrypt (`$y$`) — the public/shared-repo posture";
+      remedy = "mkpasswd -m yescrypt";
     };
-    # Private repo: sha512crypt is explicitly fine.
-    sha512crypt = {
-      prefixes = [ "$6$" ];
-      description = "sha512crypt (`$6$`)";
-    };
-    # Private repo, stated as ADR-0019 states it: "any libc-`crypt` hash". Still rejects an EMPTY
-    # or plaintext field — "some hash" is a posture, "no credential at all" is not.
+    # Private repo: any libc-crypt hash. Still rejects an EMPTY or non-crypt field — "some hash"
+    # is a posture, "no credential at all" is not.
     libc = {
       prefixes = [
         "$y$"
@@ -65,11 +63,18 @@ let
         "$5$"
         "$2b$"
         "$2y$"
+        "$2a$"
         "$1$"
       ];
       description = "any libc-crypt hash — the private-repo posture";
+      remedy = "mkpasswd -m yescrypt (any libc method qualifies)";
     };
   };
+
+  # What a passing check looks like: an empty witness derivation. Both checks fail at EVAL (a
+  # named `assert`), so the derivation exists only to be something `checks.<system>.<name>` can
+  # point at — single-sourced so the two cannot drift into different shapes.
+  okWitness = pkgs: name: pkgs.runCommand "${name}-ok" { } "touch $out";
 in
 {
   inherit outOfUniverseProbes;
@@ -109,6 +114,12 @@ in
   # An eval failure `tryEval` cannot catch (an infinite recursion from a module set that is BROKEN
   # rather than merely permissive) propagates raw: still a failing check, but reported as the
   # underlying error instead of the messages below.
+  #
+  # COVERAGE NOTE — `conformance/confinement.nix` drives this function's logic through a synthetic
+  # home-manager-free builder (it has to: ADR-0004). The two DEFAULTS a real consumer relies on —
+  # `force = home.activationPackage.drvPath` and the `home.sessionVariables` positive control —
+  # are therefore only exercised where home-manager actually exists, i.e. in a consumer repo's own
+  # `checks`. Keep them in step with home-manager's option names.
   mkConfinementCheck =
     {
       buildHome,
@@ -121,13 +132,14 @@ in
       positiveControl ? {
         home.sessionVariables.CONTRACT_CONFINEMENT_CONTROL = "ok";
       },
-      outOfUniverse ? outOfUniverseProbes,
     }:
     let
       # Does the home still evaluate with this one extra module merged in? An UNDECLARED option
       # throws inside the module system, caught here as `success = false`.
       evaluates = mod: (builtins.tryEval (force (buildHome [ mod ]))).success;
-      expressible = lib.filter (path: evaluates outOfUniverse.${path}) (lib.attrNames outOfUniverse);
+      expressible = lib.filter (path: evaluates outOfUniverseProbes.${path}) (
+        lib.attrNames outOfUniverseProbes
+      );
       controlOk = evaluates positiveControl;
     in
     # Ordered deliberately: report a broken harness BEFORE reporting confinement, or a builder
@@ -145,7 +157,7 @@ in
       + "FORCED by `force`, every probe looks expressible — check that `force` reaches the module "
       + "merge (the default is `home.activationPackage.drvPath`)."
     );
-    pkgs.runCommand "${name}-ok" { } "touch $out";
+    okWitness pkgs name;
 
   # mkIdentityPostureCheck (issue #35): assert every identity in a repo's OWN roster carries the
   # login-credential posture that repo has chosen (ADR-0019).
@@ -164,11 +176,12 @@ in
   #     }
   #
   # `require` has NO DEFAULT: the contract does not pick a repo's posture, so the caller must say
-  # which one it is asserting. Known postures are `passwordPostures` above; an unknown name is a
-  # loud error naming them (a posture typo must not read as "checked"). `identities` is a list of
-  # LOADED identities (`lib.attrValues` an attrset roster) — derive it from the users directory
-  # rather than hardcoding it, so a newly added user is covered instead of silently skipped; an
-  # empty list is a hard error rather than a vacuous pass.
+  # which one it is asserting. Known postures are `credentialPostures` above (ADR-0019's two:
+  # `yescrypt`, `libc`); an unknown name is a loud error naming them, since a posture typo must
+  # never read as "checked". `identities` is a LIST of loaded identities (`lib.attrValues` an
+  # attrset roster) — derive it from the users directory rather than hardcoding it, so a newly
+  # added user is covered instead of silently skipped; an empty list is a hard error rather than a
+  # vacuous pass.
   mkIdentityPostureCheck =
     {
       identities,
@@ -178,26 +191,41 @@ in
     }:
     let
       posture =
-        passwordPostures.${require} or (throw (
+        credentialPostures.${require} or (throw (
           "${name}: unknown credential posture '${require}' — known postures are: "
-          + "${lib.concatStringsSep ", " (lib.attrNames passwordPostures)} (ADR-0019)."
+          + "${lib.concatStringsSep ", " (lib.attrNames credentialPostures)} (ADR-0019)."
         ));
-      satisfies = id: lib.any (p: lib.hasPrefix p id.hashedPassword) posture.prefixes;
+      # `loadIdentity` returns the identity.json RAW (the option submodule fills defaults only
+      # once the value is assigned to an option), and `hashedPassword` is an OPTIONAL field — so a
+      # roster entry may legitimately have no such attribute. Default it to "" here, or the
+      # documented call above dies with `attribute 'hashedPassword' missing` instead of this
+      # check's named verdict: an absent credential is a posture FAILURE, not a crash.
+      hashOf = id: id.hashedPassword or "";
+      satisfies = id: lib.any (p: lib.hasPrefix p (hashOf id)) posture.prefixes;
       offenders = lib.filter (id: !(satisfies id)) identities;
-      # Name the offender and the algorithm it DOES carry (the `$id$` prefix is the algorithm
-      # label, never key material), so the fix is obvious from the message alone.
+      # Name the offender and the algorithm it DOES carry. Only a well-formed `$id$` prefix is
+      # echoed (a short alphanumeric algorithm label, never key material) — anything else is
+      # reported as unrecognised rather than printed, so a plaintext or otherwise non-crypt field
+      # is never quoted into a build log.
       describe =
         id:
         let
-          hash = id.hashedPassword;
+          hash = hashOf id;
+          matched = builtins.match "\\$([a-zA-Z0-9]{1,6})\\$.*" hash;
           algorithm =
             if hash == "" then
               "no hash"
+            else if matched == null then
+              "<unrecognised, not a crypt hash>"
             else
-              "'${lib.concatStringsSep "$" (lib.take 2 (lib.splitString "$" hash))}$'";
+              "'$" + lib.head matched + "$'";
         in
         "${id.username or "<identity with no username>"} (${algorithm})";
     in
+    assert lib.assertMsg (lib.isList identities) (
+      "${name}: `identities` must be a LIST of loaded identities; an attrset roster is passed as "
+      + "`lib.attrValues roster`."
+    );
     assert lib.assertMsg (identities != [ ]) (
       "${name}: no identities to check — a posture check over an empty roster passes vacuously "
       + "forever. Derive the roster from the users directory (every subdir with an identity.json) "
@@ -206,8 +234,8 @@ in
     assert lib.assertMsg (offenders == [ ]) (
       "${name}: identity.json credential(s) do not carry the required posture "
       + "${posture.description}: ${lib.concatMapStringsSep ", " describe offenders}. "
-      + "Re-hash with `mkpasswd -m ${require}` (ADR-0019: the credential travels with the user as "
+      + "Re-hash with `${posture.remedy}` (ADR-0019: the credential travels with the user as "
       + "public data, and repo visibility picks the hash strength)."
     );
-    pkgs.runCommand "${name}-ok" { } "touch $out";
+    okWitness pkgs name;
 }

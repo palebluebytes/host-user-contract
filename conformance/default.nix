@@ -91,7 +91,6 @@ let
         lib
         pkgs
         toolkit
-        loadIdentity
         mkIdentityPostureCheck
         ;
     })

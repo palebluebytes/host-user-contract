@@ -153,15 +153,12 @@ the term is stable, the code is pending (see the cited issue).
   user's session type. **Removed:** the contract is now **display-server-agnostic** — it exposes only
   `custom.gui.surface.enabled` (some gui user granted) and carries the desktop *name*; wayland-vs-x11
   is wholly the seat's concern (its display binding / launch command). (ADR-0003 + ADR-0018 → ADR-0021)
-- **`mkConfinementCheck`** — the shipped **consumer-side** confinement proof (`checks.nix`):
-  `{ buildHome; pkgs; force ? …; positiveControl ? …; outOfUniverse ? … }` → a check derivation.
-  `conformance/confinement.nix` proves the **umbrella** has no system channel; this proves a
-  consumer's **real module set** — its actual imports, where a channel gets smuggled back in — does
-  not, by merging one out-of-universe probe at a time into the consumer's OWN home builder and
-  requiring each to be unexpressible. It takes that builder as a parameter precisely so the contract
-  proves a home-manager module set while depending on no home-manager (ADR-0004). It cannot pass
-  vacuously in either direction: the **positive control** (a legitimate home option must still
-  evaluate) closes reject-everything, and an under-forcing `force` fails the negative claims loudly.
+- **`mkConfinementCheck`** — the **consumer-side** confinement proof the contract ships
+  (`check-kit.nix`): `{ buildHome; pkgs; force ? …; positiveControl ? … }` → a check derivation.
+  The suite's own `conformance/confinement.nix` proves the **umbrella** has no system channel; this
+  proves a consumer's **real module set** does not, by merging one out-of-universe probe at a time
+  into the consumer's OWN home builder. Includes the **positive control** — a legitimate home
+  option must still evaluate — without which a builder that rejects everything reads as confined.
   **(built — issue #35)** (ADR-0002, ADR-0004)
 - **model A / B / C** — trust postures for the user surface (ADR-0001 mechanic 7): A = user
   exports arbitrary modules (in-repo migration only; "deny" cosmetic); B = flat data only
@@ -347,17 +344,14 @@ the term is stable, the code is pending (see the cited issue).
   ships `loadIdentity`, a lossless loader whose schema is **projected from `identity.nix`**
   (the single identity source). It validates the **schema** and nothing else — no hash policy; see
   [[credential posture]]. (ADR-0006, ADR-0007; `identity-json.nix`)
-- **credential posture** / **`mkIdentityPostureCheck`** — *which hash algorithm* a repo's
-  `identity.json` files must carry. **Conditional and consumer-owned** (ADR-0019): a **private**
-  repo may ship any libc-`crypt` hash (`$6$` sha512crypt is fine); a **public/shared** repo wants
-  **yescrypt** (`$y$`), because its hash is world-readable and must resist offline cracking. So it
-  is *not* a contract invariant: `loadIdentity` imposes none, since baking one repo's public
-  posture into the loader would impose it on every consumer — including the untrusted roaming
-  single-user flakes the greeter exists for. The contract instead ships the **opt-in** check
-  `mkIdentityPostureCheck { identities; require; pkgs }` (`checks.nix`), which a repo calls over its
-  own — derived, never hardcoded — roster to assert the posture *it* chose. `require` has no
-  default (the contract does not pick), an unknown posture name is a loud error, and an empty roster
-  is a hard error rather than a vacuous pass. **(built — issue #35)** (ADR-0019)
+- **credential posture** — *which hash algorithm* a repo's `identity.json` files must carry:
+  `libc` (any libc-`crypt` hash, `$6$` included) for a **private** repo, `yescrypt` (`$y$`) for a
+  **public/shared** one. **Conditional and consumer-owned**, never a contract invariant — so
+  [[identity.json]]'s `loadIdentity` imposes none. Asserted by the **opt-in**
+  `mkIdentityPostureCheck { identities; require; pkgs }` (`check-kit.nix`), which a repo calls over
+  its own — derived, never hardcoded — roster with the posture *it* chose; `require` has no default,
+  an unknown posture name is a loud error, and an empty roster is a hard error rather than a vacuous
+  pass. **(built — issue #35)** (ADR-0019)
 - **inert payload vs exec payload** — a request payload the host merely *reads* (the
   `session` enum) is **inert**; one the host *executes with privilege* (a `kanata-with-cmd`
   keymap running shell) is an **exec payload** — a code-exec vector, never safe-set-eligible,
@@ -497,16 +491,13 @@ the term is stable, the code is pending (see the cited issue).
   same plan evaluates, ADR-0027), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
   `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
   `daemon-restricted-vm.nix` (hello on PATH, curl absent, daemon refused).
-- **check kit** — the two checks the contract SHIPS rather than runs (`checks.nix`, issue #35):
-  [[mkConfinementCheck]] and [[mkIdentityPostureCheck]]. Both prove something only a **consumer**
-  can prove — over its own real module set, over its own roster — so the contract hands over the
-  technique instead of the verdict; each was otherwise ~20 lines of `tryEval`/prefix boilerplate
-  re-typed per repo, with the easy-to-forget part (the positive control) the whole difference
-  between a proof and a harness that passes by rejecting everything. Their own logic is proven in
-  the suite (`conformance/confinement.nix`, `conformance/identity-posture.nix`): each accepting
-  case, each rejecting case, and — the point — that the helper itself FAILS when its positive
-  control is broken, when its home is never forced, and when a posture is asked for that an
-  identity does not carry.
+- **check kit** — the two checks the contract SHIPS rather than runs (`check-kit.nix`, issue #35):
+  [[mkConfinementCheck]] and the [[credential posture]] check. Both prove something only a
+  **consumer** can prove — over its own real module set, over its own roster — so the contract hands
+  over the technique, not the verdict. Their own logic is proven in the suite
+  (`conformance/confinement.nix`, `conformance/identity-posture.nix`): each accepting case, each
+  rejecting case, and that a helper FAILS when its positive control is broken, when its home is
+  never forced, and when a posture is asked for that an identity does not carry.
 - **coherence gate** — the thin host-side check (in the consuming repo) that every real host's
   trait-tuple is archetype-covered and the real manifest realizes — the consuming repo's tie-back to
   the contract suite. (ADR-0004)

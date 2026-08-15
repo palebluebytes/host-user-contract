@@ -11,14 +11,15 @@
   lib,
   pkgs,
   toolkit,
-  loadIdentity,
   mkIdentityPostureCheck,
 }:
 let
+  # `referenceIdentity` IS `loadIdentity examples/users/users/ada/identity.json` (../conformance/
+  # toolkit.nix) — the loader's own output, reused rather than re-loaded, so this domain reads the
+  # one load the suite already makes. Ada ships `$6$` (a private-repo-legal hash, ADR-0019), which
+  # makes the same value both the loader's no-policy witness and the rejecting case under a
+  # yescrypt requirement.
   inherit (toolkit) referenceIdentity;
-
-  # The reference roster ships `$6$` (a private-repo-legal hash, ADR-0019) — so it is both the
-  # loader's no-policy witness and the rejecting case under a yescrypt requirement.
   sha512Identity = referenceIdentity;
   yescryptIdentity = referenceIdentity // {
     username = "yara";
@@ -76,23 +77,29 @@ in
     }
     {
       # The posture is a PARAMETER, not a hardcoded rule: the same `$6$` identity the yescrypt
-      # requirement rejects is legal under the private-repo postures ADR-0019 allows.
-      name = "identity posture: the same `$6$` identity passes require = \"sha512crypt\" and \"libc\" (the posture is a parameter)";
-      ok =
-        passes {
-          identities = [ sha512Identity ];
-          require = "sha512crypt";
-        }
-        && passes {
-          identities = [ sha512Identity ];
-          require = "libc";
-        };
+      # requirement rejects is legal under the private-repo posture ADR-0019 allows.
+      name = "identity posture: the same `$6$` identity passes require = \"libc\" (the posture is a parameter, ADR-0019 private repo)";
+      ok = passes {
+        identities = [ sha512Identity ];
+        require = "libc";
+      };
     }
     {
       name = "identity posture: an empty hashedPassword satisfies no posture, not even \"libc\"";
       ok =
         !(passes {
           identities = [ emptyIdentity ];
+          require = "libc";
+        });
+    }
+    {
+      # loadIdentity returns the identity.json RAW, and hashedPassword is OPTIONAL — so an entry
+      # may carry no such attribute at all. That must reach the check's own verdict (an absent
+      # credential fails the posture), not an `attribute 'hashedPassword' missing` crash.
+      name = "identity posture: an identity with no hashedPassword field at all fails the posture (raw JSON, optional field)";
+      ok =
+        !(passes {
+          identities = [ (builtins.removeAttrs referenceIdentity [ "hashedPassword" ]) ];
           require = "libc";
         });
     }
@@ -115,14 +122,22 @@ in
         });
     }
     {
-      # THE ADR-0019 claim: the loader carries no policy. The reference identity.json ships a `$6$`
-      # hash and `loadIdentity` accepts it — a private repo is not forced onto a public posture.
-      name = "loadIdentity imposes no hash policy: a `$6$` identity.json loads (ADR-0019, posture is consumer-owned)";
+      # THE ADR-0019 claim: the loader carries no policy. `referenceIdentity` is what
+      # `loadIdentity` RETURNED for a real identity.json shipping a `$6$` hash — the loader
+      # neither rejected it (a hash policy would throw, taking this whole domain with it) nor
+      # rewrote it. A private repo is not forced onto a public repo's posture.
+      name = "loadIdentity imposes no hash policy: it returns a `$6$` identity.json unchanged (ADR-0019, posture is consumer-owned)";
+      ok = lib.hasPrefix "$6$" referenceIdentity.hashedPassword;
+    }
+    {
+      # And the corollary: the posture that identity FAILS is available to any repo that wants it,
+      # so "the loader has no policy" costs a public repo nothing.
+      name = "loadIdentity + posture check compose: the same loaded identity is rejected by require = \"yescrypt\"";
       ok =
-        let
-          loaded = builtins.tryEval (loadIdentity ../examples/users/users/ada/identity.json);
-        in
-        loaded.success && lib.hasPrefix "$6$" loaded.value.hashedPassword;
+        !(passes {
+          identities = [ referenceIdentity ];
+          require = "yescrypt";
+        });
     }
   ];
 
