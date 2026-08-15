@@ -126,18 +126,10 @@ in
       # `loadIdentity` RETURNED for a real identity.json shipping a `$6$` hash — the loader
       # neither rejected it (a hash policy would throw, taking this whole domain with it) nor
       # rewrote it. A private repo is not forced onto a public repo's posture.
+      # The corollary — that this same loaded identity IS rejected once a repo asks for yescrypt —
+      # is the `$6$`-fails-yescrypt claim above, driven by this very value.
       name = "loadIdentity imposes no hash policy: it returns a `$6$` identity.json unchanged (ADR-0019, posture is consumer-owned)";
       ok = lib.hasPrefix "$6$" referenceIdentity.hashedPassword;
-    }
-    {
-      # And the corollary: the posture that identity FAILS is available to any repo that wants it,
-      # so "the loader has no policy" costs a public repo nothing.
-      name = "loadIdentity + posture check compose: the same loaded identity is rejected by require = \"yescrypt\"";
-      ok =
-        !(passes {
-          identities = [ referenceIdentity ];
-          require = "yescrypt";
-        });
     }
   ];
 
