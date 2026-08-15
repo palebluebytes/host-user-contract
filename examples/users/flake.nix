@@ -262,6 +262,57 @@
               };
           };
 
+          # ADR-0019's credential posture, ENFORCED rather than merely documented (issue #35).
+          # This repo is PUBLIC, so ADR-0019 assigns it the yescrypt posture: a world-readable hash
+          # must be memory-hard, because anyone can take it away and attack it offline. Every
+          # roster identity ships `$y$`, and this is what keeps that true — a member added with a
+          # `$6$` hash fails the flake check rather than being noticed in review, or not.
+          #
+          # The roster is DERIVED, never hardcoded: `lib.attrNames roster` means a new user is
+          # covered the moment it exists. A hand-listed set is the failure mode this check is for —
+          # the offender is always the entry someone forgot to add to the list.
+          identity-posture = contract.lib.mkIdentityPostureCheck {
+            inherit pkgs;
+            identities = map (n: contract.lib.loadIdentity ./users/${n}/identity.json) (lib.attrNames roster);
+            require = "yescrypt";
+          };
+
+          # …and the proof that the check above can actually FAIL. A posture check that passes
+          # because its identity list is empty, or because the derivation quietly yielded nothing,
+          # reads identically to one that passes on merit — the same vacuity trap the confinement
+          # check's positive control closes.
+          #
+          # So: take the REAL derived roster, append one synthetic `$6$` offender, and require that
+          # the check rejects it. This tests the CALL SITE, not the helper (conformance already
+          # covers the helper): it proves the roster derivation yields real identities and that an
+          # offender among them is caught. If `identities` ever silently derived to `[ ]`, this
+          # check goes red while the one above would stay green.
+          identity-posture-rejects-an-offender =
+            let
+              offender = (contract.lib.loadIdentity ./users/ada/identity.json) // {
+                username = "sixto";
+                hashedPassword = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
+              };
+              rejected =
+                !(builtins.tryEval (
+                  contract.lib.mkIdentityPostureCheck {
+                    inherit pkgs;
+                    identities =
+                      map (n: contract.lib.loadIdentity ./users/${n}/identity.json) (lib.attrNames roster)
+                      ++ [ offender ];
+                    require = "yescrypt";
+                    name = "identity-posture-offender-probe";
+                  }
+                )).success;
+            in
+            assert lib.assertMsg rejected (
+              "identity-posture-rejects-an-offender: a `$6$` identity appended to the real roster did "
+              + "NOT fail `require = \"yescrypt\"`. The posture check above is therefore vacuous — it "
+              + "would pass whatever the roster ships. Check that `identities` derives a non-empty "
+              + "list from `roster`."
+            );
+            pkgs.runCommand "identity-posture-rejects-an-offender" { } "touch $out";
+
           # The ADR-0020 claim the duo pair exists to prove: SHARED CODE, PER-USER DATA. "Both homes
           # build" would not prove it — a shared module that baked duo-a's identity into duo-b would
           # still build. So this check pins the two halves separately, on the REALIZED homes:
