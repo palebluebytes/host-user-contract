@@ -28,6 +28,9 @@
   privilegedGroups,
   loadIdentity,
   traceUser,
+  mkConfinementCheck,
+  mkIdentityPostureCheck,
+  outOfUniverseProbes,
   mkContractUser,
   mkContractUsers,
   bindContractUser,
@@ -77,7 +80,18 @@ let
     (import ./confinement.nix {
       inherit
         lib
+        pkgs
         toolkit
+        mkConfinementCheck
+        outOfUniverseProbes
+        ;
+    })
+    (import ./identity-posture.nix {
+      inherit
+        lib
+        pkgs
+        toolkit
+        mkIdentityPostureCheck
         ;
     })
     (import ./bind.nix {

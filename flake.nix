@@ -78,6 +78,8 @@
           inherit (self.lib)
             loadIdentity
             traceUser
+            mkConfinementCheck
+            mkIdentityPostureCheck
             mkContractUser
             mkContractUsers
             bindContractUser
@@ -93,6 +95,7 @@
             writeManifest
             readManifest
             manifestFileName
+            outOfUniverseProbes
             ;
           nixosSystem = nixpkgs.lib.nixosSystem;
         };

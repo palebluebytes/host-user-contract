@@ -153,6 +153,13 @@ the term is stable, the code is pending (see the cited issue).
   user's session type. **Removed:** the contract is now **display-server-agnostic** — it exposes only
   `custom.gui.surface.enabled` (some gui user granted) and carries the desktop *name*; wayland-vs-x11
   is wholly the seat's concern (its display binding / launch command). (ADR-0003 + ADR-0018 → ADR-0021)
+- **`mkConfinementCheck`** — the **consumer-side** confinement proof the contract ships
+  (`check-kit.nix`): `{ buildHome; pkgs; force ? …; positiveControl ? … }` → a check derivation.
+  The suite's own `conformance/confinement.nix` proves the **umbrella** has no system channel; this
+  proves a consumer's **real module set** does not, by merging one out-of-universe probe at a time
+  into the consumer's OWN home builder. Includes the **positive control** — a legitimate home
+  option must still evaluate — without which a builder that rejects everything reads as confined.
+  **(built — issue #35)** (ADR-0002, ADR-0004)
 - **model A / B / C** — trust postures for the user surface (ADR-0001 mechanic 7): A = user
   exports arbitrary modules (in-repo migration only; "deny" cosmetic); B = flat data only
   (deny enforceable, expressiveness lost); C = restricted `evalModules` over a curated
@@ -335,7 +342,16 @@ the term is stable, the code is pending (see the cited issue).
   public identity. The greeter authenticates against it with `jq` **before** evaluating any
   user Nix (**data before code** — eval is not a sandbox). The contract owns the schema and
   ships `loadIdentity`, a lossless loader whose schema is **projected from `identity.nix`**
-  (the single identity source). (ADR-0006, ADR-0007; `identity-json.nix`)
+  (the single identity source). It validates the **schema** and nothing else — no hash policy; see
+  [[credential posture]]. (ADR-0006, ADR-0007; `identity-json.nix`)
+- **credential posture** — *which hash algorithm* a repo's `identity.json` files must carry:
+  `libc` (any libc-`crypt` hash, `$6$` included) for a **private** repo, `yescrypt` (`$y$`) for a
+  **public/shared** one. **Conditional and consumer-owned**, never a contract invariant — so
+  [[identity.json]]'s `loadIdentity` imposes none. Asserted by the **opt-in**
+  `mkIdentityPostureCheck { identities; require; pkgs }` (`check-kit.nix`), which a repo calls over
+  its own — derived, never hardcoded — roster with the posture *it* chose; `require` has no default,
+  an unknown posture name is a loud error, and an empty roster is a hard error rather than a vacuous
+  pass. **(built — issue #35)** (ADR-0019)
 - **inert payload vs exec payload** — a request payload the host merely *reads* (the
   `session` enum) is **inert**; one the host *executes with privilege* (a `kanata-with-cmd`
   keymap running shell) is an **exec payload** — a code-exec vector, never safe-set-eligible,
@@ -475,6 +491,13 @@ the term is stable, the code is pending (see the cited issue).
   same plan evaluates, ADR-0027), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
   `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
   `daemon-restricted-vm.nix` (hello on PATH, curl absent, daemon refused).
+- **check kit** — the two checks the contract SHIPS rather than runs (`check-kit.nix`, issue #35):
+  [[mkConfinementCheck]] and the [[credential posture]] check. Both prove something only a
+  **consumer** can prove — over its own real module set, over its own roster — so the contract hands
+  over the technique, not the verdict. Their own logic is proven in the suite
+  (`conformance/confinement.nix`, `conformance/identity-posture.nix`): each accepting case, each
+  rejecting case, and that a helper FAILS when its positive control is broken, when its home is
+  never forced, and when a posture is asked for that an identity does not carry.
 - **coherence gate** — the thin host-side check (in the consuming repo) that every real host's
   trait-tuple is archetype-covered and the real manifest realizes — the consuming repo's tie-back to
   the contract suite. (ADR-0004)

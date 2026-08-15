@@ -78,6 +78,12 @@ let
   # schema — the seam `mkContractPackage` writes through and `bindContractPackage` reads through.
   manifest = import ./manifest.nix { inherit lib; };
 
+  # The check kit (issue #35): the two proofs a CONSUMER runs over its own repo — its real module
+  # set stays confined, and its own roster carries the credential posture it has chosen. Lib-only
+  # and package-free like everything else here (each check takes the caller's `pkgs`, and the
+  # confinement one takes the caller's home BUILDER, so the contract never needs home-manager).
+  checkKit = import ./check-kit.nix { inherit lib; };
+
   # --- the two substantial pieces, split out for focus ---
   contractLib = import ./lib.nix {
     inherit
@@ -164,6 +170,18 @@ in
     mkContractUsers =
       args: contractLib.mkContractUsers (args // { inherit (identityJson) loadIdentity; });
     inherit (contractLib) bindContractUser;
+    # The CHECK KIT (issue #35) — the two proofs only a consumer can run, over material only it
+    # has. They join the ADR-0026 surface deliberately (it is fixed at what a consumer needs, not
+    # frozen), because each is otherwise ~20 lines of `tryEval`/`hasPrefix` boilerplate re-typed
+    # per repo and easy to get subtly, silently wrong:
+    #   - mkConfinementCheck: does this repo's REAL module set still have no system channel?
+    #     (`conformance/confinement.nix` can only prove the umbrella; a consumer's own imports are
+    #     where a channel gets smuggled back in.) Takes the consumer's home BUILDER, so the
+    #     contract proves a home-manager module set without depending on home-manager (ADR-0004).
+    #   - mkIdentityPostureCheck: does this repo's own roster carry the credential posture THIS
+    #     repo has chosen? Opt-in and parameterized (`require`) because ADR-0019 makes the posture
+    #     conditional and consumer-owned — which is also why `loadIdentity` imposes no hash policy.
+    inherit (checkKit) mkConfinementCheck mkIdentityPostureCheck;
   };
 
   # INTERNAL derivation logic (ADR-0016/0026): NOT flake outputs, exposed here only so the in-repo
@@ -188,6 +206,10 @@ in
       readManifest
       manifestFileName
       ;
+    # The out-of-universe probe set (issue #35): the negative space `mkConfinementCheck` probes
+    # with, exposed so the umbrella's own proof (`conformance/confinement.nix`) reads the SAME list
+    # rather than keeping a second copy of "what a user must not be able to say".
+    inherit (checkKit) outOfUniverseProbes;
   };
 
   # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0008) + the

@@ -19,7 +19,11 @@ user-flake shape that consume it).
 - `lib` — the derivation functions: the producer/consumer coin `mkContractUser`/`mkContractUsers`
   (a user fleet bakes its contractPackages + binding index) and `bindContractUser` (a host binds one
   indexed user, grant = affordances ∩ offer), plus `traceUser` (dry-run inspect), `loadIdentity`,
-  and `renderNixConfig`.
+  and `renderNixConfig`. It also ships the **check kit** — the two proofs only a consumer can run,
+  over material only it has: `mkConfinementCheck` (this repo's *real* module set still has no system
+  channel — positive control included) and `mkIdentityPostureCheck` (this repo's own roster carries
+  the credential posture *this* repo chose, `require = "yescrypt"` for a public one — opt-in,
+  because ADR-0019 makes the posture consumer-owned and `loadIdentity` imposes none).
 - data surface — `features` (the single registry), `featureGroups`,
   `privilegedGroups`, `safeSet`, `homeAffecting` (the grants a home may see — a producer narrows
   `hostFacts.granted` with it and bakes `powerset(homeAffecting)`, ADR-0028).
