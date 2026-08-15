@@ -37,6 +37,8 @@ The ex-`bindUser` tracer becomes **`traceUser`**: the home-manager-free dry-run 
 
 The resulting public `lib`: `mkContractUser` · `mkContractUsers` · `bindContractUser` · `traceUser` · `loadIdentity` · `renderNixConfig`.
 
+*(Amendment, issue #35 — the **check kit**: `mkConfinementCheck` and `mkIdentityPostureCheck` join the public `lib`, taking it to eight. They pass this ADR's own test — the one it applied to the eight it found: each has a real consumer that cannot get the proof any other way. `mkConfinementCheck` proves a **consumer's own module set** has no system channel (this repo's suite can only prove the umbrella), and `mkIdentityPostureCheck` asserts the **consumer-owned**, conditional ADR-0019 credential posture that `loadIdentity` must not impose. Neither is a second spelling of anything kept, and neither is a bind or a bake: they are the proofs only the consumer can run, which is why they are functions the contract hands over rather than checks it runs. This is surface growth by the front door — the cost being paid deliberately for two ~20-line boilerplates every consumer repo re-types, one of which (the positive control) is silently wrong when forgotten.)*
+
 ## Consequences
 
 - **The north star is untouched.** The runtime greeter (any user logs in without being enabled in nix config) consumes only kept surface — `identityFile`, `greeterGrants`, `safeSet`, `renderNixConfig`, `nixosModules.greeter`, and the user's own `homeConfigurations.<u>`. It never called any renamed or removed function. `bindContractUser` is correctly framed as the *build-time* path (operator-managed and privileged accounts the safe-set greeter cannot grant), the opposite posture to the greeter — no longer mis-named as "the" way onto a machine.
