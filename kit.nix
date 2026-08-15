@@ -206,8 +206,8 @@ in
       readManifest
       manifestFileName
       ;
-    # The out-of-universe probe set (issue #35): the negative space `mkConfinementCheck` defaults
-    # to, exposed so the umbrella's own proof (`conformance/confinement.nix`) reads the SAME list
+    # The out-of-universe probe set (issue #35): the negative space `mkConfinementCheck` probes
+    # with, exposed so the umbrella's own proof (`conformance/confinement.nix`) reads the SAME list
     # rather than keeping a second copy of "what a user must not be able to say".
     inherit (checkKit) outOfUniverseProbes;
   };
