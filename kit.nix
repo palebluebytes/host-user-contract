@@ -82,6 +82,7 @@ let
       registry
       manifest
       grantLib
+      featureConfigOptions
       ;
   };
   modules = import ./modules.nix {
@@ -133,10 +134,12 @@ in
     # The identity.json loader (ADR-0007): lossless over identity.nix, used by a user's home
     # module and by the producer coin below.
     inherit (identityJson) loadIdentity;
-    # traceUser (ADR-0007/0026): the home-manager-free dry-run inspector, partially applied over
+    # traceUser (ADR-0007/0026/0028): the home-manager-free dry-run inspector, partially applied over
     # the contract's own homeModule so a caller passes only { userModule, identity, grants, … }.
-    # Harvests a contract-pure home via bare evalModules → { username, home, requests, system }.
-    # Sits OUTSIDE the produce/consume coin (it inspects a home, it never touches the index).
+    # Harvests a contract-pure home via bare evalModules → { username, home, requests, wants,
+    # unknown, system }. Its `permissive` mode reports feature keys from a NEWER contract as data
+    # (`unknown`) instead of throwing — the one tolerant reader of the otherwise fully-typed user
+    # voice. Sits OUTSIDE the produce/consume coin (it inspects a home, it never touches the index).
     traceUser = args: contractLib.traceUser (args // { homeModule = modules.homeModule; });
     # The turnkey producer/consumer COIN over the contractUsers binding index (ADR-0025/0026):
     #   - mkContractUser (producer, singular): bake ONE user's variants into contractPackages +

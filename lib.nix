@@ -11,6 +11,7 @@
   registry,
   manifest,
   grantLib,
+  featureConfigOptions,
 }:
 let
   # A feature is runtime/greeter-eligible iff it declares no privilegedGroups (ADR-0002,
@@ -506,6 +507,14 @@ in
   # bridge?" WITHOUT a build. It is the logic-level proof the conformance suite drives and the
   # public tool a home author dry-runs against; it is NOT a deployment path (real binds are
   # pre-built: `bindContractUser`, ADR-0026).
+  #
+  # PERMISSIVE MODE (ADR-0028) — `permissive = true` tolerates a home written against a NEWER
+  # contract: feature keys this revision does not declare land as DATA (reported in `unknown`)
+  # instead of throwing. Tolerance is confined to this inspector — the bind path is fully typed
+  # (`contract.wants`/`contract.requests` carry no freeform) — because traceUser is the one place
+  # that co-evaluates a roaming home with a possibly-older host umbrella, so it is the one place
+  # cross-revision skew is real; and an inspector that dies on the question it exists to answer
+  # ("what does this home ask for?") turns a diagnosis into a dead end.
   traceUser =
     {
       homeModule,
@@ -514,9 +523,23 @@ in
       grants ? { },
       hostFacts ? { },
       pkgs ? null,
+      permissive ? false,
     }:
     let
       username = identity.username;
+      # The permissive overlay: re-declare the two user-voice namespaces with a freeform type.
+      # Declaring an option twice MERGES the declarations, and two submodule types merge by
+      # unioning their modules — so this ADDS a freeform to the umbrella's own typed options
+      # rather than restating them, and every known key keeps its type (a malformed KNOWN
+      # request still errors, even here).
+      permissiveVoice = {
+        options.contract.requests = lib.mkOption {
+          type = lib.types.submodule { freeformType = lib.types.attrsOf lib.types.anything; };
+        };
+        options.contract.wants = lib.mkOption {
+          type = lib.types.submodule { freeformType = lib.types.attrsOf lib.types.anything; };
+        };
+      };
       # Evaluate the user's home against the contract home umbrella. traceUser is the SINGLE
       # reader of the loaded identity (ADR-0009): it injects the same value into the home it
       # gives the system account, so the home HOLDS its identity (e.g. for git name/email)
@@ -527,13 +550,29 @@ in
           homeModule
           { inherit identity; }
           userModule
-        ];
+        ]
+        ++ lib.optional permissive permissiveVoice;
         specialArgs = { inherit hostFacts pkgs lib; };
       };
       requests = home.config.contract.requests;
+      wants = home.config.contract.wants;
+      # The feature keys this contract revision declares, read from the SAME option fragments the
+      # umbrella declares them with — so "unknown" cannot drift from "undeclared".
+      unknownIn = known: value: lib.filter (k: !lib.elem k known) (lib.attrNames value);
     in
     {
-      inherit username home requests;
+      inherit
+        username
+        home
+        requests
+        wants
+        ;
+      # What this home asked for that this contract revision does not know — the skew report an
+      # inspector exists to produce. Always [ ] in strict mode (an unknown key throws first).
+      unknown = {
+        requests = unknownIn (lib.attrNames featureConfigOptions) requests;
+        wants = unknownIn (lib.attrNames registry) wants;
+      };
       # The system module a host merges to realize this user (the account, its powers, and the
       # bridged request params that feed the display surface) — see `mkUserAccount`.
       system.custom.users.${username} = mkUserAccount { inherit identity grants requests; };
