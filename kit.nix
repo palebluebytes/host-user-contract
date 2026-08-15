@@ -131,7 +131,7 @@ in
     ;
   inherit (contractLib)
     safeSet
-    homeAffecting
+    variants
     greeterGrants
     tier1EvalConfig
     ;
@@ -145,6 +145,9 @@ in
   # predicate (runtimeEligibleFeature) stay INTERNAL — see `internal` below.
   lib = {
     inherit (contractLib) renderNixConfig;
+    # The producer-side hostFacts projection (ADR-0028): narrows `granted` to the variant axes,
+    # the one rule every producer previously hand-wrote as a `filterAttrs`. See lib.nix.
+    inherit (contractLib) hostFactsFor;
     # The identity.json loader (ADR-0007): lossless over identity.nix, used by a user's home
     # module and by the producer coin below.
     inherit (identityJson) loadIdentity;
@@ -190,6 +193,10 @@ in
   #     THROUGH — a consumer never calls them directly (the grant model is negotiation-only; a bare
   #     contractPackage has no public consumer).
   internal = {
+    # The variant-axis projection behind the public `variants`/`hostFactsFor` (ADR-0028). Internal
+    # because no consumer needs the raw list once both derived forms ship; exposed here so the
+    # conformance suite can prove the taxonomy itself (which features ride the bind) in isolation.
+    inherit (contractLib) variantAxes;
     inherit (contractLib)
       mkContractPackage
       mkContractPackageForHome

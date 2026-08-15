@@ -23,14 +23,24 @@
 #                      path. Features with only these may be runtime-eligible (safe set).
 #   config           : user-owned option fragment merged into `custom.users.<u>` — the
 #                      feature's *parameters* (host-affecting ones aggregate, ADR-0003).
-#   homeAffecting    : this grant may change the CONTENT of a user's home, so a home may see it
-#                      in `hostFacts.granted` and fan out on it — and a producer bakes a variant
-#                      per subset of these (ADR-0028). Absent/false (the default) means the grant
-#                      confers host-side powers ONLY (a privileged group), so it rides the bind
-#                      and can never multiply variants. Declared, not derived: "does a grant reach
-#                      home content?" is a property of the feature, not of its group list — a
-#                      privileged feature could one day ship home content, and a group-conferring
-#                      one need not. kit.nix derives the `homeAffecting` public surface from these.
+#   needsOwnBuild    : this grant CANNOT be applied to a home that is already built, because it
+#                      changes what gets built. The test is mechanical: build the home with the
+#                      grant and without it, and see whether the two differ. Absent/false (the
+#                      default) means the grant confers host-side powers ONLY (a privileged
+#                      group), applied to the ACCOUNT at bind time over an unchanged home — it
+#                      RIDES THE BIND, and one build serves every answer.
+#                      Two consequences follow from this one flag (ADR-0028):
+#                        - a producer bakes one home per COMBINATION of these, because it cannot
+#                          know the answer when it builds. Each one therefore DOUBLES the variant
+#                          count of every user, on every architecture. Say true sparingly.
+#                        - `hostFacts.granted` is narrowed to these, because they are the only
+#                          grants whose value is true information inside a given build. A home
+#                          cannot be told about a bind-riding grant: one build serves both
+#                          answers, so there is nothing truthful to report.
+#                      Declared, not derived: "does this change the build?" is a property of the
+#                      feature, not of its group list — a privileged feature could one day ship
+#                      home content, and a group-conferring one need not. lib.nix projects these
+#                      into `variantAxes`, and `variants` from that.
 { lib }:
 {
   # gui: desktop environment. Its host effects are two contract-neutral things only —
@@ -41,10 +51,11 @@
   # display-server-agnostic (ADR-0021). In the safe set: no secret, no privileged group.
   gui = {
     grant = "the GUI feature for this user (host grant)";
-    # The one feature with a HOME channel (ADR-0028): it carries user-emitted request params and a
-    # desktop's home content, so a home may legitimately branch on the gui grant — hence a home may
-    # SEE it in hostFacts.granted, and a producer whose home fans out bakes a gui variant.
-    homeAffecting = true;
+    # The one feature that cannot be applied to an already-built home (ADR-0028): it carries
+    # user-emitted request params and a desktop's home content, so a granted gui home differs in
+    # CONTENT from an ungranted one. Hence a home may branch on it and SEE it in
+    # hostFacts.granted, and every producer bakes a gui variant beside its base one.
+    needsOwnBuild = true;
     groups = [
       "input"
       "uinput"

@@ -29,16 +29,61 @@ let
   # The runtime-eligible feature names — the safe set (ADR-0002, slice 15).
   safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
 
-  # The HOME-AFFECTING feature names (ADR-0028) — the safe set's sibling data surface, and the
-  # answer to "which grants may a home even see?". A feature is home-affecting iff the registry
-  # says its grant can reach home CONTENT (`homeAffecting`); the rest confer host-side powers only
-  # and ride the bind. Two producer jobs run off this ONE surface, so neither is re-implemented in
-  # prose per repo:
-  #   - `hostFacts.granted` is NARROWED to it, so a home reading a grant nothing bakes for
-  #     structurally gets `false` forever and cannot become grant-sensitive on it; and
-  #   - the baked variant set is `powerset(homeAffecting)` — the taxonomy ADR-0025 left to each
-  #     producer's hand-written comment, now a contract constant.
-  homeAffecting = lib.filter (f: registry.${f}.homeAffecting or false) (lib.attrNames registry);
+  # The VARIANT AXES (ADR-0028): the features whose grant cannot be applied to an already-built
+  # home (`needsOwnBuild` in the registry). Each is one axis of the build matrix a producer bakes,
+  # which is what makes `variants` below its powerset; everything else rides the bind.
+  #
+  # INTERNAL. This was the public `homeAffecting`, and every consumer used it for exactly two
+  # things — both now shipped whole, as `variants` and `hostFactsFor` below. With the derived
+  # forms exported there is no consumer for the raw list, and keeping it in means the two
+  # derivations can no longer drift apart in a producer's hands.
+  variantAxes = lib.filter (f: registry.${f}.needsOwnBuild or false) (lib.attrNames registry);
+
+  # The baked VARIANT SET — the answer to a producer's "what must I build?". One entry per
+  # COMBINATION of the axes (`powerset(variantAxes)`, which is why a second axis doubles it),
+  # carrying the grant attrset to bake with and the canonical label to publish it under.
+  #
+  # Every producer used to derive this by hand: a powerset fold, a label function mirroring the
+  # private `variantName`, and a comment restating the taxonomy — re-typed per repo, and silently
+  # wrong the moment the registry gains an axis (a host granting the new feature binds the maximal
+  # variant that IS baked and the home simply lacks its content, which nothing downstream reports).
+  # `label` travels with `grants` so a caller cannot pair them up wrongly.
+  variants = map (
+    names:
+    let
+      grants = lib.genAttrs names (_: {
+        enable = true;
+      });
+    in
+    {
+      inherit grants;
+      label = variantName grants;
+    }
+  ) (lib.foldl' (acc: f: acc ++ map (s: s ++ [ f ]) acc) [ [ ] ] variantAxes);
+
+  # The producer-side `hostFacts` projection: what a PRODUCER passes into a home it is baking.
+  # Deliberately NOT the retired `mkHostFacts` under a new name — that one projected from a NixOS
+  # host `config`, which only exists where a host evaluates a home inline (retired with that path
+  # by ADR-0026). This one has no host in sight.
+  #
+  # The whole content is the narrowing. `granted` is cut to the variant axes, because those are the
+  # only grants whose value is true information inside a given build: a home reading a bind-riding
+  # grant structurally gets `false` forever instead of becoming grant-sensitive on something no
+  # variant bakes for. Producers wrote this `filterAttrs` out by hand — identically, in two
+  # separate repos — and getting it wrong fails silently, by showing a home a grant it must not see.
+  #
+  # `exposed` defaults false because a pre-built variant is baked per grant-combination, not per
+  # host: which seat eventually binds it, and whether that seat is exposed, is unknowable here.
+  hostFactsFor =
+    {
+      granted ? { },
+      platform,
+      exposed ? false,
+    }:
+    {
+      inherit exposed platform;
+      granted = lib.filterAttrs (f: _: lib.elem f variantAxes) granted;
+    };
 
   # The request→feature-configuration bridge, shared by BOTH binding shapes (the headless
   # tracer below and the real `bindContractPackage`). Given a user's harvested `contract.requests`
@@ -451,7 +496,13 @@ let
       { inherit config pkgs; };
 in
 {
-  inherit runtimeEligibleFeature safeSet homeAffecting;
+  inherit
+    runtimeEligibleFeature
+    safeSet
+    variantAxes
+    variants
+    hostFactsFor
+    ;
 
   # The runtime/greeter grant (ADR-0006, ADR-0008): "default-open over the safe set". The
   # greeter does not let an operator choose features — it auto-grants every runtime-eligible

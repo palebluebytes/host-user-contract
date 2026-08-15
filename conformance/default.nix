@@ -20,7 +20,9 @@
   homeModule,
   homeGreeterDesktopModule,
   safeSet,
-  homeAffecting,
+  variantAxes,
+  variants,
+  hostFactsFor,
   greeterGrants,
   tier1EvalConfig,
   renderNixConfig,
@@ -63,7 +65,9 @@ let
         toolkit
         loadIdentity
         safeSet
-        homeAffecting
+        variantAxes
+        variants
+        hostFactsFor
         featureGroups
         privilegedGroups
         ;

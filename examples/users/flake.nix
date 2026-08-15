@@ -60,9 +60,10 @@
       #
       # ONE per-user knob remains here:
       #   - `bakedGrants`: the grants the contractPackage is BUILT with. No grant is secret-bearing
-      #     (the contract handles no secrets). The contract's HOME-AFFECTING set — the upper bound
-      #     on what a home may even see, `contract.homeAffecting` — is `{gui}`, so a repo whose homes
-      #     fan out bakes `powerset(homeAffecting)` = a base + a gui variant. These reference homes
+      #     (the contract handles no secrets). The contract publishes the baked variant set itself
+      #     as `contract.variants` — one entry per combination of the features that cannot be
+      #     applied to an already-built home, today just `{gui}`, so a repo whose homes fan out
+      #     bakes a base and a gui variant. These reference homes
       #     are trivial and contract-pure: not one of them reads `hostFacts.granted`, so none fans
       #     out and every user bakes a single grant-less `base` variant. That is exactly what lets
       #     one `ada-contractPackage-base` be gui on one seat and cli-only on another — the grant
@@ -112,16 +113,18 @@
       };
 
       # The self-scoped hostFacts a bake supplies to a home (ADR-0002). There is no host `config`
-      # at bake time (ADR-0026/0027), so the producer builds the literal — and NARROWS `granted`
-      # with the contract's `homeAffecting` surface (ADR-0028): a home may only see the grants
-      # something bakes for, so a home reading `granted.sudo` structurally gets false forever and
-      # cannot become grant-sensitive on a feature that rides the bind. The rule is the contract's
-      # data, not a comment kept in step by hand.
-      hostFactsFor = grants: {
-        exposed = false;
-        platform = system;
-        granted = lib.filterAttrs (f: _: lib.elem f contract.homeAffecting) grants;
-      };
+      # at bake time (ADR-0026/0027), so the producer builds the literal — through the contract's
+      # own `hostFactsFor`, which NARROWS `granted` to the variant axes (ADR-0028): a home may only
+      # see grants something bakes for, so one reading `granted.sudo` structurally gets false
+      # forever rather than becoming grant-sensitive on a feature that rides the bind. This was a
+      # hand-written `filterAttrs` here and an identical one in the operator's users repo; it is
+      # the contract's rule, so the contract now ships it.
+      hostFactsFor =
+        grants:
+        contract.lib.hostFactsFor {
+          granted = grants;
+          platform = system;
+        };
 
       # This repo's OWN home builder, named rather than inlined so the real `homeConfigurations`
       # and the contract's confinement check drive the SAME module set (issue #35). A check that

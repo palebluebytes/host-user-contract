@@ -1,6 +1,6 @@
 # The consumer/producer public surface: `bindContractUser` / `mkContractUser` / `traceUser`
 
-**Status:** Accepted (2026-08-06). Amends [ADR-0007](0007-user-flake-shape.md) (the binding shapes), [ADR-0008](0008-greeter-is-a-contract-deliverable.md) (the greeter mechanism), [ADR-0016](0016-prebuilt-binding-mode.md) (the pre-built primitives), and [ADR-0025](0025-turnkey-host-side-bind.md) (the turnkey bind). It renames and re-levels the `lib` surface, and **retires** the inline-eval binding path and the unilateral direct-grant posture from the public surface.
+**Status:** Accepted (2026-08-06). Amends [ADR-0007](0007-user-flake-shape.md) (the binding shapes), [ADR-0008](0008-greeter-is-a-contract-deliverable.md) (the greeter mechanism), [ADR-0016](0016-prebuilt-binding-mode.md) (the pre-built primitives), and [ADR-0025](0025-turnkey-host-side-bind.md) (the turnkey bind). It renames and re-levels the `lib` surface, and **retires** the inline-eval binding path and the unilateral direct-grant posture from the public surface. **Amended in place (2026-08-16)** — the producer data surface swaps `homeAffecting` for `variants` and gains `lib.hostFactsFor`; see the amendment at the end.
 
 The `lib` surface had grown by accretion — a function per issue, each named for the trait that distinguished it *when it was added* rather than for which one a consumer should reach for. By ADR-0025 there were eight public functions across two spellings of "bind" and three of "make," and the two a normal consumer actually wants (`bindUserFromFlake`, `mkUserBindings`) had the longest, least-guessable names, while the plainest name — `bindUser` — was taken by a test-only tracer. The reference host fleet had to locally re-alias `bindUserFromFlake` to `bindUserTurnkey` just to read. A naming review turned into a surface review, because several of the eight had no consumer at all.
 
@@ -55,3 +55,24 @@ The resulting public `lib`: `mkContractUser` · `mkContractUsers` · `bindContra
 ## If a retired path should return
 
 Re-exposing is a one-line move from `kit.internal` to `kit.lib`, plus an ADR amendment: `bindContractPackage` for a fleet that genuinely wants unilateral grants, `mkHostFacts` for a host that runs its users' homes through its own home-manager, or a fresh inline bind if hard-enforcement ever becomes enforceable. Nothing here forecloses them; it only stops advertising a surface no one uses.
+
+## Amendment (2026-08-16) — ship the producer's derivations, not the datum they derive from
+
+The data surface exported `homeAffecting`: the feature names whose grant can reach home content. A trace of its consumers — the reference fleet in `examples/users` and the operator's own users repo — found it used for exactly two things, in both, written out by hand in both:
+
+```nix
+granted = lib.filterAttrs (f: _: lib.elem f contract.homeAffecting) grants;   # the hostFacts narrowing
+variantGrants = map … (lib.foldl' … [ [ ] ] contract.homeAffecting);          # the baked variant set
+```
+
+Neither is a consumer *choice*. Both are the contract's own rules, re-derived per repo from a datum, and both fail **silently** when wrong: a mis-written narrowing shows a home a grant it must not see, and a variant set that has fallen behind the registry under-bakes — `bindContractUser` binds the maximal variant that *does* exist and the home simply lacks the new feature's content, which no coupling guard reports. One consumer had resorted to hardcoding its variant set behind an `assert` on `homeAffecting`, which is the tell: the datum was public, the rule was not.
+
+So the surface now carries the **derived forms** and drops the datum:
+
+- **`variants`** — `[{ label; grants; }]`, one entry per combination of the axes. A producer maps over it. `label` travels with `grants`, so the two cannot be paired up wrongly, and the label rule stops being mirrored per repo against the private `variantName`.
+- **`lib.hostFactsFor`** — `{ granted, platform, exposed ? false } → hostFacts`, narrowing `granted` to the axes. Deliberately not `mkHostFacts` returning under a new name: that one projected from a NixOS host `config` and is retired above; this one has no host in sight and belongs to the producer.
+- **`homeAffecting` leaves the surface.** Its projection survives as `kit.internal.variantAxes`, exposed only so the conformance suite can prove the taxonomy in isolation.
+
+This passes the test this ADR applied to the eight functions it found: each addition has real consumers that cannot get the result any other way, and neither is a second spelling of anything kept. It is also a net *simplification* of every consumer — two hand-written derivations and an assert deleted from each — which is the opposite of the accretion this ADR was written to stop.
+
+**The registry flag is renamed with it: `homeAffecting` → `needsOwnBuild`.** The old name asserted a vague relationship in a system where everything relates to the home, and said nothing about the cost. The new one states the mechanical test — can this grant be applied to a home that is already built? — and its complement is the registry's existing prose: a feature without it *rides the bind*. Saying yes doubles every user's variant count on every architecture, and the name should make an author feel that before they type it.

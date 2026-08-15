@@ -46,7 +46,7 @@
         featureGroups
         privilegedGroups
         safeSet
-        homeAffecting
+        variants
         greeterGrants
         tier1EvalConfig
         identityFile
@@ -69,7 +69,7 @@
           homeGreeterDesktopModule = self.homeModules.greeterDesktop;
           inherit (self)
             safeSet
-            homeAffecting
+            variants
             greeterGrants
             tier1EvalConfig
             featureGroups
@@ -84,10 +84,12 @@
             mkContractUsers
             bindContractUser
             renderNixConfig
+            hostFactsFor
             ;
           # Internal derivation logic (ADR-0026): not flake outputs, but the in-repo
           # conformance suite proves them in isolation.
           inherit (kit.internal)
+            variantAxes
             mkContractPackage
             mkContractPackageForHome
             bindContractPackage
