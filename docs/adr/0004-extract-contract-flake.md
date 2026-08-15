@@ -1,6 +1,6 @@
 # The host↔user contract lives in its own flake, delivered as a registry-baked kit
 
-**Status:** Accepted (implemented — this repo). The user-repo split it defers is carried by [ADR-0007](0007-user-flake-shape.md).
+**Status:** Accepted (implemented — this repo). The user-repo split it defers is carried by [ADR-0007](0007-user-flake-shape.md). **Amended in place (2026-08-16)** — this ADR is routinely cited for "the contract does not depend on home-manager" ([ADR-0008](0008-greeter-is-a-contract-deliverable.md), [ADR-0013](0013-per-user-desktop-choice-host-offered.md), [ADR-0014](0014-tier1-restricted-eval-posture.md), and several code comments), but the "depends only on nixpkgs `lib`" bullet below decides something narrower. The corollary holds; its reasons are elsewhere. See the amendment at the end.
 
 [ADR-0001](0001-host-user-contract.md) stood the contract up **in-repo** as a shared
 module set on `self.contract`, deliberately framing the eventual repo split as "a URL
@@ -79,3 +79,43 @@ display flags, insecure permits, safe set) must be **byte-identical** before and
   user-repo split, the `contract.requests` channel, and any re-key ride with the greeter
   ([ADR-0002](0002-user-confinement-manifest-greeter.md)), since the external-user-repo
   shape and the greeter's trust model define each other.
+
+## Amendment (2026-08-16) — the scope of "depends only on nixpkgs `lib`"
+
+The bullet above decides one thing: the contract takes **no package-ecosystem input**. Its whole
+argument is the emacs overlay in `features/gui.nix` — "a user's package choice, not part of the
+neutral interface" — and what it buys is the property this ADR is named for: the contract evaluates
+and tests with no host repo and no package set.
+
+It is now also the standing citation for a **different** rule — that the contract takes no
+**home-manager** input. That rule is real and is followed consistently, but this ADR never states
+it, and a reader who comes here to check it will not find it. Recording the actual reasoning:
+
+- **The rule is about *building* homes, not about *targeting* home-manager.** The user surface
+  *is* a home-manager module — that is [ADR-0002](0002-user-confinement-manifest-greeter.md)'s
+  title — and the contract ships one that sets a home-manager option (`homeModules.greeterDesktop`
+  writes `home.file`, [ADR-0013](0013-per-user-desktop-choice-host-offered.md)). Authoring a module
+  that names `home.file` requires no home-manager *input*; home-manager need only be present where
+  the module is *evaluated*, in the consumer's home eval. A flake input is required for exactly one
+  thing: calling `home-manager.lib.homeManagerConfiguration` to build a home.
+- **The contract deliberately never builds one.** The build is the host's `homeBuilder` binding
+  ([ADR-0008](0008-greeter-is-a-contract-deliverable.md)); a reference builder was considered and
+  rejected in [ADR-0014](0014-tier1-restricted-eval-posture.md) for the same reason. So the input
+  would buy a capability the contract has decided belongs to the consumer.
+- **The cost of taking it would be version skew, not impurity.**
+  [ADR-0001](0001-host-user-contract.md) mechanic 3: `mkIf` cannot suppress unknown-option errors
+  across home-manager versions, so features touching divergent options must be conditionally
+  *imported*; [ADR-0002](0002-user-confinement-manifest-greeter.md) records that the contract's
+  feature modules pin the **host's** home-manager. An input would push a version choice onto every
+  consumer.
+- **Two things it is *not* about.** It is not what keeps the contract self-testable: the proofs
+  that need home-manager live in the sibling reference flakes by deliberate design
+  ([ADR-0022](0022-reference-fleets-and-the-test-split.md)), and CI walks all three targets. Nor is
+  it what keeps `homeModules.default` tracer-pure for `traceUser`: that is a property of the
+  *module* — the default umbrella declares no `home.*` options at all — which
+  [ADR-0013](0013-per-user-desktop-choice-host-offered.md) already enforces by splitting
+  `greeterDesktop` out. Neither property would be threatened by a flake input; both would be
+  threatened by putting `home.*` options in the default umbrella.
+
+Cite this amendment, or ADR-0008, for the home-manager rule; cite the bullet above for
+package-ecosystem neutrality.
