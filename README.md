@@ -49,7 +49,9 @@ counterpart to the synthetic conformance suite (ADR-0022):
   what it asks a host for in its own `home.nix` (`contract.wants`, ADR-0028). Users: `ada` (portable
   — gui on one host, cli on another), `ben` (rides the safe-set default), `cleo` (privileged-group
   clamp — asks for `containers`), `svc` (automation — opts out of gui), `admin` (break-glass — asks
-  for the minimal `sudo`/wheel grant, login password `password`).
+  for the minimal `sudo`/wheel grant, login password `password`), plus the `duo-a`/`duo-b` pair,
+  which import one shared home module + overlay from `examples/users/shared/` — the ADR-0020 "shared
+  code, per-user data" ergonomic, permitted but not required (the five above share nothing).
 - [`examples/fleet/`](examples/fleet/) — the reference **host fleet**: `nixosConfigurations`
   (`desk`, `vault`, `agent`) that bind those users via `bindContractUser` + `contract.affordances`,
   showing the two-repo world meeting at the binding. Its `checks` prove the fleet evaluates coherently,

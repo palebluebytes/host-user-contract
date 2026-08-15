@@ -1,6 +1,6 @@
 # Reference fleets, and the oracle/reference test split
 
-**Status:** Accepted; **partially overtaken by [ADR-0023](0023-contract-handles-no-secrets.md)** — the contract now handles no secrets, so `mkFeatureRecipients` and the `secretBearing`/`signing` coverage this ADR describes no longer exist; `ben` is now a plain cli reference user. The reference-fleet *split* (oracle vs positive-space reference) stands; read the secret-coverage details as history. **Builds on** [ADR-0004](0004-extract-contract-flake.md) (the contract's
+**Status:** Accepted; **partially overtaken by [ADR-0023](0023-contract-handles-no-secrets.md)** — the contract now handles no secrets, so `mkFeatureRecipients` and the `secretBearing`/`signing` coverage this ADR describes no longer exist; `ben` is now a plain cli reference user. The reference-fleet *split* (oracle vs positive-space reference) stands; read the secret-coverage details as history. **Amended in place (2026-08-15, issue #37)** — the "no shared home modules in `examples/users/`" consequence gains a narrow, named exception (the `duo-a`/`duo-b` pair); see the amendment at the end. Its reasoning, and the exception's limits, stand. **Builds on** [ADR-0004](0004-extract-contract-flake.md) (the contract's
 synthetic, host-repo-free conformance suite), [ADR-0007](0007-user-flake-shape.md) /
 [ADR-0020](0020-multi-user-repo-shape.md) (the user-flake and multi-user shapes), and
 [ADR-0016](0016-prebuilt-binding-mode.md) (the per-user `contractPackage` output).
@@ -58,10 +58,10 @@ never a replacement for it.**
   contract flake from inputting, so they live in the *sibling* flakes' `checks` — exactly the
   boundary `examples/user/` already sat behind. Running everything means `nix flake check` in three
   targets (`.`, `examples/users`, `examples/fleet`); a CI matrix walks all three.
-- **No shared home modules in `examples/users/`.** The contract stops at handing the home a *signal*
-  (`config.identity`, the read-only `hostFacts.granted` projection); what a home *does* with it (git,
-  mail, a signing backend) is application policy that varies per user, so there is nothing universal
-  to factor. Each reference user is **self-contained** (identity + home, secrets only where needed) —
+- **No shared home modules in `examples/users/`** — *now with one named exception; see the amendment
+  below.* The contract stops at handing the home a *signal* (`config.identity`, the read-only
+  `hostFacts.granted` projection); what a home *does* with it (git, mail, a signing backend) is
+  application policy that varies per user, so there is nothing universal to factor. Each reference user is **self-contained** (identity + home, secrets only where needed) —
   which also keeps it a clean standalone teaching artifact. (This does not contradict
   [ADR-0020](0020-multi-user-repo-shape.md)'s "shared code, per-user data": that is a real operator
   repo's *ergonomics*; a reference example's job is to demonstrate the *contract*.)
@@ -74,3 +74,44 @@ never a replacement for it.**
   and `ben`'s home reaction wires a signing marker only where granted (home-side) — together the
   positive face of [ADR-0002](0002-user-confinement-manifest-greeter.md)'s silent-degradation promise,
   which the adversarial suite proves only from the deny side.
+
+## Amendment (2026-08-15) — one named exception to "no shared home modules" (issue #37)
+
+[ADR-0020](0020-multi-user-repo-shape.md)'s own amendment (2026-08-15, issue #36) made sharing
+modules and overlays across a multi-user repo **permitted, not required**. An optional shape with no
+live exercise rots, so the amendment named a worked example to be added here — which this ADR's "no
+shared home modules in `examples/users/`" consequence, read literally, forbids. **The exception is
+granted, and it is narrow:** `examples/users/shared/{module.nix,overlay.nix}`, imported by exactly
+two new roster members, `duo-a` and `duo-b`.
+
+**The reasoning above is not weakened — it is the reason the exception takes this shape.** There is
+still nothing *universal* to factor across the reference users: what a home does with the contract's
+signal remains per-user application policy. So the pair is **additive**, not a refactor. It exists to
+demonstrate the ADR-0020 **mechanism** — one module keyed on `config.identity.username`, one overlay
+in each opting-in user's own `nixpkgs.overlays` — and the roster now shows both supported
+arrangements side by side: five self-contained users who share nothing, and two who share by choice.
+
+**The limits, which are load-bearing rather than stylistic:**
+
+- **The existing five are untouched.** In particular `ada` stays **tracer-pure**: the one-way seam
+  (decision 4) has `conformance/toolkit.nix` import her `home.nix` and `identity.json` and evaluate
+  them against the bare umbrella with **no home-manager and no nixpkgs**. A shared module setting
+  `nixpkgs.overlays` or any `home.*` option would break that tracer, so the pair is *new users*
+  rather than a shared module grafted onto an existing one.
+- **The shared pair is not contract-pure** ([ADR-0008](0008-greeter-is-a-contract-deliverable.md)),
+  deliberately: `shared/module.nix` sets home-manager's own options and reads `pkgs`. That is legal
+  *here* and only here — this flake has home-manager, which [ADR-0004](0004-extract-contract-flake.md)
+  forbids the contract flake from inputting. The package-free rule constrains the **shipped contract
+  flake**, never `examples/`.
+- **The proof lives in this flake's `checks`, not in the synthetic suite**, and for exactly the
+  reason decision 3 gives: `toolkit.evalHome` is a synthetic eval with neither home-manager nor
+  nixpkgs, and an overlay proof needs both. The `shared-code-per-user-data` check asserts the two
+  halves of ADR-0020's claim separately — the overlay's marker package resolves to the **same** store
+  path in both realized closures (shared *code*), while the shared module renders two **different**
+  outputs, each keyed on its own `config.identity.username` and carrying no trace of the other's
+  identity (per-user *data*). "Both homes build" would not have proved it.
+- **The self-contained-user invariant is untouched.** What loosens is only "users never share
+  *code*". A user — including its login credential — remains self-contained and host-independent
+  ([ADR-0019](0019-login-credential-travels-with-the-user.md),
+  [ADR-0023](0023-contract-handles-no-secrets.md)), and ADR-0020's per-user secret isolation still
+  holds: nothing reaches sideways between users' **data**.

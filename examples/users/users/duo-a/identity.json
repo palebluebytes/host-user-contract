@@ -1,0 +1,9 @@
+{
+  "name": "Duo A Reference",
+  "email": "duo-a@example.invalid",
+  "username": "duo-a",
+  "sshKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIADAexamplekeyduoa duo-a@example.invalid",
+  "hashedPassword": "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/",
+  "extraGroups": [],
+  "trustedKeys": []
+}
