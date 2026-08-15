@@ -16,9 +16,9 @@ let
   # The negative space itself (ADR-0002): system options a confined user home must be unable to
   # NAME. Each is a real NixOS/sops option a user might reach for to escalate; the home umbrella
   # declares none of them, so each throws "option does not exist" at eval. Single-sourced here and
-  # consumed BOTH by `mkConfinementCheck`'s default and by the contract's own umbrella proof
-  # (`conformance/confinement.nix`) — one list of "what a user must not be able to say", so a newly
-  # recognised escalation path cannot land in one copy and not the other.
+  # read BOTH by `mkConfinementCheck` below and by the contract's own umbrella proof
+  # (`conformance/confinement.nix`, via kit.internal) — one list of "what a user must not be able
+  # to say", so a newly recognised escalation path cannot land in one copy and not the other.
   outOfUniverseProbes = {
     "users.users" = {
       users.users.root.hashedPassword = "!escalate";
