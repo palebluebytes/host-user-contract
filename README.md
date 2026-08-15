@@ -52,7 +52,7 @@ counterpart to the synthetic conformance suite (ADR-0022):
   own accounts in one flake, each exported as a per-user `<u>-contractPackage` output. Each declares
   what it asks a host for in its own `home.nix` (`contract.wants`, ADR-0028). Users: `ada` (portable
   — gui on one host, cli on another), `ben` (rides the safe-set default), `cleo` (privileged-group
-  clamp — asks for `containers`), `svc` (automation — opts out of gui), `admin` (break-glass — asks
+  clamp — asks for `containers`), `svc` (the user-side veto — opts out of gui, so no host can grant it one), `admin` (break-glass — asks
   for the minimal `sudo`/wheel grant, login password `password`), plus the `duo-a`/`duo-b` pair,
   which import one shared home module + overlay from `examples/users/shared/` — the ADR-0020 "shared
   code, per-user data" ergonomic, permitted but not required (the five above share nothing).

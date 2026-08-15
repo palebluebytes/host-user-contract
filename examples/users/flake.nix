@@ -66,8 +66,8 @@
       # cli-only on a headless host. What each user asks for now reads out of `users/<u>/home.nix`:
       #   - ada, ben, duo-a, duo-b: no `wants` line — the safe-set default (gui) is their whole offer;
       #   - cleo: `containers`, admin: `sudo` — privileged, so asked for explicitly;
-      #   - svc: `gui.enable = false` — the explicit opt-out that keeps an automation account
-      #     cli-only even where a seat affords gui.
+      #   - svc: `gui.enable = false` — the explicit opt-out, the USER-side veto that keeps an
+      #     account desktop-free even where a seat affords gui.
       roster = {
         # ada — the multi-machine user (the contract's portable-user north star): ONE identity,
         # ONE home, wants gui (the default) — she gets a gui session on a seat that affords gui and
@@ -81,8 +81,10 @@
         # `containers`; she receives docker ONLY on a host that affords containers (the clamp +
         # negotiation, positive direction). containers is non-secret, so nothing is baked.
         cleo.bakedGrants = { };
-        # svc — a pure automation account: cli-only on every host that runs it, never gui (it opts
-        # out of the safe-set default). The minimal home; nothing secret.
+        # svc — the USER-side veto: it signs in like anyone else, but opts out of the safe-set gui
+        # default, so no host can grant it a desktop however much it affords one. ada shows the host
+        # half of `affordances ∩ offer`; svc is the only user showing the user half. The minimal
+        # home; nothing secret.
         svc.bakedGrants = { };
         # admin — a break-glass administrative account: wants `sudo`, so on a host that affords sudo
         # it gets `wheel` and nothing more (the minimal privileged grant, ADR-0020). Its login

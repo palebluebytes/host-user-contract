@@ -27,8 +27,12 @@ let
     # the posture is a PREFIX claim about the algorithm, not a crypt() round-trip.
     hashedPassword = "$y$j9T$sQ8Zx0mHXqk4hM1p2rE3d.$hZTLbC4y6r0Wl9nQvJ7sKxYf1TdA2mR8eN5uG3bV0oC";
   };
-  # A passwordless identity (the reference roster's `svc` shape): no hash at all satisfies no
-  # posture — an account with an empty credential must never read as "posture ok".
+  # A passwordless identity: no hash at all satisfies no posture — an account with an empty
+  # credential must never read as "posture ok". Synthetic on purpose: no reference user has this
+  # shape, because this contract delivers "login, dotfiles, the features they need" (ADR-0001), so
+  # every reference user carries a credential. An empty `hashedPassword` is the option DEFAULT
+  # (identity.nix), i.e. indistinguishable from an unfilled field — which is exactly why it must
+  # fail rather than be read as a deliberate "locked account".
   emptyIdentity = referenceIdentity // {
     username = "nopass";
     hashedPassword = "";

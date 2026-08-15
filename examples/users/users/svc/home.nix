@@ -1,16 +1,24 @@
-# svc — a pure automation account.
+# svc — the user-side veto.
 #
-# cli-only on every host that runs it, never gui, never a secret. It offers no gui desktop, so no
-# host can grant it a display surface — the minimal end of the roster, present to show that a user
-# which never touches a seat consumes the contract exactly like the others (one contractPackage,
-# bound per host) and simply carries the smallest home.
+# Every other reference user demonstrates the HOST half of `grant = affordances ∩ offer`: ada is gui
+# on a seat that affords gui and cli-only on a headless box, so the HOST varies the outcome. svc is
+# the only one demonstrating the USER half — it refuses gui, so NO host can grant it a display
+# surface however much it affords one. The veto is symmetric: either party can independently say no,
+# and neither can override the other's refusal.
 #
-# Contract-pure (ADR-0008).
+# It signs in like any other user (it carries a login credential — ADR-0019, cleartext
+# "correct-horse-battery-staple", the roster's shared reference password). That is deliberate: this
+# contract delivers "login, dotfiles, the features they need" (ADR-0001), so a reference user is one
+# that logs in. What makes svc distinct is not that it never takes a seat — it is that it never
+# takes a DESKTOP, on any host, by its own choice.
+#
+# Contract-pure (ADR-0008): the smallest home in the roster.
 { ... }:
 {
-  # What svc asks a host for (ADR-0028): nothing — the explicit OPT-OUT. Every non-privileged (safe-set) feature is wanted
-  # by default, so an account that must never take a seat says so — this is the one line that keeps
-  # "never gui" true even on a host that affords gui.
+  # What svc asks a host for (ADR-0028): everything non-privileged EXCEPT gui — the explicit
+  # OPT-OUT. Every safe-set feature is wanted by default, so an account that must never get a
+  # desktop has to say so; this is the one line that keeps "never gui" true even on a seat that
+  # affords it, and the only worked example of that escape hatch in the repo.
   contract.wants.gui.enable = false;
   custom.home.profiles.cli.enable = true;
 }

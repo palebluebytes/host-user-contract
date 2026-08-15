@@ -8,7 +8,7 @@
 #     `affordances ∩ offer = { }` — her gui.desktop request is not bridged, the surface stays off,
 #     no input groups. One identity, one flake, opposite session because the HOST did not afford it
 #     (ADR-0002 silent degradation, now expressed as the affordance veto).
-#   - svc: the cli-only automation account, at home on an exposed box; it offers nothing anyway
+#   - svc: the user-side veto, at home on an exposed box; it offers no desktop anyway
 #     (its home opts out of the safe-set gui default).
 { contract, users, ... }:
 {
