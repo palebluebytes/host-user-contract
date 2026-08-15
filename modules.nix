@@ -73,8 +73,9 @@
     options.identity = identityOptions;
     options.custom.home.profiles = homeProfileOptions;
 
-    # contract.wants (ADR-0028, issue #34): the user's OFFER, declared in its own home — WHICH
-    # features this user asks a host for, the counterpart of the host's `contract.affordances`.
+    # contract.wants (ADR-0028, issue #34): the user's ASK, declared in its own home — WHICH
+    # features this user wants of a host, the counterpart of the host's `contract.affordances`
+    # (and the source of the `offer`, which is this set once harvested and published).
     # `mkContractUser` HARVESTS it off the evaluated home and publishes it as the binding index's
     # `offer`, so the user's voice lives in ONE place (the home) rather than split between the home
     # and the producer's flake. `bindContractUser` then derives the grant as `affordances ∩ offer`.
