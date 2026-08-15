@@ -13,9 +13,18 @@
 # the headless traceUser inspector. This is the SAME universe traceUser harvests in (../lib.nix),
 # so what is unexpressible here is unexpressible in a real bound user. Privilege escalation is
 # impossible because the vocabulary to request it does not exist — structural, not a blocklist.
+#
+# It ALSO proves the shipped `mkConfinementCheck` (issue #35) — the same technique lifted into
+# `../checks.nix` so a CONSUMER can run it over its OWN real module set (this suite can only reach
+# the umbrella; a consumer's imports are where a system channel actually gets smuggled back in).
+# The helper's own failure modes are the point: it must reject a smuggled channel, and it must NOT
+# pass by rejecting everything (the positive control) or by never forcing the home at all.
 {
   lib,
+  pkgs,
   toolkit,
+  mkConfinementCheck,
+  outOfUniverseProbes,
 }:
 let
   inherit (toolkit) evalHome;
@@ -27,33 +36,48 @@ let
   # means "this path is unexpressible", never an unrelated eval error.
   evaluates = mod: (builtins.tryEval ((evalHome [ mod ]).contract.requests.gui.desktop)).success;
 
-  # The system options ADR-0002 names as out-of-universe. Each is a real NixOS/sops option a
-  # user might reach for to escalate; none exists in the home umbrella, so each is unexpressible.
-  outOfUniverse = {
-    "users.users" = {
-      users.users.root.hashedPassword = "!escalate";
-    };
-    "security.sudo" = {
-      security.sudo.wheelNeedsPassword = false;
-    };
-    "boot.loader" = {
-      boot.loader.grub.enable = true;
-    };
-    "sops.secrets" = {
-      sops.secrets."steal".sopsFile = "/dev/null";
-    };
-    # A privileged group grab via the system account option is likewise unexpressible: the
-    # home cannot name `users.users.<u>.extraGroups` at all (grants flow the other way — the
-    # host adds groups `mkIf granted`, ADR-0003).
-    "users.users.extraGroups" = {
-      users.users.example.extraGroups = [ "wheel" ];
-    };
-  };
-
+  # The system options ADR-0002 names as out-of-universe — the negative space itself, read from
+  # `../checks.nix` (via kit.internal) so the umbrella's proof here and the probe set the shipped
+  # `mkConfinementCheck` runs at a consumer are ONE list. Two copies of "what a user must not be
+  # able to say" would drift the day a new escalation path is added to only one of them.
   unexpressibleAssertions = lib.mapAttrsToList (path: mod: {
     name = "confinement: `${path}` is unexpressible in the user home (no system channel, ADR-0002)";
     ok = !(evaluates mod);
-  }) outOfUniverse;
+  }) outOfUniverseProbes;
+
+  # --- the shipped consumer check (issue #35) ---
+  # A stand-in for a consumer's real home builder. A consumer passes its own `mkHome` (a
+  # home-manager configuration, forced through `activationPackage.drvPath`); the contract has no
+  # home-manager (ADR-0004), so the synthetic umbrella eval plays that role and the force hook
+  # points at a declared attr instead. The helper's LOGIC is what is under test here — that the
+  # umbrella itself is confined is the block above.
+  checkOver =
+    args:
+    mkConfinementCheck (
+      {
+        inherit pkgs;
+        buildHome = evalHome;
+        force = c: c.contract.requests.gui.desktop;
+        # The default positive control is a home-manager option, which this home-manager-free
+        # builder cannot declare; the sanctioned request channel is the equivalent legitimate
+        # option here (and exercises the parameter).
+        positiveControl = {
+          contract.requests.gui.desktop = "plasma";
+        };
+      }
+      // args
+    );
+  # Does the check PASS? It fails by throwing at eval (a hard, named error, like every other
+  # contract guard), so `tryEval` is how a test observes the verdict.
+  checkPasses = args: (builtins.tryEval (checkOver args)).success;
+
+  # A module set that smuggles a system channel back in — the hazard the consumer check exists
+  # for: a top-level freeform accepts ANY key, so every out-of-universe probe becomes expressible
+  # while a legitimate home option still evaluates. Confinement is gone; the positive control alone
+  # would not notice.
+  smuggledSystemChannel = {
+    freeformType = lib.types.attrsOf lib.types.anything;
+  };
 in
 {
   assertions = unexpressibleAssertions ++ [
@@ -74,5 +98,37 @@ in
         !(evaluates { contract.requests.users.users.root = "inert-request"; })
         && !(evaluates { users.users.root.hashedPassword = "!escalate"; });
     }
+    {
+      name = "mkConfinementCheck: passes over a confined real module set (issue #35)";
+      ok = checkPasses { };
+    }
+    {
+      # The claim the consumer check exists to make: a module set that reopens a system channel
+      # FAILS, even though its positive control still evaluates.
+      name = "mkConfinementCheck: fails when the module set smuggles a system channel back in";
+      ok =
+        !(checkPasses {
+          buildHome = mods: evalHome (mods ++ [ smuggledSystemChannel ]);
+        });
+    }
+    {
+      # The part people forget. A harness that rejects EVERYTHING satisfies every negative claim;
+      # only the positive control tells confinement from a broken builder.
+      name = "mkConfinementCheck: fails when the positive control does not evaluate (rejects-everything is not confinement)";
+      ok =
+        !(checkPasses {
+          buildHome = _: throw "this builder rejects everything";
+        });
+    }
+    {
+      # The other way to be vacuous: a `force` that never forces the module merge makes every
+      # probe look expressible, so the negative claims fail — the check cannot silently pass.
+      name = "mkConfinementCheck: fails when the builder's home is never forced (no vacuous pass)";
+      ok = !(checkPasses { force = _: "never forced"; });
+    }
   ];
+
+  # Execution proof: the check the consumer actually wires into `checks.<system>` is a real
+  # derivation that BUILDS (the assertions above only observe its eval verdict).
+  drvs.mkConfinementCheck = checkOver { name = "conformance-home-confinement"; };
 }
