@@ -166,6 +166,13 @@ let
   # consumes); it is projected to the index's `granted` NAME LIST by `grantedNamesOf`. `loadIdentity`
   # is injected by the kit (like `homeModule` for `traceUser`) so the users flake calls this without
   # wiring the loader itself. `pkgs`/`system` stay parameters so one call can emit multi-arch outputs.
+  #
+  # The `offer` is HARVESTED, never passed (ADR-0028): it is `contract.wants` read off the already-
+  # evaluated home, so the user's voice lives in the user's own home rather than in the producer's
+  # flake. Because the offer is what the grant is DERIVED from (`affordances ∩ offer`), a want that
+  # depends on `hostFacts.granted` is circular — the harvest would differ per variant and the
+  # published offer would be whichever variant happened to be first. That is a bake-time error here,
+  # not a subtle mis-negotiation later.
   mkContractUser =
     {
       loadIdentity,
@@ -173,7 +180,6 @@ let
       system,
       usersDir,
       name,
-      offer ? { },
       variants,
     }:
     let
@@ -186,6 +192,27 @@ let
         };
         label = variantName v.grants;
       }) variants;
+      # The harvested offer + its variant-invariance guard. Compared as the enabled-name PROJECTION
+      # (what the index publishes and `bindContractUser` intersects), which is the whole observable
+      # content of a want set.
+      harvested = map (v: v.home.config.contract.wants) variants;
+      offeredNames = map grantedNamesOf harvested;
+      offer =
+        if variants == [ ] then
+          throw (
+            "mkContractUser: '${name}' declares no variants, so there is no evaluated home to "
+            + "harvest `contract.wants` from — a user must bake at least one variant."
+          )
+        else if lib.all (o: o == lib.head offeredNames) offeredNames then
+          lib.head harvested
+        else
+          throw (
+            "mkContractUser: variant-varying offer for '${name}' — its `contract.wants` differs "
+            + "across baked variants ("
+            + lib.concatMapStringsSep "; " (o: "[${lib.concatStringsSep ", " o}]") offeredNames
+            + "). An offer that depends on `hostFacts.granted` is circular: the grant is DERIVED "
+            + "from the offer (affordances ∩ offer), so it cannot also be an input to it."
+          );
     in
     {
       packages.${system} = lib.listToAttrs (
@@ -202,8 +229,9 @@ let
   # whole multi-user repo and its outputs merged, so a `users` flake bakes its entire roster in ONE
   # call and `inherit … packages contractUsers`. It is the turnkey producer for the multi-user shape
   # (ADR-0020) exactly as `bindContractUser` is the turnkey consumer; the singular `mkContractUser`
-  # is the true per-user partner underneath. Each input user is `{ offer; variants }`, forwarded to
-  # `mkContractUser`. Adds no logic of its own beyond the roster fold — the per-user bake, naming,
+  # is the true per-user partner underneath. Each input user is `{ variants }`, forwarded to
+  # `mkContractUser` (the offer is harvested from each variant's home, ADR-0028 — a roster carries
+  # no `offer` field). Adds no logic of its own beyond the roster fold — the per-user bake, naming,
   # and index shape all live in `mkContractUser`.
   mkContractUsers =
     {
@@ -224,7 +252,7 @@ let
             usersDir
             name
             ;
-          inherit (u) offer variants;
+          inherit (u) variants;
         }
       ) users;
     in

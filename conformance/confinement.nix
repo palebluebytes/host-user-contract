@@ -7,8 +7,8 @@
 # *unexpressible* in the user's world, not merely rejected or `mkIf`-denied downstream.
 #
 # The proof is that these paths are UNDECLARED in the contract home umbrella (modules.nix's
-# `homeModule` declares only `identity`, `custom.home.profiles`, and the
-# freeform-INSIDE-`contract.requests` namespace — no top-level freeformType). So a home that
+# `homeModule` declares only `identity`, `custom.home.profiles`, and the fully-typed
+# `contract.wants` / `contract.requests` namespaces — no freeformType anywhere since ADR-0028). So a home that
 # sets one throws "option does not exist" at eval, exactly as a stray `home.packages` does in
 # the headless traceUser inspector. This is the SAME universe traceUser harvests in (../lib.nix),
 # so what is unexpressible here is unexpressible in a real bound user. Privilege escalation is
@@ -64,14 +64,14 @@ in
       ok = evaluates { contract.requests.gui.desktop = "plasma"; };
     }
     {
-      # "Unexpressible, not merely swallowed as an inert request." The freeformType lives
-      # INSIDE contract.requests, so `contract.requests.users.users` would be ACCEPTED as an
-      # inert (never-bridged) request — that is NOT the escalation surface. The escalation
-      # surface is a TOP-LEVEL system option, and that is what throws. This asserts the
-      # distinction: the same key is inert under `contract.requests`, fatal at top level.
-      name = "confinement: `users.users` is inert under contract.requests but fatal at top level";
+      # Until ADR-0028 the freeformType inside `contract.requests` ACCEPTED a system-shaped key as
+      # an inert (never-bridged) request, so this claim read "inert under contract.requests, fatal
+      # at top level". With the freeform gone the namespace is fully typed and the same key throws
+      # in BOTH positions. Confinement itself is unchanged (an inert request never reached system
+      # state either way); what changed is that the typo-net now covers the request namespace too.
+      name = "confinement: `users.users` is unexpressible at top level AND inside contract.requests";
       ok =
-        evaluates { contract.requests.users.users.root = "inert-request"; }
+        !(evaluates { contract.requests.users.users.root = "inert-request"; })
         && !(evaluates { users.users.root.hashedPassword = "!escalate"; });
     }
   ];

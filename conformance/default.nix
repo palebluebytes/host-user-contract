@@ -69,6 +69,7 @@ let
         toolkit
         homeModule
         homeGreeterDesktopModule
+        safeSet
         ;
     })
     (import ./confinement.nix {

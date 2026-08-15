@@ -9,6 +9,10 @@
 # Contract-pure (ADR-0008): only contract/home-profile + request options.
 { ... }:
 {
+  # cleo's OFFER (ADR-0028), declared in her own home rather than in the producer's flake:
+  # `containers` is privileged, so it is never a default — a privileged feature is offered only
+  # deliberately. gui rides the safe-set default, so it needs no line here.
+  contract.wants.containers.enable = true;
   contract.requests.gui.desktop = "gnome";
   custom.home.profiles.gui.enable = true;
 }

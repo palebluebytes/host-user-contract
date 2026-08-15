@@ -10,5 +10,8 @@
 # Contract-pure (ADR-0008): cli-only, no home-manager options.
 { ... }:
 {
+  # admin's OFFER (ADR-0028): `sudo` is privileged, so it must be asked for explicitly. It is
+  # still only an ASK — wheel arrives solely where a host also affords sudo (affordances ∩ offer).
+  contract.wants.sudo.enable = true;
   custom.home.profiles.cli.enable = true;
 }

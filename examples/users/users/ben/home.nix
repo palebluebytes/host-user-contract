@@ -7,6 +7,10 @@
 # harvests headlessly in the conformance tracer.
 { ... }:
 {
+  # ben declares no `contract.wants` at all, so his offer is the safe-set default (ADR-0028): he
+  # asks for nothing privileged and takes a seat wherever one is afforded. Contrast svc, which
+  # opts OUT of gui explicitly.
+  #
   # The home meta-profiles ben's home offers.
   custom.home.profiles = {
     cli.enable = true;

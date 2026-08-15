@@ -15,6 +15,10 @@
 # is injected by the binding (ADR-0009); this home never loads identity.json itself.
 { ... }:
 {
+  # ada's OFFER (ADR-0028) is the SAFE-SET DEFAULT: gui is non-privileged, so it is wanted with no
+  # `contract.wants` line at all. She asks for nothing privileged, so this home has no want to
+  # declare — the offer the producer's flake used to carry is now simply the default.
+  #
   # ada's DESKTOP choice (ADR-0013): a free-form, DE-agnostic name that travels with the home. It
   # is inert until a host GRANTS gui — then the seat maps it to a real desktop (else its default).
   contract.requests.gui.desktop = "plasma";

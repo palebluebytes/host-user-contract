@@ -8,6 +8,7 @@
   identityOptions,
   homeProfileOptions,
   grantedOptions,
+  wantedOptions,
   featureConfigOptions,
 }:
 {
@@ -65,30 +66,53 @@
       };
     };
 
-  # Home kit: the identity + home-profile vocabulary + the contract.requests namespace the
-  # user emits. The home identity value is populated from the system identity by the host.
+  # Home kit: the identity + home-profile vocabulary + the user's two-part VOICE — which features
+  # it wants (contract.wants) and their parameters (contract.requests). The home identity value is
+  # populated from the system identity by the host.
   homeModule = _: {
     options.identity = identityOptions;
     options.custom.home.profiles = homeProfileOptions;
 
+    # contract.wants (ADR-0028, issue #34): the user's OFFER, declared in its own home — WHICH
+    # features this user asks a host for, the counterpart of the host's `contract.affordances`.
+    # `mkContractUser` HARVESTS it off the evaluated home and publishes it as the binding index's
+    # `offer`, so the user's voice lives in ONE place (the home) rather than split between the home
+    # and the producer's flake. `bindContractUser` then derives the grant as `affordances ∩ offer`.
+    #
+    # Same `{ <feature>.enable = bool; }` shape as a grant set (wantedOptions is DERIVED from
+    # grantedOptions) — one shape across wants/affordances/granted/offer, so the grant algebra
+    # needs no normalising shim. NO freeformType: a want for a feature the contract does not
+    # declare is a typo in the user's own repo, and typos must not silently become "offers nothing".
+    # It defaults to the SAFE SET (the runtime-eligible, non-privileged features): a privileged
+    # feature is only ever offered deliberately, and a user wanting no desktop writes
+    # `contract.wants.gui.enable = false`.
+    #
+    # It must be VARIANT-INVARIANT: `contract.wants` may not depend on `hostFacts.granted`, because
+    # the grant is derived FROM the offer — mkContractUser fails the bake if the harvest differs
+    # across a user's baked variants.
+    options.contract.wants = lib.mkOption {
+      type = lib.types.submodule { options = wantedOptions; };
+      default = { };
+      description = "Features this user asks a host for (ADR-0028); mkContractUser harvests it as the binding index's offer and bindContractUser derives the grant as affordances ∩ offer. Same shape as a grant set; defaults to the safe set.";
+    };
+
     # contract.requests (ADR-0002/0007, issue #5): the typed, read-only namespace a user's
     # home module POPULATES to describe host-affecting parameters of the features it
-    # offers (e.g. gui.desktop). The host bridges the GRANTED ones from the pre-built manifest
+    # wants (e.g. gui.desktop). The host bridges the GRANTED ones from the pre-built manifest
     # (bindContractPackage) or a dry-run harvest (traceUser); the user only asks, never writes
     # system state. Its per-feature shape IS the registry's
     # feature `config` fragments (featureConfigOptions) — the same parameters carried
     # system-side as custom.users.<u>.<feature>.* today (ADR-0003), now emitted from the
-    # user's own side. Enforcement (ADR-0002 "ignore-overreach / validate-intent"):
-    #   - a KNOWN request is typed, so a malformed one (wrong-typed gui.desktop, a
-    #     misspelled param within a known feature) ERRORS — the schema is the typo-net;
-    #   - an UNKNOWN feature key is ACCEPTED and ignored (the freeformType below), so a
-    #     request for a feature this contract version lacks never breaks the build — the
-    #     "build still happens" posture the greeter's forward-compat needs.
+    # user's own side. Enforcement (ADR-0002's "validate-intent", with its ignore-overreach half
+    # superseded by ADR-0028): the namespace is FULLY typed — a malformed known request
+    # (wrong-typed gui.desktop), a misspelled param within a known feature, and an unknown feature
+    # key all ERROR. The freeformType that once accepted unknown keys for greeter forward-compat is
+    # gone: version skew is handled at the DATA layer (bridgeRequests folds over the HOST's granted
+    # names, so an unknown key is ignored by construction, and the manifest carries a version), so
+    # the freeform's only remaining effect was hiding typos in the user's own repo. Cross-revision
+    # tolerance lives where skew is real — `traceUser`'s permissive inspector mode.
     options.contract.requests = lib.mkOption {
-      type = lib.types.submodule {
-        freeformType = lib.types.attrsOf lib.types.anything;
-        options = featureConfigOptions;
-      };
+      type = lib.types.submodule { options = featureConfigOptions; };
       default = { };
       description = "Host-affecting requests this user emits; the host applies the granted ones (mkIf granted). The user populates it; the host reads it.";
     };
