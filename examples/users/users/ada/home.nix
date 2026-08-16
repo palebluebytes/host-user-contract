@@ -20,8 +20,9 @@
 # `name`, `email` and `username` are REQUIRED; `gmail`, `sshKey`, `hashedPassword`, `extraGroups`
 # and `trustedKeys` all carry defaults, so the other six users omit whatever nothing reads for them
 # (cleo keeps `extraGroups`, everyone keeps `hashedPassword` for the login credential). ada keeps
-# `sshKey` because the reference host fleet's integration VM provisions her account from it. Six
-# copies of `"trustedKeys": []` would have taught that the boilerplate is required, which is false.
+# `sshKey` because the reference host fleet's integration VM provisions her account from this very
+# file, and the greeter's `provision` writes `~/.ssh/authorized_keys` out of it. Six copies of
+# `"trustedKeys": []` would have taught that the boilerplate is required, which is false.
 { ... }:
 {
   # What ada asks a host for (ADR-0028) is the SAFE-SET DEFAULT: gui is non-privileged, so it is

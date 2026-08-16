@@ -270,9 +270,10 @@ the term is stable, the code is pending (see the cited issue).
   truly-runtime step `greeter-provision-vm`/`greeter-provision` stop short of (they drive provision/session with a
   pre-built home). The fixture user flake is minimal (its `activationPackage` is a raw derivation that
   is just an `$out/activate`, all `provision` needs) so the test isolates the LOOP, not a home-manager
-  build (that is the example user flake's package builds). One concession, documented in-file: a *nested test VM* cannot realize a
-  fresh sandboxed `nix build`, so the reference homeBuilder there resolves to a home built at test-build
-  time; its real-seat form is the `nix build "$src#…activationPackage"` one-liner. (issue #2; ADR-0006)
+  build (that is the example user flake's package builds). One concession, documented in-file: a
+  *nested test VM* cannot realize a fresh sandboxed `nix build`, so the reference homeBuilder there
+  resolves to a home built at test-build time; its real-seat form is the
+  `nix build "$src#…activationPackage"` one-liner. (issue #2; ADR-0006)
 - **greeter session is secret-free** — the greeter authenticates on a **password, not a key**
   (ADR-0006) and activates the user's home with no secret step: it never unlocks or places a
   user key. Recovering a roaming user's own home secrets at a foreign seat is out of scope for

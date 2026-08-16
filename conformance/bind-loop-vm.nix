@@ -10,8 +10,8 @@
 # reference one) and a desktop binding. The fixture user flake's home is a MINIMAL real derivation — an
 # `$out/activate` script, which is all `provision` requires — with no nixpkgs/home-manager input, so the
 # test isolates the bind LOOP and the runtime build is tiny and offline. (A real home-manager home is
-# already proven by the example user flake's package builds + `greeter-provision`.) The build runs under the
-# greeter's pinned restricted-eval posture (ADR-0014) with no network: the fixture's builder is STATIC
+# already proven by the example user flake's package builds + `greeter-provision`.) The build runs
+# under the greeter's pinned restricted-eval posture (ADR-0014) with no network: the builder is STATIC
 # busybox (no ELF interpreter, so it execs in the bare build sandbox a raw derivation gives), pre-seeded
 # via system.extraDependencies along with the fetched repo and the signer.
 #
@@ -48,8 +48,9 @@ let
   # (its store overlay can't mount build inputs, and the contract pins sandbox=true) — so this test binds
   # a variant that resolves to the home built at TEST-BUILD time (homeDrv, pre-seeded). That keeps the
   # BIND LOOP fully real end-to-end — archive, eval-free Tier-1 auth, provision, session — while the home
-  # BUILD itself is proven separately by the example user flake's package builds. The variant still consumes
-  # $src/$user, so the orchestrator's contract (hand src+user, get an activation path) is exercised intact.
+  # BUILD itself is proven separately by the example user flake's package builds. The variant still
+  # consumes $src/$user, so the orchestrator's contract (hand src+user, get an activation path) is
+  # exercised intact.
   homeBuilder = pkgs.writeShellScript "reference-home-builder" ''
     set -euo pipefail
     src=$1

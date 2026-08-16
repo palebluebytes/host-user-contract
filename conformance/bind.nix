@@ -4,8 +4,8 @@
 # request→grant→bridge kernel at the logic level. Proving that a NON-contract-pure home (one that
 # sets home-manager `programs.*`/`home.*`) binds without throwing needs home-manager, which the
 # contract cannot depend on (ADR-0004) — so that proof lives in `examples/users`, whose
-# `checks = packages` build every real home, not in this suite. Here the pre-built path (./contract-package.nix) proves only the
-# manifest→bridge kernel, from a static fixture.
+# `checks = packages` build every real home, not in this suite. Here the pre-built path
+# (./contract-package.nix) proves only the manifest→bridge kernel, from a static fixture.
 {
   toolkit,
   traceUser,

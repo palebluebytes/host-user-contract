@@ -83,8 +83,10 @@
         && builtins.pathExists (usersDir + "/${n}/identity.json")
       ) (lib.attrNames (builtins.readDir usersDir));
       userDirOf = n: usersDir + "/${n}";
-      # ADR-0009: the contract is the one identity loader. Resolved once per user, then handed to
-      # everything that needs it (the homes, the posture check) rather than re-read per consumer.
+      # ADR-0009: the contract is the one identity loader. Resolved once per user here and handed to
+      # the homes and the posture check, rather than each re-reading the file. (`mkContractUsers`
+      # loads its own from the `usersDir` it is given — that is the point of handing it the roster
+      # and nothing else, so this file never passes an identity path.)
       identities = lib.genAttrs userNames (n: contract.lib.loadIdentity (userDirOf n + "/identity.json"));
 
       # ── The bake matrix: which variants, on which system ─────────────────────────────────────
@@ -94,9 +96,13 @@
       # second such feature fans out there, with no edit here.
       #
       # That set is an UPPER BOUND, never a per-system baking obligation. WHICH of it a system bakes
-      # is the consuming fleet's topology: this reference fleet's aarch64 seats are headless, so
-      # aarch64 bakes base alone. An aarch64 host that granted gui would bind base — ∅ ⊆ anything,
-      # the ADR-0002 degradation posture, accepted deliberately.
+      # is the consuming fleet's topology and nobody else's, so the rule below is a MODELLED one:
+      # this reference fleet declares its aarch64 tier headless (the shape a real fleet has — a
+      # headless arm builder beside the x86 desktop seats), and so bakes base alone there. An
+      # aarch64 host that granted gui would bind base — ∅ ⊆ anything, the ADR-0002 degradation
+      # posture, accepted deliberately. `examples/fleet` is x86-only and binds none of the aarch64
+      # bakes; they exist to teach the matrix, and to give `variant-eval` a real cross-arch fact to
+      # prove rather than a one-row one.
       #
       # Written as the features a system's seats CANNOT use, rather than a per-system list of labels,
       # so that a contract which gains an axis bakes it EVERYWHERE until this file says otherwise. A
@@ -123,7 +129,7 @@
             lib.concatMapStringsSep ", " (v: v.label) (variantsFor "x86_64-linux")
           }] of [${
             lib.concatMapStringsSep ", " (v: v.label) contract.variants
-          }]. Filtering is for systems whose seats CANNOT use a feature (this fleet's aarch64 seats are headless); x86_64 bakes the upper bound.";
+          }]. Filtering is for systems whose seats CANNOT use a feature (this fleet models its aarch64 tier headless); x86_64 bakes the upper bound.";
         lib.genAttrs systems variantsFor;
 
       # ── This repo's home builder ─────────────────────────────────────────────────────────────
@@ -383,7 +389,11 @@
             # check goes red while the one above would stay green.
             identity-posture-rejects-an-offender =
               let
-                offender = (lib.head (lib.attrValues identities)) // {
+                # Any real roster identity will do as the base — the offender differs from it only
+                # in the two fields the posture looks at — so it is taken from the derivation rather
+                # than by naming a user this check has no other business knowing.
+                someRealIdentity = lib.head (lib.attrValues identities);
+                offender = someRealIdentity // {
                   username = "sixto";
                   hashedPassword = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
                 };
