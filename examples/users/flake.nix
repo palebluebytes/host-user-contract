@@ -1,5 +1,5 @@
 {
-  description = "Reference USER FLEET (ADR-0020) — the operator's own accounts grouped in one repo, each consumed via the contract's per-user contractPackage output (ADR-0016). Standalone inputs exist only for this repo's own CI; when a host binds a user it supplies the canonical contract + pkgs. This is the positive-space reference the synthetic conformance suite borrows real atoms from — never the reverse (see docs/adr/0022).";
+  description = "Reference USER FLEET (ADR-0020) — the operator's own accounts grouped in ONE repo, each consumed by a host through the contract's pre-built binding (ADR-0016). Every user lives under users/, one subdir each: identity.json + home.nix and NOTHING else (no per-user check file — the coverage here is roster-generic). This flake is a GENERIC MAPPER over that directory: it hardcodes no user, states no user's offer, and contributes no module of its own, so adding a user is writing those two files. The variant set is the CONTRACT's own (`contract.variants`); the one thing stated here is the per-system BAKE MATRIX over it, which is this fleet's topology and nobody else's. Standalone inputs exist only for this repo's own CI; when a host binds a user it supplies the canonical contract + pkgs. This is the positive-space reference the synthetic conformance suite borrows real atoms from — never the reverse (see docs/adr/0022).";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -12,8 +12,11 @@
   };
 
   outputs =
+    # No `self`: every home is evaluated ONCE, in `homes`/`greeterHomes` below, and the published
+    # names, the binding artifacts and the checks all read THAT. Going back through
+    # `self.homeConfigurations` would also force this file to spell a user's published name to
+    # reach its home — the hand-listing the mapper exists to kill.
     {
-      self,
       nixpkgs,
       contract,
       home-manager,
@@ -21,359 +24,450 @@
     }:
     let
       inherit (nixpkgs) lib;
+      # The system this flake publishes its `home-manager switch` surface on. NOT a per-user fact:
+      # every user bakes for every entry of `systems` below.
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+      # PLAIN nixpkgs — the producer contributes NO overlay and NO config. A user's own pkgs
+      # (ADR-0007) is declared by its OWN home: home-manager re-imports nixpkgs inside every home
+      # eval and CONCATENATES the home's `nixpkgs.overlays` onto the ones the producer passed, so
+      # the duo pair's `shared/overlay.nix` merges rather than replaces (spelled out there). Held
+      # per system and looked up, so nixpkgs is instantiated once per system rather than once per
+      # user × variant.
+      pkgsBySystem = lib.genAttrs systems (sys: nixpkgs.legacyPackages.${sys});
+      pkgs = pkgsBySystem.${system};
 
-      # The reference roster. Each user is its own subdir (identity.json + home.nix), and each is
-      # host-agnostic: no platform binding, and no user ever names a secrets backend (CONTEXT.md).
+      # ── The roster, DERIVED from the directory ───────────────────────────────────────────────
+      # The reference fleet is every subdir of ./users/ holding an identity.json. Derived, never
+      # listed: adding `users/<new>/{identity.json,home.nix}` needs no edit to this file — the
+      # homes, the greeter homes, both arches' binding artifacts, the checks and the posture guard
+      # all follow. Each user's own story lives in the header of its own `home.nix`, because it
+      # travels with the user: lifting one out into a standalone repo is a directory move.
       #
-      # What IS invariant is the self-contained USER: a user's identity and its login credential
-      # travel with the user (ADR-0019/0023) — no host owns them, and no user's secrets are ever
-      # readable by another (ADR-0020's per-user secret isolation).
+      # What is FLEET-level, and so lives here rather than in any user:
       #
-      # This fleet lives in a PUBLIC repo, so it follows the posture ADR-0019 assigns a public repo:
-      # every identity.json ships a `$y$` YESCRYPT hash, not `$6$` sha512crypt. The reference fleet
-      # is what consumers copy, so it models the rule rather than merely citing it — and the
-      # `identity-posture` check below enforces it, so a member added with a weaker hash fails the
-      # build. (The cleartexts are published on purpose — "correct-horse-battery-staple", and
-      # "password" for admin — because these are teaching fixtures; the posture is modelled for the
-      # shape a real repo must copy, not because these particular hashes guard anything.)
+      #   - The two CODE-SHARING arrangements, side by side (ADR-0020 as amended by issue #36:
+      #     sharing home modules and overlays is PERMITTED, not required, so the optional shape
+      #     needs a live fixture or it rots). ada, ben, cleo, svc and admin share no module and no
+      #     overlay — there is nothing universal to factor across them (what a home DOES with the
+      #     contract's signal is application policy that varies per user), and it keeps each a clean
+      #     standalone artifact; ada in particular stays evaluable headlessly, since the conformance
+      #     tracer borrows her home.nix with no home-manager at all (ADR-0022). duo-a and duo-b
+      #     import ONE `shared/module.nix` and ONE `shared/overlay.nix` — the mechanism an operator
+      #     uses to enforce a common setup across their own accounts, keyed on
+      #     `config.identity.username` so the same code yields per-user data (the
+      #     `shared-code-per-user-data` check below proves exactly that). Neither arrangement reaches
+      #     sideways between users' DATA; they differ only in whether the CODE is written once or
+      #     per user.
       #
-      # What is a CHOICE is whether users
-      # share CODE. Since ADR-0020's 2026-08-15 amendment (issue #36) sharing home modules and
-      # overlays is permitted, not required, so this roster deliberately shows BOTH arrangements:
-      #   - ada, ben, cleo, svc, admin — the self-contained five. They share no module and no
-      #     overlay, because there is nothing universal to factor across them (ADR-0022): what a
-      #     home DOES with the contract's signal is application policy that varies per user. It also
-      #     keeps each a clean standalone teaching artifact, and keeps ada evaluable headlessly —
-      #     the conformance tracer borrows her home.nix with no home-manager at all.
-      #   - duo-a, duo-b — the shared-setup pair. They import ONE `shared/module.nix` and ONE
-      #     `shared/overlay.nix`, the mechanism an operator uses to enforce a common setup across
-      #     their own accounts: the module is keyed on `config.identity.username`, so the same code
-      #     yields per-user data and no user's identity is baked into it. The
-      #     `shared-code-per-user-data` check below proves exactly that.
-      # Neither arrangement reaches sideways between users' DATA; they differ only in whether the
-      # CODE is written once or per user.
+      #   - The PUBLIC-repo credential posture (ADR-0019): every identity.json ships a `$y$`
+      #     yescrypt hash rather than `$6$` sha512crypt, because a world-readable hash must be
+      #     memory-hard. The reference fleet is what consumers copy, so it models the rule instead of
+      #     merely citing it, and `identity-posture` below enforces it. (The cleartexts are published
+      #     on purpose — "correct-horse-battery-staple", and "password" for admin — because these are
+      #     teaching fixtures: the posture is modelled for the shape a real repo must copy, not
+      #     because these particular hashes guard anything.)
       #
-      # What otherwise distinguishes the users is not their homes (the five are deliberately thin
-      # and contract-pure) but what the FLEET grants each of them per host.
-      #
-      # ONE per-user knob remains here:
-      #   - `bakedGrants`: the grants the contractPackage is BUILT with. No grant is secret-bearing
-      #     (the contract handles no secrets). The contract publishes the baked variant set itself
-      #     as `contract.variants` — one entry per combination of the features that cannot be
-      #     applied to an already-built home, today just `{gui}`, so a repo whose homes fan out
-      #     bakes a base and a gui variant. These reference homes
-      #     are trivial and contract-pure: not one of them reads `hostFacts.granted`, so none fans
-      #     out and every user bakes a single grant-less `base` variant. That is exactly what lets
-      #     one `ada-contractPackage-base` be gui on one seat and cli-only on another — the grant
-      #     rides the bind, never the bake.
-      #
-      # The `offer` (ADR-0025) — the features a user ASKS a host for — is NO LONGER declared here.
-      # Since ADR-0028 each user declares `contract.wants` in its OWN home and `mkContractUsers`
-      # HARVESTS it into the binding index, so a user's voice is not split between its home and this
-      # flake. The negotiation is unchanged: a host declares `contract.affordances` once and each
-      # grant is derived as `affordances ∩ offer`, so ada is gui on a seat that affords gui and
-      # cli-only on a headless host. What each user asks for now reads out of `users/<u>/home.nix`:
-      #   - ada, ben, duo-a, duo-b: no `wants` line — the safe-set default (gui) is their whole offer;
-      #   - cleo: `containers`, admin: `sudo` — privileged, so asked for explicitly;
-      #   - svc: `gui.enable = false` — the explicit opt-out, the USER-side veto that keeps an
-      #     account desktop-free even where a seat affords gui.
-      roster = {
-        # ada — the multi-machine user (the contract's portable-user north star): ONE identity,
-        # ONE home, wants gui (the default) — she gets a gui session on a seat that affords gui and
-        # cli-only on a headless host that does not. Whether she gets gui is a per-host AFFORDANCE ∩
-        # her offer, never a user trait.
-        ada.bakedGrants = { };
-        # ben — a second cli reference user (a plain, contract-pure home): distinct identity, asks
-        # for nothing privileged. Useful as a co-resident on the same host as a privileged account.
-        ben.bakedGrants = { };
-        # cleo — the privileged-group user: declares `docker` in identity.extraGroups and wants
-        # `containers`; she receives docker ONLY on a host that affords containers (the clamp +
-        # negotiation, positive direction). containers is non-secret, so nothing is baked.
-        cleo.bakedGrants = { };
-        # svc — the USER-side veto: it signs in like anyone else, but opts out of the safe-set gui
-        # default, so no host can grant it a desktop however much it affords one. ada shows the host
-        # half of `affordances ∩ offer`; svc is the only user showing the user half. The minimal
-        # home; nothing secret.
-        svc.bakedGrants = { };
-        # admin — a break-glass administrative account: wants `sudo`, so on a host that affords sudo
-        # it gets `wheel` and nothing more (the minimal privileged grant, ADR-0020). Its login
-        # password is the well-known "password" (ADR-0019: the credential travels with the user).
-        # sudo is privileged but non-secret, so nothing is baked.
-        admin.bakedGrants = { };
-        # duo-a / duo-b — the SHARED-SETUP pair (ADR-0020 as amended by issue #36). Two ordinary
-        # roster members whose homes import the same `shared/module.nix` and the same
-        # `shared/overlay.nix`. They ask for nothing privileged, so like ada and ben their offer is
-        # the safe-set default; they exist to demonstrate the sharing MECHANISM, not to factor the
-        # other five. Their homes are the roster's only non-contract-pure ones (the shared module
-        # sets home-manager options), which is why the pair is new rather than grafted onto ada.
-        duo-a.bakedGrants = { };
-        duo-b.bakedGrants = { };
-      };
+      #   - No user's OFFER appears here (ADR-0028). Each user declares `contract.wants` in its own
+      #     home and `mkContractUsers` HARVESTS it into the binding index, so a user's voice is not
+      #     split between its home and the producer's flake. The negotiation is unchanged: a host
+      #     declares `contract.affordances` once and each grant is derived as `affordances ∩ offer`,
+      #     so ada is gui on a seat that affords gui and cli-only on a headless host.
+      usersDir = ./users;
+      userNames = lib.filter (
+        n:
+        (builtins.readDir usersDir).${n} == "directory"
+        && builtins.pathExists (usersDir + "/${n}/identity.json")
+      ) (lib.attrNames (builtins.readDir usersDir));
+      userDirOf = n: usersDir + "/${n}";
+      # ADR-0009: the contract is the one identity loader. Resolved once per user, then handed to
+      # everything that needs it (the homes, the posture check) rather than re-read per consumer.
+      identities = lib.genAttrs userNames (n: contract.lib.loadIdentity (userDirOf n + "/identity.json"));
 
-      # The self-scoped hostFacts a bake supplies to a home (ADR-0002). There is no host `config`
-      # at bake time (ADR-0026/0027), so the producer builds the literal — through the contract's
-      # own `hostFactsFor`, which NARROWS `granted` to the variant axes (ADR-0028): a home may only
-      # see grants something bakes for, so one reading `granted.sudo` structurally gets false
-      # forever rather than becoming grant-sensitive on a feature that rides the bind. This was a
-      # hand-written `filterAttrs` here and an identical one in the operator's users repo; it is
-      # the contract's rule, so the contract now ships it.
-      hostFactsFor =
-        grants:
-        contract.lib.hostFactsFor {
-          granted = grants;
-          platform = system;
-        };
+      # ── The bake matrix: which variants, on which system ─────────────────────────────────────
+      # `contract.variants` is the contract's own answer to "what could a host grant?": one entry per
+      # combination of the features whose grant cannot be applied to an already-built home, each
+      # carrying the grants to bake with and the label to publish under. Today that is base + gui; a
+      # second such feature fans out there, with no edit here.
+      #
+      # That set is an UPPER BOUND, never a per-system baking obligation. WHICH of it a system bakes
+      # is the consuming fleet's topology: this reference fleet's aarch64 seats are headless, so
+      # aarch64 bakes base alone. An aarch64 host that granted gui would bind base — ∅ ⊆ anything,
+      # the ADR-0002 degradation posture, accepted deliberately.
+      #
+      # Written as the features a system's seats CANNOT use, rather than a per-system list of labels,
+      # so that a contract which gains an axis bakes it EVERYWHERE until this file says otherwise. A
+      # label list would drop the new variant from aarch64 in silence, which is the one failure mode
+      # this area keeps having: `bindContractUser` binds the maximal variant that DOES exist, so an
+      # under-baked set costs a home its content with nothing objecting.
+      #
+      # The matrix says what a HOST could grant, never what these particular homes do with it: the
+      # reference homes are thin and none of them fans out on `hostFacts.granted`, so a user's `gui`
+      # bake differs from its `base` only in the `granted` field frozen into the manifest. That is
+      # the point — it is exactly what lets one `ada-contractPackage-base` be a gui account on one
+      # seat and a cli-only account on another, because the grant rides the bind, not the bake.
+      unusableOn = sys: lib.optional (sys == "aarch64-linux") "gui";
+      variantsFor = sys: lib.filter (v: !lib.any (f: v.grants ? ${f}) (unusableOn sys)) contract.variants;
 
-      # This repo's OWN home builder, named rather than inlined so the real `homeConfigurations`
-      # and the contract's confinement check drive the SAME module set (issue #35). A check that
-      # ran over a module set assembled separately would prove nothing about what actually ships.
-      # `extraModules` is the seam the check needs: it appends one probe module at a time and asks
-      # whether the home still evaluates.
+      # The matrix itself, `bakedVariants.<system>`. Everything below bakes off THIS.
+      #
+      # The assert pins where the upper bound must still HOLD: the x86_64 seats can use anything the
+      # contract names, so their bake must be the contract's whole set. An `unusableOn` rule that
+      # ever leaks into them is an under-bake, and silent for the reason just given.
+      bakedVariants =
+        assert lib.assertMsg (variantsFor "x86_64-linux" == contract.variants)
+          "the x86_64-linux bake must equal the contract's full variant set — its seats can use every feature the contract names — but the per-system filter cuts it to [${
+            lib.concatMapStringsSep ", " (v: v.label) (variantsFor "x86_64-linux")
+          }] of [${
+            lib.concatMapStringsSep ", " (v: v.label) contract.variants
+          }]. Filtering is for systems whose seats CANNOT use a feature (this fleet's aarch64 seats are headless); x86_64 bakes the upper bound.";
+        lib.genAttrs systems variantsFor;
+
+      # ── This repo's home builder ─────────────────────────────────────────────────────────────
+      # A THIN partial application of the contract's own `mkContractHome` (ADR-0029): the builder
+      # owns the composition every producer used to hand-write — the home umbrella, the home
+      # baseline, the user's `home.nix`, the inline identity/`home.*` module, and the `hostFacts`
+      # specialArg built by `hostFactsFor` (which NARROWS `granted` to the variant axes, so a home
+      # reading `granted.sudo` structurally gets false forever rather than becoming grant-sensitive
+      # on a feature that rides the bind).
+      #
+      # That inline module is also what keeps the five self-contained users contract-pure: the
+      # home-manager glue a bound path gets from the host (`home.username`, `home.homeDirectory`,
+      # `home.stateVersion`) lives in the BUILDER, never in their `home.nix`, so those homes still
+      # evaluate against the bare umbrella with no home-manager (ADR-0008/0022).
+      #
+      # What is fixed here is exactly what is this repo's own: home-manager's builder passed
+      # verbatim (the ADR-0004 injection that keeps the CONTRACT package-free — it applies a
+      # function it never imports), the `stateVersion` (a required argument precisely because real
+      # repos differ, so the contract carries no default), and the per-system pkgs.
+      #
+      # `extraSpecialArgs` is deliberately NOT threaded: no user here consumes an external flake, so
+      # the ADR-0020 `inputs` passthrough is a real users repo's story, not this example's. Named
+      # rather than inlined so the published homes and the confinement check drive the SAME module
+      # set (issue #35) — a check over a separately assembled module set would prove nothing about
+      # what ships.
       mkHome =
         {
-          name,
-          bakedGrants ? { },
+          userDir,
+          identity,
+          granted ? { },
           extraModules ? [ ],
+          # Override to build for another system; the home layers its own overlays on whatever it gets.
+          pkgs ? pkgsBySystem.${system},
         }:
-        home-manager.lib.homeManagerConfiguration {
-          inherit pkgs;
-          modules = [
-            contract.homeModules.default
-            ./users/${name}/home.nix
-            {
-              identity = contract.lib.loadIdentity ./users/${name}/identity.json;
-              home.username = name;
-              home.homeDirectory = "/home/${name}";
-              home.stateVersion = "25.11";
-              home.packages = [ pkgs.hello ];
-            }
-          ]
-          ++ extraModules;
-          extraSpecialArgs.hostFacts = hostFactsFor bakedGrants;
+        contract.lib.mkContractHome {
+          inherit
+            userDir
+            identity
+            granted
+            extraModules
+            pkgs
+            ;
+          homeManagerConfiguration = home-manager.lib.homeManagerConfiguration;
+          stateVersion = "25.11";
         };
+
+      # One user's whole baked set for one system, keyed by variant label — the system's row of the
+      # matrix, so aarch64 yields `{ base }` where x86_64 yields `{ base, gui }`.
+      variantHomesFor =
+        args: sys:
+        lib.listToAttrs (
+          map (
+            v:
+            lib.nameValuePair v.label (
+              mkHome (
+                args
+                // {
+                  granted = v.grants;
+                  pkgs = pkgsBySystem.${sys};
+                }
+              )
+            )
+          ) bakedVariants.${sys}
+        );
+
+      # The whole fleet: `homes.<system>.<user>.<label>`. Computed ONCE rather than per consumer, so
+      # the published names, the binding artifacts and the checks share one evaluation of each home.
+      homes = lib.genAttrs systems (
+        sys:
+        lib.genAttrs userNames (
+          n:
+          variantHomesFor {
+            userDir = userDirOf n;
+            identity = identities.${n};
+          } sys
+        )
+      );
+
+      # ── The greeter-login home, for EVERY roster member ──────────────────────────────────────
+      # `<u>-greeter`: the same user through the same builder, granted the contract's safe set
+      # (`greeterGrants` — what a runtime greeter may confer with no declarative say-so from the
+      # host), plus two extra modules through the builder's open seam:
+      #   - the desktop-choice helper (ADR-0013), so `contract.requests.gui.desktop` surfaces to
+      #     `~/.contract-desktop`, where the greeter's session launcher reads it;
+      #   - a marker dotfile the fleet's integration VM observes to prove the REAL home activated at
+      #     runtime rather than a stub.
+      # Roster-generic on purpose: baking only the one user `examples/fleet` happens to consume is
+      # the hand-listing failure mode this file exists to kill. The marker is keyed on the injected
+      # identity, so it names no user either.
+      greeterMarker =
+        { config, ... }:
+        {
+          home.file.".contract-home-active".text = "greeter-activated for ${config.identity.name}";
+        };
+      greeterHomes = lib.genAttrs userNames (
+        n:
+        mkHome {
+          userDir = userDirOf n;
+          identity = identities.${n};
+          granted = contract.greeterGrants;
+          extraModules = [
+            contract.homeModules.greeterDesktop
+            greeterMarker
+          ];
+        }
+      );
+
+      # ── Turnkey producer bindings (ADR-0025/0026/0028, issue #25) ────────────────────────────
+      # `mkContractUsers` maps the DERIVED roster ONCE per system into BOTH the named per-variant
+      # packages (`<user>-contractPackage-<label>`) AND the pure `contractUsers.<sys>.<user>` binding
+      # INDEX a host selects from with `contract.lib.bindContractUser` (deriving the grant as its
+      # `contract.affordances` ∩ the user's offer, then binding the maximal covered variant). It
+      # bakes through the internal package kernels, which only READ an already-evaluated home, and
+      # resolves each identity from `users/<u>/identity.json` — so this call passes only the roster
+      # and never a user's name, offer or identity path.
+      bindings = lib.genAttrs systems (
+        sys:
+        contract.lib.mkContractUsers {
+          pkgs = pkgsBySystem.${sys};
+          system = sys;
+          inherit usersDir;
+          users = lib.genAttrs userNames (n: {
+            variants = map (v: {
+              inherit (v) grants;
+              home = homes.${sys}.${n}.${v.label};
+            }) bakedVariants.${sys};
+          });
+        }
+      );
+
+      # The published package set per system — every user's baked variants, so aarch64's is the base
+      # bakes alone. Named here because `checks` is literally this set plus the repo's own.
+      packages = lib.genAttrs systems (sys: bindings.${sys}.packages.${sys});
     in
     {
-      # Standalone homes (`nix build .#homeConfigurations.<u>.activationPackage`): each user's home +
-      # its identity.json, built directly with home-manager's own canonical
-      # `homeManagerConfiguration` (the golden path a real user repo follows) against the contract
-      # umbrella. The home.* fields + home.packages are the home-manager glue a BOUND path gets from
-      # the host — kept HERE, not in the five self-contained users' home.nix, so those stay
-      # contract-pure and evaluate headlessly against the bare umbrella when the conformance tracer
-      # harvests requests (ADR-0008). The duo pair is the deliberate exception: its shared module sets
-      # home-manager options of its own, so it needs home-manager and is never borrowed headlessly.
-      # Identity is loaded once via the canonical `contract.lib.loadIdentity` and injected
-      # (ADR-0009); hostFacts is the self-scoped host projection the producer supplies inline (there
-      # is no host `config` at bake time — ADR-0026), built by `hostFactsFor` below.
+      # The `home-manager switch` surface, on the default system only (other systems' homes are
+      # reachable through `packages.<sys>`; switching is an x86 desktop affair here). The names are
+      # THIS repo's own and owe the published packages nothing — a host binds through
+      # `contractUsers`, and `mkContractUser` names its own artifacts — so the rule is local and
+      # trivial: the base variant keeps the bare user name, any other variant is suffixed with its
+      # label, and the greeter home is suffixed `-greeter`.
       homeConfigurations =
-        lib.mapAttrs (
-          name: u:
-          mkHome {
-            inherit name;
-            inherit (u) bakedGrants;
-          }
-        ) roster
-        # The greeter-login variant (<u>-greeter): the SAME home granted the safe set (greeterGrants),
-        # importing the desktop-choice helper (ADR-0013) so contract.requests.gui.desktop surfaces to
-        # ~/.contract-desktop, plus a marker dotfile the fleet's integration VM observes.
-        // lib.mapAttrs' (
-          name: _:
-          let
-            identity = contract.lib.loadIdentity ./users/${name}/identity.json;
-          in
-          lib.nameValuePair "${name}-greeter" (
-            home-manager.lib.homeManagerConfiguration {
-              inherit pkgs;
-              modules = [
-                contract.homeModules.default
-                contract.homeModules.greeterDesktop
-                ./users/${name}/home.nix
-                {
-                  inherit identity;
-                  home.username = name;
-                  home.homeDirectory = "/home/${name}";
-                  home.stateVersion = "25.11";
-                  home.packages = [ pkgs.hello ];
-                  home.file.".contract-home-active".text = "greeter-activated for ${identity.name}";
-                }
-              ];
-              extraSpecialArgs.hostFacts = hostFactsFor contract.greeterGrants;
-            }
-          )
-        ) roster;
+        lib.listToAttrs (
+          lib.concatMap (
+            n:
+            map (
+              v:
+              lib.nameValuePair (
+                if v.label == "base" then n else "${n}-${v.label}"
+              ) homes.${system}.${n}.${v.label}
+            ) bakedVariants.${system}
+          ) userNames
+        )
+        // lib.mapAttrs' (n: home: lib.nameValuePair "${n}-greeter" home) greeterHomes;
 
-      # The turnkey PRODUCER surface (ADR-0025, issue #25): `mkContractUsers` maps the whole roster
-      # ONCE into BOTH the per-user pre-built binding artifacts AND the pure `contractUsers` binding
-      # index a host selects a variant from. It is `mkContractUser` (the singular per-user producer,
-      # the twin of the host's `bindContractUser`) mapped over the roster and merged — one call bakes
-      # the multi-user repo (ADR-0020).
+      # The pre-built binding artifacts (ADR-0016), for every user × baked variant × system. Each is
+      # content-addressed and carries `activate` + `contract-requests.json` (with the baked `granted`
+      # field the ADR-0025 coupling guard asserts the host actually grants):
+      #   - x86_64-linux: <user>-contractPackage-{base,gui}
+      #   - aarch64-linux: <user>-contractPackage-base alone — the matrix bakes no gui there.
+      inherit packages;
+
+      # The turnkey binding INDEX (ADR-0025): `contractUsers.<sys>.<user> = { identity; offer;
+      # variants = [{ granted; package }] }` — plain data (no IFD), so a host's `bindContractUser`
+      # picks a variant by reading it, never by building every variant to inspect a baked manifest.
+      contractUsers = lib.foldl' (acc: sys: acc // bindings.${sys}.contractUsers) { } systems;
+
+      # ── Checks ──────────────────────────────────────────────────────────────────────────────
+      # `checks = packages`, plus the contract's consumer check kit mapped over the derived roster.
+      # There are no per-user checks — not "none yet": a user here ships `identity.json` + `home.nix`
+      # and nothing else, and this mapper carries no hook to pick a check file up with. Everything
+      # below is generic over the roster, so a new user is covered the moment its directory exists.
       #
-      # Each user declares only its `variants` (here a single grant-less `base` variant, since these
-      # reference homes don't fan out on any grant); its OFFER is harvested from each variant's home
-      # (`contract.wants`, ADR-0028) rather than passed. mkContractUsers bakes each variant
-      # via the internal package kernels (only READING the already-evaluated home, so package-free),
-      # names it `<user>-contractPackage-<variantName>` (empty grant-key ⇒ `base`), resolves each
-      # identity once from `users/<u>/identity.json`, and emits the index `contractUsers.<sys>.<u> =
-      # { identity; offer; variants = [{ granted; package }] }` as plain data (no IFD) so a host
-      # picks a variant without building any of them.
-      inherit
-        (contract.lib.mkContractUsers {
-          inherit pkgs system;
-          usersDir = ./users;
-          users = lib.mapAttrs (name: u: {
-            variants = [
-              {
-                grants = u.bakedGrants;
-                home = self.homeConfigurations.${name};
+      # The first clause is the load-bearing one: a contractPackage build-DEPENDS on its activation
+      # package (`mkContractPackage` interpolates `${activationPackage}/activate` into its
+      # runCommand), so building every package builds every home — the hand-written per-user
+      # `home-build-*` checks this flake used to carry are subsumed by one line. The REAL home build
+      # is the model a real user repo follows when it CIs its own homes; the contract's own suite
+      # cannot cover it (it needs home-manager, which the contract does not depend on — ADR-0004),
+      # and the greeter path end-to-end lives in `examples/fleet`, which needs a booted host.
+      checks = lib.genAttrs systems (
+        sys:
+        packages.${sys}
+        // lib.optionalAttrs (sys == system) (
+          # Structural confinement, per user (check kit, issue #35). `conformance/confinement.nix`
+          # proves the contract UMBRELLA declares no system channel; that says nothing about whether
+          # THIS repo's imports smuggled one back in. `mkConfinementCheck` closes that half by
+          # probing the real `mkHome` above: an out-of-universe option must be unexpressible
+          # (throws) while a legitimate home option still evaluates (the positive control that stops
+          # the check passing vacuously). Run over EVERY user, because a system channel arrives
+          # through an import and each user owns its own imports — the duo-a-only economy this flake
+          # used to run was a fact about these particular fixtures, not about the shape being taught.
+          # These call sites are also what exercise the helper's two DEFAULTS (the
+          # `activationPackage.drvPath` force and the `home.sessionVariables` positive control),
+          # which the contract's own suite structurally cannot reach.
+          lib.mapAttrs' (
+            n: identity:
+            lib.nameValuePair "home-confinement-${n}" (
+              contract.lib.mkConfinementCheck {
+                inherit pkgs;
+                name = "home-confinement-${n}";
+                buildHome =
+                  extraModules:
+                  mkHome {
+                    userDir = userDirOf n;
+                    inherit identity extraModules;
+                  };
               }
-            ];
-          }) roster;
-        })
-        packages
-        contractUsers
-        ;
-
-      # The REAL home build step, per user (the model a real user repo follows when it CIs its own
-      # homes). The contract's OWN suite cannot cover this — it needs home-manager, which the
-      # contract does not depend on (ADR-0004) — so it lives HERE, in the fleet that legitimately
-      # has home-manager. The greeter-path end-to-end lives in examples/fleet (it needs a booted
-      # host), pointed at these same outputs.
-      checks.${system} =
-        lib.mapAttrs' (
-          name: _: lib.nameValuePair "home-build-${name}" self.homeConfigurations.${name}.activationPackage
-        ) roster
-        // {
-          # The CONSUMER half of the confinement promise (issue #35). `conformance/confinement.nix`
-          # proves the contract UMBRELLA declares no system channel; that is the contract's own
-          # promise, and it says nothing about whether THIS repo's imports smuggled one back in.
-          # `mkConfinementCheck` closes that half by probing the real `mkHome` above.
-          #
-          # Run over duo-a deliberately: it is the ONLY home with non-trivial imports (the shared
-          # module and the shared overlay), which is exactly the hazard the check exists for. ada
-          # imports nothing, so a check over her would merely re-prove the umbrella in a costlier
-          # way. This call site is also what exercises the helper's two DEFAULTS — the
-          # `activationPackage.drvPath` force and the `home.sessionVariables` positive control —
-          # which the contract's own suite structurally cannot reach (it has no home-manager).
-          home-confinement = contract.lib.mkConfinementCheck {
-            inherit pkgs;
-            buildHome =
-              extraModules:
-              mkHome {
-                name = "duo-a";
-                inherit extraModules;
-              };
-          };
-
-          # ADR-0019's credential posture, ENFORCED rather than merely documented (issue #35).
-          # This repo is PUBLIC, so ADR-0019 assigns it the yescrypt posture: a world-readable hash
-          # must be memory-hard, because anyone can take it away and attack it offline. Every
-          # roster identity ships `$y$`, and this is what keeps that true — a member added with a
-          # `$6$` hash fails the flake check rather than being noticed in review, or not.
-          #
-          # The roster is DERIVED, never hardcoded: `lib.attrNames roster` means a new user is
-          # covered the moment it exists. A hand-listed set is the failure mode this check is for —
-          # the offender is always the entry someone forgot to add to the list.
-          identity-posture = contract.lib.mkIdentityPostureCheck {
-            inherit pkgs;
-            identities = map (n: contract.lib.loadIdentity ./users/${n}/identity.json) (lib.attrNames roster);
-            require = "yescrypt";
-          };
-
-          # …and the proof that the check above can actually FAIL. A posture check that passes
-          # because its identity list is empty, or because the derivation quietly yielded nothing,
-          # reads identically to one that passes on merit — the same vacuity trap the confinement
-          # check's positive control closes.
-          #
-          # So: take the REAL derived roster, append one synthetic `$6$` offender, and require that
-          # the check rejects it. This tests the CALL SITE, not the helper (conformance already
-          # covers the helper): it proves the roster derivation yields real identities and that an
-          # offender among them is caught. If `identities` ever silently derived to `[ ]`, this
-          # check goes red while the one above would stay green.
-          identity-posture-rejects-an-offender =
-            let
-              offender = (contract.lib.loadIdentity ./users/ada/identity.json) // {
-                username = "sixto";
-                hashedPassword = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
-              };
-              rejected =
-                !(builtins.tryEval (
-                  contract.lib.mkIdentityPostureCheck {
-                    inherit pkgs;
-                    identities =
-                      map (n: contract.lib.loadIdentity ./users/${n}/identity.json) (lib.attrNames roster)
-                      ++ [ offender ];
-                    require = "yescrypt";
-                    name = "identity-posture-offender-probe";
-                  }
-                )).success;
-            in
-            assert lib.assertMsg rejected (
-              "identity-posture-rejects-an-offender: a `$6$` identity appended to the real roster did "
-              + "NOT fail `require = \"yescrypt\"`. The posture check above is therefore vacuous — it "
-              + "would pass whatever the roster ships. Check that `identities` derives a non-empty "
-              + "list from `roster`."
-            );
-            pkgs.runCommand "identity-posture-rejects-an-offender" { } "touch $out";
-
-          # The ADR-0020 claim the duo pair exists to prove: SHARED CODE, PER-USER DATA. "Both homes
-          # build" would not prove it — a shared module that baked duo-a's identity into duo-b would
-          # still build. So this check pins the two halves separately, on the REALIZED homes:
-          #
-          #   shared CODE   — `shared/overlay.nix`'s marker package resolves to the SAME store path
-          #                   in both closures (one derivation, not a per-user copy), and it is
-          #                   really there: the check RUNS it out of each home-path, which is what
-          #                   makes this an overlay proof rather than an overlay mention;
-          #   per-user DATA — `shared/module.nix`, keyed on `config.identity.username`, renders two
-          #                   DIFFERENT store paths, each carrying its own identity and NO trace of
-          #                   the other's (name, email, or username).
-          #
-          # This is also why the check lives here rather than in `conformance/`: it needs both
-          # home-manager and nixpkgs, and the synthetic suite's `toolkit.evalHome` has neither
-          # (ADR-0004/0022). CI already runs `nix flake check` on this flake as a matrix entry.
-          shared-code-per-user-data =
-            let
-              duoA = self.homeConfigurations.duo-a;
-              duoB = self.homeConfigurations.duo-b;
-              # Both halves are read out of the REALIZED activation package, never off the evaluated
-              # config: the point is what actually lands in the user's home, not what the module said.
-              cardOf = home: "${home.activationPackage}/home-files/.contract-shared-card";
-              markerOf = home: "${home.activationPackage}/home-path/bin/contract-shared-marker";
-            in
-            pkgs.runCommand "shared-code-per-user-data" { } ''
-              fail() {
-                echo "shared-code-per-user-data: $1" >&2
-                exit 1
+            )
+          ) identities
+          // lib.mapAttrs' (
+            n: _:
+            lib.nameValuePair "variant-eval-${n}" (
+              # Bake evaluability, per user (check kit, issue #49): every variant this repo bakes for
+              # that user, on every system it bakes for, forces to a derivation. This is the
+              # roster-generic replacement for the cross-arch eval checks a user's own checks.nix
+              # would otherwise hand-write — the failing arch is always the one nothing builds by
+              # default here, so an x86_64-only package added to base content throws in THIS check
+              # rather than on the aarch64 seat hours later.
+              #
+              # It reads the shared `homes` eval, so it costs nothing the packages have not already
+              # paid for natively, and the helper's own anti-vacuous assert makes a per-system filter
+              # that accidentally empties a bake fail here instead of reading green. WHICH variants
+              # belong in the matrix is deliberately not its business — that is the assert up at
+              # `bakedVariants`, each fact stated once.
+              contract.lib.mkVariantEvalCheck {
+                inherit pkgs systems;
+                name = "variant-eval-${n}";
+                homesFor = sys: homes.${sys}.${n};
               }
+            )
+          ) identities
+          // {
+            # ADR-0019's credential posture, ENFORCED rather than merely documented (issue #35).
+            # This repo is PUBLIC, so a world-readable hash must be memory-hard: every roster
+            # identity ships `$y$`, and this is what keeps that true — a member added with a `$6$`
+            # hash fails the flake check rather than being noticed in review, or not. The roster is
+            # DERIVED, so a new user is covered the moment it exists; a hand-listed set is the
+            # failure mode this check is for, since the offender is always the entry someone forgot
+            # to add to the list.
+            identity-posture = contract.lib.mkIdentityPostureCheck {
+              inherit pkgs;
+              identities = lib.attrValues identities;
+              require = "yescrypt";
+            };
 
-              # --- shared CODE: one overlay, one derivation, in BOTH closures ---
-              markerA=$(readlink -f ${markerOf duoA})
-              markerB=$(readlink -f ${markerOf duoB})
-              [ -x "$markerA" ] || fail "duo-a's home-path has no runnable shared-overlay marker"
-              [ -x "$markerB" ] || fail "duo-b's home-path has no runnable shared-overlay marker"
-              [ "$markerA" = "$markerB" ] || fail "the shared overlay produced a DIFFERENT package per user ($markerA vs $markerB) — that is not shared code"
-              "$markerA" | grep -q 'shared/overlay.nix' || fail "the marker in the closure did not come from the shared overlay"
+            # …and the proof that the check above can actually FAIL. Kept here deliberately, as a
+            # teaching extra a real users repo does not carry: a posture check that passes because
+            # its identity list is empty, or because the derivation quietly yielded nothing, reads
+            # identically to one that passes on merit — the same vacuity trap the confinement check's
+            # positive control closes.
+            #
+            # So: take the REAL derived roster, append one synthetic `$6$` offender, and require that
+            # the check rejects it. This tests the CALL SITE, not the helper (conformance already
+            # covers the helper): it proves the roster derivation yields real identities and that an
+            # offender among them is caught. If the derivation ever silently yielded `[ ]`, this
+            # check goes red while the one above would stay green.
+            identity-posture-rejects-an-offender =
+              let
+                offender = (lib.head (lib.attrValues identities)) // {
+                  username = "sixto";
+                  hashedPassword = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
+                };
+                rejected =
+                  !(builtins.tryEval (
+                    contract.lib.mkIdentityPostureCheck {
+                      inherit pkgs;
+                      identities = lib.attrValues identities ++ [ offender ];
+                      require = "yescrypt";
+                      name = "identity-posture-offender-probe";
+                    }
+                  )).success;
+              in
+              assert lib.assertMsg rejected (
+                "identity-posture-rejects-an-offender: a `$6$` identity appended to the real roster did "
+                + "NOT fail `require = \"yescrypt\"`. The posture check above is therefore vacuous — it "
+                + "would pass whatever the roster ships. Check that the roster derives a non-empty list "
+                + "from ./users."
+              );
+              pkgs.runCommand "identity-posture-rejects-an-offender" { } "touch $out";
 
-              # --- per-user DATA: same module, two identities, two different outputs ---
-              # Each home's card is a symlink into the store, so resolving it gives the derivation the
-              # shared module rendered for THAT identity. Two distinct paths ⇒ genuinely keyed output.
-              cardA=$(readlink -f ${cardOf duoA})
-              cardB=$(readlink -f ${cardOf duoB})
-              [ -f "$cardA" ] || fail "duo-a's realized home has no shared-module card"
-              [ -f "$cardB" ] || fail "duo-b's realized home has no shared-module card"
-              [ "$cardA" != "$cardB" ] || fail "the shared module rendered ONE output for two identities — it is not keyed on config.identity.username"
+            # The ADR-0020 claim the duo pair exists to prove: SHARED CODE, PER-USER DATA. Also kept
+            # deliberately as a teaching extra — it is the one check here that names users, because
+            # the arrangement it proves is a property of that pair rather than of the roster. "Both
+            # homes build" would not prove it: a shared module that baked duo-a's identity into
+            # duo-b's home would still build. So this pins the two halves separately, on the REALIZED
+            # homes:
+            #
+            #   shared CODE   — `shared/overlay.nix`'s marker package resolves to the SAME store path
+            #                   in both closures (one derivation, not a per-user copy), and it is
+            #                   really there: the check RUNS it out of each home-path, which is what
+            #                   makes this an overlay proof rather than an overlay mention;
+            #   per-user DATA — `shared/module.nix`, keyed on `config.identity.username`, renders two
+            #                   DIFFERENT store paths, each carrying its own identity and NO trace of
+            #                   the other's (name, email, or username).
+            #
+            # This is also why the check lives here rather than in `conformance/`: it needs both
+            # home-manager and nixpkgs, and the synthetic suite's `toolkit.evalHome` has neither
+            # (ADR-0004/0022). CI already runs `nix flake check` on this flake as a matrix entry.
+            shared-code-per-user-data =
+              let
+                duoA = homes.${system}.duo-a.base;
+                duoB = homes.${system}.duo-b.base;
+                # Both halves are read out of the REALIZED activation package, never off the evaluated
+                # config: the point is what actually lands in the user's home, not what the module said.
+                cardOf = home: "${home.activationPackage}/home-files/.contract-shared-card";
+                markerOf = home: "${home.activationPackage}/home-path/bin/contract-shared-marker";
+              in
+              pkgs.runCommand "shared-code-per-user-data" { } ''
+                fail() {
+                  echo "shared-code-per-user-data: $1" >&2
+                  exit 1
+                }
 
-              grep -q '^username=duo-a$' "$cardA" || fail "duo-a's card is not keyed on duo-a's username"
-              grep -q '^username=duo-b$' "$cardB" || fail "duo-b's card is not keyed on duo-b's username"
-              grep -q 'Duo A Reference' "$cardA" || fail "duo-a's card lost duo-a's own identity"
-              grep -q 'Duo B Reference' "$cardB" || fail "duo-b's card lost duo-b's own identity"
+                # --- shared CODE: one overlay, one derivation, in BOTH closures ---
+                markerA=$(readlink -f ${markerOf duoA})
+                markerB=$(readlink -f ${markerOf duoB})
+                [ -x "$markerA" ] || fail "duo-a's home-path has no runnable shared-overlay marker"
+                [ -x "$markerB" ] || fail "duo-b's home-path has no runnable shared-overlay marker"
+                [ "$markerA" = "$markerB" ] || fail "the shared overlay produced a DIFFERENT package per user ($markerA vs $markerB) — that is not shared code"
+                "$markerA" | grep -q 'shared/overlay.nix' || fail "the marker in the closure did not come from the shared overlay"
 
-              # --- and neither carries a TRACE of the other's identity ---
-              ! grep -q 'duo-b\|Duo B' "$cardA" || fail "duo-a's home leaks duo-b's identity — the shared module baked a user in"
-              ! grep -q 'duo-a\|Duo A' "$cardB" || fail "duo-b's home leaks duo-a's identity — the shared module baked a user in"
+                # --- per-user DATA: same module, two identities, two different outputs ---
+                # Each home's card is a symlink into the store, so resolving it gives the derivation the
+                # shared module rendered for THAT identity. Two distinct paths ⇒ genuinely keyed output.
+                cardA=$(readlink -f ${cardOf duoA})
+                cardB=$(readlink -f ${cardOf duoB})
+                [ -f "$cardA" ] || fail "duo-a's realized home has no shared-module card"
+                [ -f "$cardB" ] || fail "duo-b's realized home has no shared-module card"
+                [ "$cardA" != "$cardB" ] || fail "the shared module rendered ONE output for two identities — it is not keyed on config.identity.username"
 
-              touch $out
-            '';
-        };
+                grep -q '^username=duo-a$' "$cardA" || fail "duo-a's card is not keyed on duo-a's username"
+                grep -q '^username=duo-b$' "$cardB" || fail "duo-b's card is not keyed on duo-b's username"
+                grep -q 'Duo A Reference' "$cardA" || fail "duo-a's card lost duo-a's own identity"
+                grep -q 'Duo B Reference' "$cardB" || fail "duo-b's card lost duo-b's own identity"
+
+                # --- and neither carries a TRACE of the other's identity ---
+                ! grep -q 'duo-b\|Duo B' "$cardA" || fail "duo-a's home leaks duo-b's identity — the shared module baked a user in"
+                ! grep -q 'duo-a\|Duo A' "$cardB" || fail "duo-b's home leaks duo-a's identity — the shared module baked a user in"
+
+                touch $out
+              '';
+          }
+        )
+      );
     };
 }

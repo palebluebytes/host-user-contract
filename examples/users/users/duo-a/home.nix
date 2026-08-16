@@ -10,7 +10,9 @@
 # `config.identity.username` (see `shared/module.nix` and the `shared-code-per-user-data` check).
 #
 # NOT contract-pure (ADR-0008), by design: the shared module sets home-manager options, so this home
-# needs home-manager to evaluate. The conformance tracer borrows ada, never this pair.
+# needs home-manager to evaluate — the pair is the roster's only non-contract-pure member, which is
+# why it is a pair of its own rather than a shared setup grafted onto ada. The conformance tracer
+# borrows ada, never this pair.
 { ... }:
 {
   # The shared setup, opted into per user — one module, one overlay, both from `../../shared/`.
