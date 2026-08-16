@@ -1,4 +1,5 @@
-# ada — the multi-machine (portable) reference user (ADR-0007 home shape, consumed per ADR-0016).
+# ada — the multi-machine (portable) reference user, the contract's portable-user NORTH STAR
+# (ADR-0007 home shape, consumed per ADR-0016).
 #
 # ONE identity, ONE home, that logs in as a GUI user on the seat host and a CLI-only user on a
 # headless host — whether she gets a gui or cli session is decided by each HOST's grant, never by
@@ -13,6 +14,14 @@
 # home-manager's own home.*/programs.* — so the same module evaluates headlessly against the bare
 # contract umbrella when the conformance tracer harvests requests (no home-manager). The identity
 # is injected by the binding (ADR-0009); this home never loads identity.json itself.
+#
+# ada's `identity.json` is also the roster's ONE documented FULL FORM — every field the contract's
+# identity schema knows, spelled out, because the schema is worth seeing written down once. Only
+# `name`, `email` and `username` are REQUIRED; `gmail`, `sshKey`, `hashedPassword`, `extraGroups`
+# and `trustedKeys` all carry defaults, so the other six users omit whatever nothing reads for them
+# (cleo keeps `extraGroups`, everyone keeps `hashedPassword` for the login credential). ada keeps
+# `sshKey` because the reference host fleet's integration VM provisions her account from it. Six
+# copies of `"trustedKeys": []` would have taught that the boilerplate is required, which is false.
 { ... }:
 {
   # What ada asks a host for (ADR-0028) is the SAFE-SET DEFAULT: gui is non-privileged, so it is

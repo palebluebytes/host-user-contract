@@ -2,8 +2,5 @@
   "name": "Admin Reference",
   "email": "admin@example.invalid",
   "username": "admin",
-  "sshKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIADAexamplekeyadmin admin@example.invalid",
-  "hashedPassword": "$y$j9T$06.P8Rd4.l2H5oY/ZPn/e1$Ylw2FUIKwir5naW0Fk2IczOV0o9.m/QPCORebT/ANI9",
-  "extraGroups": [],
-  "trustedKeys": []
+  "hashedPassword": "$y$j9T$06.P8Rd4.l2H5oY/ZPn/e1$Ylw2FUIKwir5naW0Fk2IczOV0o9.m/QPCORebT/ANI9"
 }
