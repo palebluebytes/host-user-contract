@@ -47,14 +47,18 @@ let
     };
   };
 
-  inlineModule = lib.elemAt recorded.modules 3;
+  # The one owner of "where the inline identity/home.* module sits" (slot 3, after umbrella /
+  # baseline / home.nix) — the composition-order assertion below pins the other slots, so a
+  # reorder in mkContractHome fails there loudly rather than silently shifting what this reads.
+  inlineOf = r: lib.elemAt r.modules 3;
+  inlineModule = inlineOf recorded;
 
   # Nix functions are incomparable (`==` on two lambdas is always false), so module identity is
   # asserted by CONTENT: each composed module function is applied and its body inspected. The
   # umbrella is recognised by the options only it declares; the baseline's applied body is plain
   # data (mkDefault wrappers), so it compares structurally equal to the exposed module's own.
   composedUmbrella = (lib.elemAt recorded.modules 0) { };
-  composedBaseline = (lib.elemAt recorded.modules 1) { };
+  slotOneIsBaseline = (lib.elemAt recorded.modules 1) { } == homeBaselineModule { };
 
   # The greeterDesktop recogniser: does this function module materialise the greeter's desktop
   # dotfile when a desktop is requested? Applied to the REAL greeterDesktop module as the positive
@@ -82,7 +86,7 @@ let
     };
     stateVersion = "26.05";
   };
-  overriddenInline = lib.elemAt overridden.modules 3;
+  overriddenInline = inlineOf overridden;
 
   # --- the home baseline's mkDefault posture, in a merged eval ---
   # Stub declarations of the two home-manager option paths the baseline pins (we evaluate with no
@@ -132,7 +136,7 @@ in
         lib.length recorded.modules == 5
         && composedUmbrella.options.contract ? wants
         && composedUmbrella.options.contract ? requests
-        && composedBaseline == homeBaselineModule { }
+        && slotOneIsBaseline
         && lib.elemAt recorded.modules 2 == ../examples/users/users/ada/home.nix
         && lib.last recorded.modules == probe;
     }
@@ -150,7 +154,7 @@ in
       # greeterDesktop's absence is a negative-space probe with its positive control: the
       # recogniser MUST fire on the real greeterDesktop module, and must fire on nothing composed.
       ok =
-        composedBaseline == homeBaselineModule { }
+        slotOneIsBaseline
         && surfacesDesktopChoice homeGreeterDesktopModule
         && !(lib.any surfacesDesktopChoice recorded.modules);
     }
