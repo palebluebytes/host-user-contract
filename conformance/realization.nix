@@ -157,12 +157,12 @@ let
 
   # --- the home-affecting feature set (ADR-0028) ---
   # The public data surface a PRODUCER narrows `hostFacts.granted` with (and derives its baked
-  # variant set from). The FOLD is the producer's — the contract exposes the set, not a helper
-  # (there is no host config at bake time, so the producer builds the facts literal itself) — so
-  # what is pinned here is the surface and the RESULT the idiom must yield on a maximal grant: a
-  # home may only SEE the home-affecting features, so one reading `granted.sudo` structurally gets
-  # false forever and cannot become grant-sensitive on a feature nothing bakes for. The reference
-  # producer applies exactly this fold in `examples/users/flake.nix`'s `hostFactsFor`.
+  # variant set from). There is no host config at bake time, so the facts literal is built on the
+  # producer side — but the FOLD itself is the contract's rule, shipped as `hostFactsFor` and
+  # applied by `mkContractHome` on every producer home. What is pinned here is the surface and the
+  # RESULT that fold must yield on a maximal grant: a home may only SEE the home-affecting
+  # features, so one reading `granted.sudo` structurally gets false forever and cannot become
+  # grant-sensitive on a feature nothing bakes for.
   everyFeature = [
     "gui"
     "containers"

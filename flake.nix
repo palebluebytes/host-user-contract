@@ -160,7 +160,7 @@
         # end-to-end — archive → eval-free Tier-1 auth → a reference homeBuilder's real runtime
         # `nix build` → provision → session — the one truly-runtime step the other greeter tests
         # stop short of. Offline; the fixture home is a minimal real derivation (the bind LOOP, not
-        # a home-manager closure, which `home-build` already proves).
+        # a home-manager closure, which the example user flake's package builds already prove).
         greeter-bind-loop = import ./conformance/bind-loop-vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;

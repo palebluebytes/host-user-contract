@@ -7,7 +7,8 @@
 # pre-built contract-requests.json fixture — same `mkUserAccount` + `bridgeRequests` kernel,
 # different data source. It reads a STATIC fixture and never evaluates a home, so it proves the
 # manifest→bridge kernel only; that a real non-contract-pure home builds through the contract is
-# proven where home-manager lives — `examples/users`' `home-build` (ADR-0004, package-free). The
+# proven where home-manager lives — `examples/users`, whose `checks = packages` build every real
+# home (ADR-0004, package-free). The
 # fixture is a plain repo path (no derivation, no IFD) — a realized store path, exactly as a
 # production contractPackage is a pinned/realized flake input.
 #
