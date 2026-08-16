@@ -37,10 +37,11 @@ contract ships).
 | [0026](0026-consumer-producer-public-surface.md) | The public surface is the coin `mkContractUser`/`mkContractUsers`/`bindContractUser` + `traceUser`; retires inline-eval and unilateral direct-grant, internalizes the package kernels (amends 0007/0008/0016/0025) |
 | [0027](0027-runtime-provision-evaluates-the-shared-rule.md) | Runtime provision *evaluates* the shared `accountPlan` (via `contract-account-plan`) instead of re-spelling it in jq; the rule has one source, the clamp is proven without a boot (extends 0012, completes #30/#31) |
 | [0028](0028-user-voice-is-typed-and-lives-in-the-home.md) | The user's voice is typed and lives in the home: `contract.wants` harvested as the offer, `hostFacts.granted` narrowed to the home-affecting features, no freeform in `contract.requests` (supersedes 0002's ignore-overreach half; amends 0025) |
+| [0029](0029-producer-home-builder-and-home-baseline.md) | The contract ships the producer home builder: `mkContractHome` composes the home with home-manager injected per call, and includes the `homeModules.baseline` pinned hygiene by default (extends 0026 + the 0004 amendment) |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0028`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0029`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme
