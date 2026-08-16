@@ -110,11 +110,17 @@
       # this area keeps having: `bindContractUser` binds the maximal variant that DOES exist, so an
       # under-baked set costs a home its content with nothing objecting.
       #
-      # The matrix says what a HOST could grant, never what these particular homes do with it: the
-      # reference homes are thin and none of them fans out on `hostFacts.granted`, so a user's `gui`
-      # bake differs from its `base` only in the `granted` field frozen into the manifest. That is
-      # the point — it is exactly what lets one `ada-contractPackage-base` be a gui account on one
-      # seat and a cli-only account on another, because the grant rides the bind, not the bake.
+      # The matrix says what a HOST could grant; what each home DOES with it is that home's own
+      # business, and this roster shows both answers. Most of these homes are thin and read no
+      # grant, so their `gui` bake differs from `base` only in the `granted` field frozen into the
+      # manifest — which is exactly what lets one `ada-contractPackage-base` be a gui account on one
+      # seat and a cli-only account on another, the account-side effects riding the bind.
+      #
+      # duo-a is the other answer, and the one the matrix exists FOR (issue #55): it wires
+      # `custom.home.profiles.gui.enable` off `hostFacts.granted.gui.enable` and gates real home
+      # content on that, so its two bakes differ in CONTENT — no bind-time grant could put a sway
+      # config into an already-built base home, which is precisely what `needsOwnBuild` names. The
+      # `home-affecting-grant-is-load-bearing` check below fails if the roster ever loses that.
       unusableOn = sys: lib.optional (sys == "aarch64-linux") "gui";
       variantsFor = sys: lib.filter (v: !lib.any (f: v.grants ? ${f}) (unusableOn sys)) contract.variants;
 
@@ -476,6 +482,108 @@
 
                 touch $out
               '';
+
+            # The property the VARIANT system exists for, pinned so it cannot rot back into a
+            # manifest-only difference (issue #55): somewhere in this roster a home-affecting grant
+            # is LOAD-BEARING — a non-base bake whose realized home CONTENT differs from the base
+            # bake's. `needsOwnBuild` is defined by exactly that mechanical test ("build the home
+            # with the grant and without it, and see whether the two differ"), so a fleet whose
+            # `gui` bake is content-identical to its `base` one bakes a variant for nothing, and
+            # teaches the vocabulary it travels through (`custom.home.profiles.*`, wired off
+            # `hostFacts.granted`) with the wire missing.
+            #
+            # Roster-generic on purpose, unlike `shared-code-per-user-data` above: WHICH user gates
+            # content on a grant is that user's own story, told in its own `home.nix` (today
+            # duo-a's), so this names no user. It asks the roster whether the demonstration exists
+            # AT ALL, and then proves each surviving pair differs where it must:
+            #
+            #   the ASSERT — at least one (user, non-base bake) pair diverges from that user's base
+            #                bake. This is the anti-convergence half: delete the wire, or let the
+            #                gated content dry up, and NOTHING diverges — the flake then fails to
+            #                evaluate with a named message instead of quietly baking twins.
+            #   the BUILD  — every diverging pair really differs in what the user RECEIVES: the
+            #                realized dotfiles or the realized package profile. The manifest is in
+            #                neither, so a difference in the baked `granted` field cannot satisfy
+            #                this half.
+            #
+            # Lives inside the `sys == system` clause with the rest, and needs to: the aarch64 row
+            # of the matrix is headless, so it bakes base ALONE and there is no second bake there to
+            # compare — the assert below would then abort rather than pass. Its subject is the
+            # roster's demonstration, which needs one system to exist on, not every system.
+            home-affecting-grant-is-load-bearing =
+              let
+                # Every (user, non-base bake) pair the matrix produces on this system. "base" is
+                # this repo's own label for the grant-less bake, the same literal `homeConfigurations`
+                # above names it by.
+                pairs = lib.concatMap (
+                  n:
+                  map (v: {
+                    user = n;
+                    inherit (v) label;
+                    base = homes.${system}.${n}.base;
+                    variant = homes.${system}.${n}.${v.label};
+                  }) (lib.filter (v: v.label != "base") bakedVariants.${system})
+                ) userNames;
+                # Divergent = the grant reached the BUILD. Compared on drvPath because that is the
+                # sharpest test available: two bakes of one home differ ONLY in `hostFacts.granted`,
+                # so a home that reads no grant lands on the very same derivation twice.
+                divergent = lib.filter (
+                  p: p.base.activationPackage.drvPath != p.variant.activationPackage.drvPath
+                ) pairs;
+                # The two places a grant's content can LAND in a realized home. Both are checked,
+                # because either alone would fail the canonical demonstration the other way round:
+                # a home gating `home.file` puts nothing in the profile, and one gating
+                # `home.packages` (ADR-0025's own example — gui → emacs, ai) puts nothing in the
+                # dotfiles.
+                filesOf = home: "${home.activationPackage}/home-files";
+                profileOf = home: "${home.activationPackage}/home-path";
+              in
+              assert lib.assertMsg (divergent != [ ]) (
+                "home-affecting-grant-is-load-bearing: NO reference user's non-base bake differs from its "
+                + "base bake — every variant this fleet bakes lands on the same activation package as the "
+                + "base one, so the only thing a `gui` bake carries is the `granted` field frozen into its "
+                + "manifest, and the one mechanism the variant system exists for has no worked example. "
+                + "Restore the wire in a home that HAS home-manager content to gate (a contract-pure home "
+                + "has none): `custom.home.profiles.gui.enable = hostFacts.granted.gui.enable or false;` "
+                + "plus real content behind `lib.mkIf config.custom.home.profiles.gui.enable`."
+              );
+              pkgs.runCommand "home-affecting-grant-is-load-bearing" { } (
+                ''
+                  fail() {
+                    echo "home-affecting-grant-is-load-bearing: $1" >&2
+                    exit 1
+                  }
+                ''
+                + lib.concatMapStrings (p: ''
+                  # --- ${p.user}: base vs ${p.label} ---
+                  differed=""
+
+                  # The DOTFILES, compared by content: `diff` exits 0 when the two trees are the same.
+                  [ -d ${filesOf p.base} ] || fail "${p.user}'s base bake realized no home-files tree at all — the comparison would be vacuous"
+                  [ -d ${filesOf p.variant} ] || fail "${p.user}'s ${p.label} bake realized no home-files tree at all — the comparison would be vacuous"
+                  if diff -r ${filesOf p.base} ${filesOf p.variant}; then
+                    echo "${p.user}: home-files are identical across base and ${p.label}"
+                  else
+                    differed=yes
+                  fi
+
+                  # The PACKAGE PROFILE, compared by resolved store path rather than by walking two
+                  # closures: a profile is input-addressed, so one package set is one store path and
+                  # two paths mean two package sets. Minutes cheaper, same answer.
+                  [ -e ${profileOf p.base} ] || fail "${p.user}'s base bake realized no home-path profile at all — the comparison would be vacuous"
+                  [ -e ${profileOf p.variant} ] || fail "${p.user}'s ${p.label} bake realized no home-path profile at all — the comparison would be vacuous"
+                  if [ "$(readlink -f ${profileOf p.base})" = "$(readlink -f ${profileOf p.variant})" ]; then
+                    echo "${p.user}: home-path is the same profile across base and ${p.label}"
+                  else
+                    differed=yes
+                  fi
+
+                  [ -n "$differed" ] || fail "${p.user}'s ${p.label} bake gives the user the SAME dotfiles AND the same package profile as its base bake, yet builds a different activation package — whatever the grant changed, the user does not receive it, and that is what a baked variant is for"
+                '') divergent
+                + ''
+                  touch $out
+                ''
+              );
           }
         )
       );
