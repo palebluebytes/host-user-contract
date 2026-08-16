@@ -102,6 +102,17 @@ let
   # List subset test — `a ⊆ b`. Single-sourced so the coupling guard and the turnkey
   # variant-selection (covering + maximal) all spell "is this grant-key covered?" one way.
   subsetOf = a: b: lib.all (x: lib.elem x b) a;
+  # The GRANT-KEY of a grant set: its enabled feature names, SORTED. The canonical,
+  # order-independent identity of a variant, and the one spelling of "which grant set is this?"
+  # that the variant label, the binding index's `granted`, and the bake-pairing guard (issue #56)
+  # all read through — so "the same grant set" cannot mean two things across them. The sort is
+  # what makes it a key rather than a list: `grantedNamesOf` happens to fold over `attrNames`
+  # (already sorted), but the key's order-independence must not rest on that.
+  grantKey = grants: lib.sort (a: b: a < b) (grantedNamesOf grants);
+  # The human label for a grant-key: empty ⇒ `base`, else the names joined. Split out of
+  # `variantName` (below) so the pairing guard can name a key it was HANDED — a recorded name
+  # list, with no grant attrset to project — in the same words the published package uses.
+  keyLabel = names: if names == [ ] then "base" else lib.concatStringsSep "-" names;
   bridgeRequests =
     requests: grantedNames:
     lib.foldl' (
@@ -156,8 +167,10 @@ let
       manifestFile = manifest.writeManifest {
         inherit username requests;
         packages = packageNames;
-        # The enabled feature names the home was baked with (ADR-0016 coupling guard).
-        granted = grantedNamesOf grants;
+        # The GRANT-KEY the home was baked with (ADR-0016 coupling guard) — the same projection
+        # the binding index publishes and the bake-pairing guard compares, so the manifest cannot
+        # be a third spelling of "which grant set is this?".
+        granted = grantKey grants;
       };
     in
     pkgs.runCommand "contract-package-${username}" { } ''
@@ -166,6 +179,60 @@ let
       chmod +x $out/activate
       cp ${manifestFile} $out/${manifest.manifestFileName}
     '';
+
+  # THE BAKE PAIRING (issue #56) — the attribute a home built by `mkContractHome` CARRIES: the
+  # grant-key it was baked under. The contract owns both ends of a bake (`mkContractHome` evaluates
+  # one home under a grant set; the producer coin bakes an already-evaluated home) but not the JOIN
+  # between them — a producer builds each variant's home, then re-pairs `{ grants; home }` by label
+  # when it hands the list over. That pairing used to be trusted: `granted` — in the manifest, in the
+  # binding index, and so in every downstream guard (the ADR-0016 coupling guard, `bindContractUser`'s
+  # maximal-variant selection) — came from the grant attrset passed ALONGSIDE the home, never from
+  # what the home was actually built with. A mispairing therefore shipped a `base` home published
+  # under a `gui` grant-key, and nothing in the system could see it.
+  #
+  # So the grant set TRAVELS WITH THE HOME and the producer cross-checks it. The marker rides the
+  # RETURNED VALUE rather than a home option, for two reasons: `homeModules.default` must stay
+  # evaluable by bare `evalModules` with no home-manager (ADR-0004/0008), and `contract.*` in a home
+  # is the USER's voice — a producer-written key there would be a second, spoofable spelling of a
+  # fact the home already reads as `hostFacts.granted`. (It is a PUBLIC attribute either way: the
+  # builder's result is what a producer publishes as `homeConfigurations.<u>`, which is also what a
+  # greeter builds. Nothing reads it but this guard, and nothing may — it is a bake-time cross-check,
+  # not a channel.)
+  #
+  # This is the guard: `true` when the pairing holds, a named hard eval error when it does not, and
+  # `true` — SKIPPED, not fired — for a home built by hand rather than through `mkContractHome`.
+  # Not every producer uses the builder (a hand-rolled or future nix-darwin home bakes through the
+  # generic kernel), so the marker's absence must degrade to the old, trusting behaviour rather than
+  # making the builder a hard requirement.
+  #
+  # Compared as GRANT-KEYS (`grantKey`, the sorted enabled names), which is the whole observable
+  # content of a grant set and exactly what the index publishes — so `{ gui.enable = true;
+  # sudo.enable = false; }` and `{ gui.enable = true; }` are the same key, as they are everywhere
+  # else here. The comparison is on the key AS PASSED to the builder, not on the narrowed one the
+  # home saw: the narrowing (ADR-0028) is deterministic, so key equality is the stronger claim, and
+  # the rule a producer has to hold is the simple one — hand the bake the SAME grant attrset you
+  # handed the builder.
+  assertBakePairing =
+    {
+      context,
+      username,
+      home,
+      grants,
+    }:
+    let
+      baked = home.contractBakedGrantKey or null;
+      passed = grantKey grants;
+      show = names: "'${keyLabel names}' ([${lib.concatStringsSep ", " names}])";
+    in
+    baked == null
+    || lib.assertMsg (baked == passed) (
+      "${context}: mispaired bake for '${username}' — its home was BUILT under grant-key "
+      + "${show baked} but the producer paired it with ${show passed}. The manifest's `granted` "
+      + "and the binding index's grant-key are taken from the grant passed alongside the home, so "
+      + "this would publish a home under a grant set it was never built with — and every "
+      + "downstream guard (the ADR-0016 coupling guard, maximal-variant selection) would read the "
+      + "wrong one. Pass each variant the SAME grant attrset you passed `mkContractHome`."
+    );
 
   # mkContractPackageForHome (ADR-0016, issue #23): the OPTIONAL home-manager producer adapter. It mirrors
   # `bindContractPackage`'s turnkey-ness on the PRODUCER side — since ~every producer builds its
@@ -179,18 +246,29 @@ let
   # stays builder-agnostic (a hand-rolled or future nix-darwin home still calls the core directly);
   # this is a thin convenience over it. `pkgs` stays a parameter so one call emits multi-arch variants.
   # INTERNAL: the public producer surface is `mkContractUser`/`mkContractUsers`, which bake through this.
+  #
+  # This is where a home and a grant set JOIN into a published artifact, so it is where the bake
+  # pairing is verified (issue #56): a home that carries the key it was built under may only be
+  # baked under that key. `mkContractUser` guards its INDEX entry with the same predicate — the
+  # manifest and the index must agree with the home, and they are two separate reads of `grants`.
   mkContractPackageForHome =
     {
       home,
       pkgs,
       grants ? { },
     }:
+    let
+      username = home.config.home.username;
+    in
+    assert assertBakePairing {
+      context = "mkContractPackageForHome";
+      inherit username home grants;
+    };
     mkContractPackage {
-      inherit pkgs grants;
+      inherit pkgs grants username;
       activationPackage = home.activationPackage;
       requests = home.config.contract.requests;
       packages = home.config.home.packages;
-      username = home.config.home.username;
     };
 
   # variantName (ADR-0025, issue #25): the canonical, ORDER-INDEPENDENT label for a baked
@@ -198,12 +276,7 @@ let
   # published package (`<user>-contractPackage-<name>`) only; selection reads the machine-readable
   # grant-key off the binding index, never this string, so the format is cosmetic — a label, not a
   # parse target (ADR-0025 "Considered Options": name-parse selection rejected).
-  variantName =
-    granted:
-    let
-      names = lib.sort (a: b: a < b) (grantedNamesOf granted);
-    in
-    if names == [ ] then "base" else lib.concatStringsSep "-" names;
+  variantName = granted: keyLabel (grantKey granted);
 
   # mkContractUser (ADR-0025, issue #25): the SINGULAR turnkey PRODUCER — the producer twin of the
   # consumer's `bindContractUser` (make one contract-user ⇄ bind one contract-user). A single-user
@@ -240,15 +313,30 @@ let
       variants,
     }:
     let
-      built = map (v: {
-        granted = grantedNamesOf v.grants;
-        package = mkContractPackageForHome {
-          inherit pkgs;
-          home = v.home;
-          grants = v.grants;
+      # The guard rides the whole variant RECORD (issue #56), so reading any of its three fields —
+      # the index's grant-key, the published package NAME, or the package itself — forces it. That
+      # is every route a mispaired variant could take out of this bake, not just the manifest
+      # `mkContractPackageForHome` guards on its own. (The user-level `identity` and `offer` sit
+      # OUTSIDE the record and stay readable: they are per-user facts a mispairing cannot corrupt.)
+      built = map (
+        v:
+        assert assertBakePairing {
+          context = "mkContractUser";
+          username = name;
+          inherit (v) home grants;
         };
-        label = variantName v.grants;
-      }) variants;
+        {
+          # The index publishes the GRANT-KEY — the very projection the guard above compared the
+          # home's own recorded key against, so the two cannot be the same words for two things.
+          granted = grantKey v.grants;
+          package = mkContractPackageForHome {
+            inherit pkgs;
+            home = v.home;
+            grants = v.grants;
+          };
+          label = variantName v.grants;
+        }
+      ) variants;
       # The harvested offer + its variant-invariance guard. Compared as the enabled-name PROJECTION
       # (what the index publishes and `bindContractUser` intersects), which is the whole observable
       # content of a want set.
@@ -334,6 +422,13 @@ let
   # e.g. the ADR-0020 `inputs` convention). `hostFacts` is contract-owned and WINS over any
   # extraSpecialArgs entry: the narrowing (ADR-0028) is the contract's rule, so a caller cannot
   # accidentally hand a home an un-narrowed grant set by spelling the specialArg itself.
+  #
+  # The built home CARRIES the grant-key it was baked under, as `contractBakedGrantKey` on the
+  # returned value (issue #56). That is the fact the producer coin cross-checks against the grant it
+  # is asked to publish the home under, so a mispaired `{ grants; home }` is a bake-time error
+  # instead of a silently mislabelled variant — see `assertBakePairing`. It records the key AS
+  # PASSED here, before the `hostFactsFor` narrowing, because the pairing rule a producer holds is
+  # "hand the bake the same grant attrset you handed the builder".
   mkContractHome =
     {
       # Kit-injected (a caller never passes these): the home umbrella, the baseline hygiene
@@ -384,6 +479,11 @@ let
           platform = pkgs.stdenv.hostPlatform.system;
         };
       };
+    }
+    // {
+      # The bake key travels with the home (see above). Added to the builder's RESULT, so a home
+      # built by hand simply lacks it and the producer's cross-check is skipped rather than fired.
+      contractBakedGrantKey = grantKey granted;
     };
 
   # bindContractPackage (ADR-0016, issue #16): the INTERNAL package-level kernel `bindContractUser`
