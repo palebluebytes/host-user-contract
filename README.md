@@ -21,15 +21,18 @@ user-flake shape that consume it).
   indexed user, grant = affordances ∩ offer), plus `mkContractHome` (the producer home builder —
   home-manager injected per call, never a contract input; composes `homeModules.baseline`, the
   per-option-overridable home hygiene, by default — ADR-0029), `traceUser` (dry-run inspect),
-  `loadIdentity`, and `renderNixConfig`. It also ships the **check kit** — the two proofs only a
+  `loadIdentity`, and `renderNixConfig`. It also ships the **check kit** — the proofs only a
   consumer can run, over material only it has: `mkConfinementCheck` (this repo's *real* module set
-  still has no system channel — positive control included) and `mkIdentityPostureCheck` (this
+  still has no system channel — positive control included), `mkIdentityPostureCheck` (this
   repo's own roster carries the credential posture *this* repo chose, `require = "yescrypt"` for a
   public one — opt-in, because ADR-0019 makes the posture consumer-owned and `loadIdentity`
-  imposes none).
+  imposes none), and `mkVariantEvalCheck` (every variant this repo bakes for one user *evaluates*
+  on every system it bakes — roster-generic, applied per user by a consumer's mapper; *which*
+  variants a fleet bakes per system stays the consumer's fact).
 - data surface — `features` (the single registry), `featureGroups`,
   `privilegedGroups`, `safeSet`, `homeAffecting` (the grants a home may see — a producer narrows
-  `hostFacts.granted` with it and bakes `powerset(homeAffecting)`, ADR-0028).
+  `hostFacts.granted` with it, and `powerset(homeAffecting)` bounds what it bakes; the per-system
+  subset actually baked is the consumer's fleet fact, ADR-0028).
 - `checks.<system>.conformance` — the contract's own conformance suite (synthetic users ×
   the umbrella, no host repo).
 

@@ -60,8 +60,9 @@ the term is stable, the code is pending (see the cited issue).
   content, so a home may legitimately fan out on them (`{gui}` today; the per-feature
   `homeAffecting` registry flag, **declared**, not derived from the group lists). It is the upper
   bound on what a home may even see: a producer NARROWS [[hostFacts]]`.granted` with it (so a home
-  reading a bind-riding grant like `sudo` structurally gets `false` forever) and derives its baked
-  set as `powerset(homeAffecting)`. One surface, so no producer re-implements the rule in prose.
+  reading a bind-riding grant like `sudo` structurally gets `false` forever) and
+  `powerset(homeAffecting)` bounds its baked set (the per-system subset it actually bakes is the
+  consumer's fleet fact — see [[variant]]). One surface, so no producer re-implements the rule in prose.
   (ADR-0028; `lib.nix`)
 
 ## Grants and confinement
@@ -410,9 +411,15 @@ the term is stable, the code is pending (see the cited issue).
   grant — one the user's `home.nix` fans out on, e.g. `gui` → emacs/ai) must be its own variant,
   while a grant conferring only host-side effects (a privileged group) rides the bind and needs
   no bake. Which grants a home *may* branch on is contract data since ADR-0028 ([[homeAffecting]],
-  the upper bound `hostFacts.granted` is narrowed to, so the baked set is
-  `powerset(homeAffecting)`); whether *that* repo's home actually branches stays the producer's
-  call, so a repo whose homes read no grant still bakes a single `base`. A
+  the upper bound `hostFacts.granted` is narrowed to, so `powerset(homeAffecting)` bounds the
+  baked set); whether *that* repo's home actually branches stays the producer's
+  call, so a repo whose homes read no grant still bakes a single `base`. `powerset(homeAffecting)`
+  is the upper bound on what a host could grant, **not** a per-system baking obligation: *which*
+  variants a fleet bakes per system — its **bake matrix**, `{ <system> = { <label> = home; }; }` —
+  is the **consumer's fleet fact**, set by its mapper's per-system filter (e.g. gui homes only
+  where a seat exists — decision #43). The contract keeps answering "what could a host grant"; the
+  roster-generic `mkVariantEvalCheck` proves whatever IS baked evaluates, without opining on that
+  matrix. A
   variant's name (`<user>-contractPackage-<key>`, key = sorted home-affecting grant names, empty
   ⇒ `base`) is a cosmetic label, not a parse target. **(built — issue #25)** (ADR-0025)
 - **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
@@ -519,13 +526,17 @@ the term is stable, the code is pending (see the cited issue).
   same plan evaluates, ADR-0027), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
   `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
   `daemon-restricted-vm.nix` (hello on PATH, curl absent, daemon refused).
-- **check kit** — the two checks the contract SHIPS rather than runs (`check-kit.nix`, issue #35):
-  [[mkConfinementCheck]] and the [[credential posture]] check. Both prove something only a
-  **consumer** can prove — over its own real module set, over its own roster — so the contract hands
+- **check kit** — the checks the contract SHIPS rather than runs (`check-kit.nix`, issues #35, #49):
+  [[mkConfinementCheck]], the [[credential posture]] check, and `mkVariantEvalCheck` (every baked
+  [[variant]] × every baked system evaluates — roster-generic, applied per user by the consumer's
+  mapper; deliberately no `tryEval`, and shape-agnostic about *which* variants a fleet bakes, the
+  consumer's fact — decision #43). Each proves something only a **consumer** can prove — over its
+  own real module set, over its own roster, over its own bake matrix — so the contract hands
   over the technique, not the verdict. Their own logic is proven in the suite
-  (`conformance/confinement.nix`, `conformance/identity-posture.nix`): each accepting case, each
-  rejecting case, and that a helper FAILS when its positive control is broken, when its home is
-  never forced, and when a posture is asked for that an identity does not carry.
+  (`conformance/confinement.nix`, `conformance/identity-posture.nix`,
+  `conformance/variant-eval.nix`): each accepting case, each rejecting case, and that a helper
+  FAILS when its positive control is broken, when its home is never forced, when a posture is
+  asked for that an identity does not carry, and when a bake matrix is emptied or under-forced.
 - **coherence gate** — the thin host-side check (in the consuming repo) that every real host's
   trait-tuple is archetype-covered and the real manifest realizes — the consuming repo's tie-back to
   the contract suite. (ADR-0004)
