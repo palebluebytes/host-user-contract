@@ -1,16 +1,16 @@
 # The contract's CHECK KIT (issue #35) — proofs a CONSUMER runs over its OWN repo, shipped so
 # every user/host repo calls one function instead of re-deriving a technique it can get subtly
 # wrong. Distinct from `conformance/`, which proves the contract's own promises in isolation:
-# these two checks can only be run where the consumer's real material lives (its actual module
-# imports, its actual roster of identities), which is exactly why the contract cannot make them
-# for anyone and must hand them over as functions.
+# these checks can only be run where the consumer's real material lives (its actual module
+# imports, its actual roster of identities, its actual per-system bake matrix), which is exactly
+# why the contract cannot make them for anyone and must hand them over as functions.
 #
 # Lib-only and package-free (ADR-0004): this file is a pure function of `lib`. Each check takes
 # the caller's `pkgs` (for the trivial `runCommand` witness) and — crucially for the confinement
 # check — the caller's OWN home builder, so the contract never needs home-manager to prove a
-# home-manager module set. Both fail LOUDLY at eval with a named message, the same posture as
-# every other contract guard (`assert lib.assertMsg …`), so a failing check reports WHICH claim
-# broke rather than a build log to read.
+# home-manager module set. Every check fails LOUDLY at eval with a named message, the same
+# posture as every other contract guard (`assert lib.assertMsg …`), so a failing check reports
+# WHICH claim broke rather than a build log to read.
 { lib }:
 let
   # The negative space itself (ADR-0002): system options a confined user home must be unable to
@@ -236,6 +236,91 @@ in
       + "${posture.description}: ${lib.concatMapStringsSep ", " describe offenders}. "
       + "Re-hash with `${posture.remedy}` (ADR-0019: the credential travels with the user as "
       + "public data, and repo visibility picks the hash strength)."
+    );
+    okWitness pkgs name;
+
+  # mkVariantEvalCheck (issue #49, decision #43): prove ONE user's every baked variant EVALUATES
+  # on every system the repo bakes it for — the roster-generic replacement for the hand-written
+  # cross-arch eval checks each user's `checks.nix` used to carry. A consumer's mapper applies it
+  # per user over the derived roster (failure attribution rides the check name), so a typical
+  # user ships no check file at all:
+  #
+  #     contract.lib.mkVariantEvalCheck {
+  #       inherit pkgs;
+  #       homesFor = sys: rosterHomes.${sys}.${user};   # sys → { <label> = home; }, ONE user's bake
+  #       systems = repoSystems;                        # every system this repo bakes (a fleet fact)
+  #     }
+  #
+  # Deliberately SHAPE-AGNOSTIC: "everything we bake, evaluates" is this helper's fact; WHICH
+  # variants a fleet bakes per system is the consumer mapper's fact, guarded where its per-system
+  # filter lives (the contract's `powerset(homeAffecting)` is only the upper bound a host could
+  # grant, never a per-system baking obligation). And it forces ALL handed systems, the native one
+  # included — redundant with `checks = packages` build-depending on the native homes, but "the
+  # whole handed matrix evaluates" is a simpler contract than "the complement of whatever else
+  # covers".
+  #
+  # Deliberately NO `tryEval` around the force: an eval failure propagates RAW as a failing check.
+  # `tryEval` cannot tell "no aarch64 build upstream" from a typo'd package name — both would
+  # collapse into one boolean — and the underlying error message is exactly the diagnostic the
+  # check exists to surface (the reasoning the old hand-written checks documented).
+  #
+  # COVERAGE NOTE — like `mkConfinementCheck`, `conformance/variant-eval.nix` drives this logic
+  # through synthetic homes (it has to: ADR-0004). The `activationPackage.drvPath` default over a
+  # REAL home-manager home is therefore only exercised in a consumer repo's own `checks` — keep it
+  # in step with home-manager's attribute names.
+  mkVariantEvalCheck =
+    {
+      homesFor,
+      systems,
+      pkgs,
+      name ? "variant-eval",
+      # The same override hook as mkConfinementCheck: force a variant hard enough to prove it
+      # evaluates — by default its derivation path, the home-manager shape ~every consumer has.
+      force ? (home: home.activationPackage.drvPath),
+    }:
+    let
+      homesBySystem = lib.genAttrs systems homesFor;
+      # A bake that is not a non-empty attrset — an emptied variant set, or a mapper handing
+      # something that is not a variant attrset at all.
+      vacuousSystems = lib.filter (
+        sys: !(lib.isAttrs homesBySystem.${sys}) || homesBySystem.${sys} == { }
+      ) systems;
+      # Every system × variant whose forced value is NOT a `.drv` path. A variant that does not
+      # evaluate never lands here — its error propagates raw out of `force` (no tryEval, above) —
+      # so an entry in this list means `force` stopped short of the derivation.
+      unforced = lib.concatMap (
+        sys:
+        map (label: "${sys}/${label}") (
+          lib.filter (label: !lib.hasSuffix ".drv" (force homesBySystem.${sys}.${label})) (
+            lib.attrNames homesBySystem.${sys}
+          )
+        )
+      ) systems;
+    in
+    # Ordered deliberately, anti-vacuous BEFORE evaluability: a check that forced nothing must
+    # report the emptied bake, not read as "every variant evaluates".
+    #
+    # This first assert EXTENDS issue #49's anti-vacuous clause ("for every system in `systems`,
+    # `homesFor sys` is a non-empty attrset") to the list itself, which that wording passes over:
+    # `systems = [ ]` satisfies it for-all-vacuously, so the same emptied-bake hazard one level up
+    # would read as green forever. Same species, same verdict — a derived system list that filters
+    # down to nothing is a mapper bug, not a passing check.
+    assert lib.assertMsg (systems != [ ]) (
+      "${name}: the systems list is empty — a variant-eval check over zero systems passes "
+      + "vacuously forever. Hand it every system this repo bakes (the fleet's system list, "
+      + "derived, never hardcoded)."
+    );
+    assert lib.assertMsg (vacuousSystems == [ ]) (
+      "${name}: no baked variants for [${lib.concatStringsSep ", " vacuousSystems}] — `homesFor` "
+      + "must return a NON-EMPTY attrset of this user's baked homes for every handed system. An "
+      + "accidentally-emptied bake (a per-system filter gone wrong in the mapper) must fail here, "
+      + "never read as a passing eval check."
+    );
+    assert lib.assertMsg (unforced == [ ]) (
+      "${name}: forcing [${lib.concatStringsSep ", " unforced}] did not yield a `.drv` path, so "
+      + "\"this variant evaluates\" was never actually proven. `force` must reach the variant's "
+      + "derivation (the default is `home.activationPackage.drvPath`); a hook that stops short "
+      + "would make every evaluability claim vacuous."
     );
     okWitness pkgs name;
 }

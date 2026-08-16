@@ -78,10 +78,11 @@ let
   # schema — the seam `mkContractPackage` writes through and `bindContractPackage` reads through.
   manifest = import ./manifest.nix { inherit lib; };
 
-  # The check kit (issue #35): the two proofs a CONSUMER runs over its own repo — its real module
-  # set stays confined, and its own roster carries the credential posture it has chosen. Lib-only
-  # and package-free like everything else here (each check takes the caller's `pkgs`, and the
-  # confinement one takes the caller's home BUILDER, so the contract never needs home-manager).
+  # The check kit (issues #35, #49): the proofs a CONSUMER runs over its own repo — its real
+  # module set stays confined, its own roster carries the credential posture it has chosen, and
+  # everything it bakes evaluates. Lib-only and package-free like everything else here (each check
+  # takes the caller's `pkgs`, and the confinement one takes the caller's home BUILDER, so the
+  # contract never needs home-manager).
   checkKit = import ./check-kit.nix { inherit lib; };
 
   # --- the two substantial pieces, split out for focus ---
@@ -189,7 +190,7 @@ in
           inherit (modules) homeModule homeBaselineModule;
         }
       );
-    # The CHECK KIT (issue #35) — the two proofs only a consumer can run, over material only it
+    # The CHECK KIT (issues #35, #49) — the proofs only a consumer can run, over material only it
     # has. They join the ADR-0026 surface deliberately (it is fixed at what a consumer needs, not
     # frozen), because each is otherwise ~20 lines of `tryEval`/`hasPrefix` boilerplate re-typed
     # per repo and easy to get subtly, silently wrong:
@@ -200,7 +201,15 @@ in
     #   - mkIdentityPostureCheck: does this repo's own roster carry the credential posture THIS
     #     repo has chosen? Opt-in and parameterized (`require`) because ADR-0019 makes the posture
     #     conditional and consumer-owned — which is also why `loadIdentity` imposes no hash policy.
-    inherit (checkKit) mkConfinementCheck mkIdentityPostureCheck;
+    #   - mkVariantEvalCheck: does everything this repo BAKES for one user actually evaluate, on
+    #     every system it bakes for? The roster-generic cross-arch eval check a consumer's mapper
+    #     applies per user (decision #43) — which variants a fleet bakes per system stays the
+    #     mapper's own fact.
+    inherit (checkKit)
+      mkConfinementCheck
+      mkIdentityPostureCheck
+      mkVariantEvalCheck
+      ;
   };
 
   # INTERNAL derivation logic (ADR-0016/0026): NOT flake outputs, exposed here only so the in-repo

@@ -33,6 +33,7 @@
   traceUser,
   mkConfinementCheck,
   mkIdentityPostureCheck,
+  mkVariantEvalCheck,
   outOfUniverseProbes,
   mkContractUser,
   mkContractUsers,
@@ -90,6 +91,13 @@ let
         toolkit
         mkConfinementCheck
         outOfUniverseProbes
+        ;
+    })
+    (import ./variant-eval.nix {
+      inherit
+        lib
+        pkgs
+        mkVariantEvalCheck
         ;
     })
     (import ./identity-posture.nix {

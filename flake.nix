@@ -87,6 +87,7 @@
             traceUser
             mkConfinementCheck
             mkIdentityPostureCheck
+            mkVariantEvalCheck
             mkContractUser
             mkContractUsers
             mkContractHome
