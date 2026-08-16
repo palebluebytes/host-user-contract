@@ -192,6 +192,41 @@ in
       ok = recorded.pkgs == stubPkgs;
     }
 
+    # --- the bake key travels with the home (issue #56) ---
+    # The built home carries the grant-key it was baked under, so the producer coin can verify the
+    # pairing instead of trusting the grant handed alongside. Recorded AS PASSED (sorted enabled
+    # names) — deliberately NOT the narrowed hostFacts set, which drops the bind-riding sudo above:
+    # the rule a producer holds is "pass the bake the same grant attrset you passed here", and the
+    # narrowing is the contract's own downstream step.
+    {
+      name = "mkContractHome: the built home carries the grant-key it was baked under";
+      ok =
+        recorded.contractBakedGrantKey == [
+          "gui"
+          "sudo"
+        ];
+    }
+    {
+      name = "mkContractHome: a grant-less bake carries the empty key (not a missing marker)";
+      ok = overridden.contractBakedGrantKey == [ ];
+    }
+    {
+      # The marker rides the RESULT and adds exactly one attribute: it must not reach the home's
+      # own eval, where it would be a second, spoofable spelling of `hostFacts.granted` — and where
+      # an undeclared option would throw. The recording stub returns its arguments verbatim, so the
+      # result's attribute set IS the builder's arguments plus whatever mkContractHome appended.
+      name = "mkContractHome: the bake key is one added result attribute; the home never sees it";
+      ok =
+        lib.attrNames recorded == [
+          "contractBakedGrantKey"
+          "extraSpecialArgs"
+          "modules"
+          "pkgs"
+        ]
+        && !(recorded.extraSpecialArgs ? contractBakedGrantKey)
+        && !(lib.any (m: lib.isAttrs m && m ? contractBakedGrantKey) recorded.modules);
+    }
+
     # --- the home baseline: hygiene is a PINNED POSTURE, per-option overridable ---
     {
       name = "home baseline: pins hold over upstream option defaults (mkDefault 1000 beats default 1500)";

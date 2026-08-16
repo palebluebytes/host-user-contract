@@ -100,6 +100,43 @@ let
     grants = greeterGrants;
   };
 
+  # --- the bake pairing guard (issue #56) ---
+  # A home built through `mkContractHome` CARRIES the grant-key it was baked under
+  # (`contractBakedGrantKey`), so the adapter — where a home and a grant set join into a published
+  # artifact — can verify the pairing instead of trusting the caller's. Modelled here by decorating
+  # the synthetic home with the marker the builder attaches (`conformance/contract-home.nix` proves
+  # the builder attaches it; this proves the producer reads it), because the builder needs
+  # home-manager and this suite has none (ADR-0004/0022).
+  markedHome = key: syntheticHome // { contractBakedGrantKey = key; };
+  guiGrants = {
+    gui.enable = true;
+  };
+  # MATCHING: a home baked under [gui], published under { gui } — bakes, and lands on the very same
+  # store path as the undecorated call with the same grants, so the marker changes no artifact.
+  pairedPackage = mkContractPackageForHome {
+    inherit pkgs;
+    home = markedHome [ "gui" ];
+    grants = guiGrants;
+  };
+  unmarkedGuiPackage = mkContractPackageForHome {
+    inherit pkgs;
+    home = syntheticHome;
+    grants = guiGrants;
+  };
+  # MISPAIRED: the same [gui] home published under the empty grant-key — the `base`-home-shipped-as-
+  # `gui` failure inverted, and equally undetectable downstream (an empty `manifest.granted` is
+  # vacuously ⊆ any host grant, so the coupling guard would wave it through).
+  mispairedEval = builtins.tryEval (
+    (mkContractPackageForHome {
+      inherit pkgs;
+      home = markedHome [ "gui" ];
+      grants = { };
+    }).outPath
+  );
+  # UNMARKED: a home built by hand rather than through the builder carries no key, so the check is
+  # SKIPPED, not fired — the builder is not a hard requirement (the adapter stays builder-agnostic).
+  unmarkedEval = builtins.tryEval contractPackageFromHomeGranted.outPath;
+
   # Execution proof: build the derivation and verify its content.
   contentCheck =
     pkgs.runCommand "contract-package-content-check" { nativeBuildInputs = [ pkgs.jq ]; }
@@ -227,6 +264,20 @@ in
     {
       name = "mkContractPackageForHome: a non-empty grant changes the artifact (forwarding is real)";
       ok = contractPackageFromHomeGranted.outPath != contractPackageFromHome.outPath;
+    }
+
+    # bake pairing guard: the marker verifies, does not alter, and stays optional
+    {
+      name = "bake pairing: a home baked under [gui] published under {gui} bakes (marker changes no artifact)";
+      ok = pairedPackage.outPath == unmarkedGuiPackage.outPath;
+    }
+    {
+      name = "bake pairing: a home baked under [gui] published under {} is a hard eval error";
+      ok = !mispairedEval.success;
+    }
+    {
+      name = "bake pairing: a home built without the builder carries no key ⇒ check skipped, not fired";
+      ok = unmarkedEval.success;
     }
 
     # bindContractPackage: account materializes from identity

@@ -264,6 +264,59 @@ let
       variants = [ ];
     }).contractUsers.${system}.ada.offer
   );
+  # --- (g) the bake pairing must hold across the whole variant record (issue #56) ---
+  # A home built through `mkContractHome` carries the grant-key it was baked under. The producer
+  # coin cross-checks it, so a `{ grants; home }` re-paired by the wrong label fails the BAKE rather
+  # than publishing a home under a grant set it was never built with — which nothing downstream
+  # could see (the index's `granted`, the manifest's `granted`, and so the coupling guard and
+  # maximal-variant selection all read the grant passed ALONGSIDE the home). The marker is applied
+  # by hand here for the same reason ./contract-package.nix does: the builder needs home-manager and
+  # this suite has none. The guard rides the whole variant record, so BOTH routes out of the bake
+  # are probed — the index entry's grant-key and the published package's name.
+  #
+  # The SEAM this leaves — a real `mkContractHome` result driven through the coin, marker and all —
+  # is covered where home-manager lives (ADR-0004/0022): `examples/users` builds every home through
+  # the builder and bakes the roster through `mkContractUsers`, so its `nix flake check` is the
+  # end-to-end half of this proof. What the message SAYS on failure is likewise unassertable here
+  # (`tryEval` discards it), exactly as for this file's other named bake errors above.
+  bakeUnder =
+    { key, grants }:
+    mkContractUser {
+      inherit pkgs system;
+      usersDir = ../examples/users/users;
+      name = "ada";
+      variants = [
+        {
+          inherit grants;
+          home = syntheticHome // {
+            contractBakedGrantKey = key;
+          };
+        }
+      ];
+    };
+  pairedBake = bakeUnder {
+    key = [ "gui" ];
+    grants = {
+      gui.enable = true;
+    };
+  };
+  mispairedIndex = builtins.tryEval (
+    (lib.head
+      (bakeUnder {
+        key = [ "gui" ];
+        grants = { };
+      }).contractUsers.${system}.ada.variants
+    ).granted
+  );
+  mispairedPackageName = builtins.tryEval (
+    lib.attrNames
+      (bakeUnder {
+        key = [ ];
+        grants = {
+          gui.enable = true;
+        };
+      }).packages.${system}
+  );
   varyingUser = builtins.tryEval (
     (mkContractUser {
       inherit pkgs system;
@@ -355,6 +408,31 @@ in
     {
       name = "mkContractUser: a user with no variants has no home to harvest ⇒ hard bake error";
       ok = !noVariantUser.success;
+    }
+
+    # (g) the bake pairing: the home's own key must match the one it is published under
+    {
+      name = "bake pairing: a home baked under [gui] paired with {gui} publishes the gui variant";
+      ok =
+        let
+          v = lib.head pairedBake.contractUsers.${system}.ada.variants;
+        in
+        v.granted == [ "gui" ] && pairedBake.packages.${system} ? "ada-contractPackage-gui";
+    }
+    {
+      name = "bake pairing: a [gui] home paired with {} is a hard bake error (reading the index)";
+      ok = !mispairedIndex.success;
+    }
+    {
+      name = "bake pairing: a base home paired with {gui} is a hard bake error (reading the package name)";
+      ok = !mispairedPackageName.success;
+    }
+    {
+      # The homes in (e) above carry no key at all — they stand in for a home built by hand rather
+      # than through `mkContractHome`, which must still bake. That those assertions pass IS the
+      # skipped-not-fired proof; this names it so the property cannot be lost silently.
+      name = "bake pairing: an unmarked home (built without mkContractHome) still bakes";
+      ok = !(syntheticHome ? contractBakedGrantKey) && (lib.head emittedIndex.variants).granted == [ ];
     }
     {
       name = "mkContractUsers: the index variant carries its grant-key names + package";
