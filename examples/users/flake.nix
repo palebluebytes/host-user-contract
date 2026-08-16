@@ -251,6 +251,14 @@
       # bakes through the internal package kernels, which only READ an already-evaluated home, and
       # resolves each identity from `users/<u>/identity.json` — so this call passes only the roster
       # and never a user's name, offer or identity path.
+      #
+      # This is the one place the matrix is RE-PAIRED: each home is looked up by `v.label` and handed
+      # back alongside `v.grants`. Both sides come from the same `bakedVariants` row, so the pairing
+      # is right by construction here — and since issue #56 it is also CHECKED, because right-by-
+      # construction is a property of this file rather than of the shape being taught. `mkContractHome`
+      # gives every home the grant-key it was baked under, so a producer that pairs `homes.….base`
+      # with the `gui` grants fails the bake by name instead of publishing a base home as the gui
+      # variant — which no downstream guard could have seen (they all read this `grants`, not the home).
       bindings = lib.genAttrs systems (
         sys:
         contract.lib.mkContractUsers {

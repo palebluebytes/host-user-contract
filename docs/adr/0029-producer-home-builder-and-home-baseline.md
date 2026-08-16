@@ -4,7 +4,9 @@
 public surface grows by the front door) and the [ADR-0004](0004-extract-contract-flake.md) amendment
 (the home-manager rule is about *building* homes, satisfied here by injection — the `buildHome`
 precedent from the check kit, issue #35). Executes wayfinder tickets #40 (the builder shape) and #42
-(who owns universal home hygiene).
+(who owns universal home hygiene). **Amended in place (2026-08-16)** — the builder now gives the
+home the grant-key it was baked under, so the producer coin verifies the pairing instead of trusting
+the caller's; see the amendment at the end.
 
 The glue that turns a user's directory into a `homeManagerConfiguration` call was hand-written three
 times across two repos — twice in `examples/users/flake.nix` (the roster homes and the greeter-login
@@ -149,3 +151,55 @@ which builds its `homeConfigurations` through this builder.
 - **Folding the baseline into `homeModules.default`.** Impossible without breaking tracer purity:
   the default umbrella declares no `home.*`/`programs.*` options and must keep evaluating under
   bare `evalModules`.
+
+## Amendment (2026-08-16) — a home carries the grant set it was baked with (issue #56)
+
+The contract owns both ends of a bake — `mkContractHome` evaluates one home *under* a grant set,
+and the producer coin bakes an already-evaluated home *with* one — but it did not own the **join**
+between them. A producer builds each variant's home keyed by its label, then re-pairs
+`{ grants; home }` by that label when it hands the list to `mkContractUser`.
+
+That pairing was **trusted, never checked**. A variant's `granted` — in the manifest and in the
+binding index — came from the grant attrset passed *alongside* the home, never from what the home
+was actually built with, and every downstream guard reads that same passed value: the
+[ADR-0016](0016-prebuilt-binding-mode.md) coupling guard asserts `manifest.granted ⊆ host grant`,
+and `bindContractUser` selects the maximal variant by the index's `granted`. So a mispairing
+shipped a `base` home published under a `gui` grant-key, the host granted gui, bound what it
+believed was the gui variant, and activated a home built without it — silent, and *structurally*
+undetectable by the checks that exist, because every one of them was reading the label rather than
+the home.
+
+So the grant set **travels with the home**, and the producer cross-checks it:
+
+- **`mkContractHome` attaches `contractBakedGrantKey`** — the grant-key it was baked under (the
+  sorted enabled feature names) — to the value it returns.
+- **`mkContractPackageForHome` and `mkContractUser` verify it.** The adapter guards the *manifest*
+  (it is where a home and a grant set join into a published artifact); `mkContractUser` guards the
+  whole variant *record*, so the index's grant-key and the published package's **name** force the
+  check too. A mispairing is a hard eval error naming the user, the baked key, and the passed key.
+- **The marker is compared as a key, not as an attrset**, through the same `grantKey` projection
+  the variant label and the index's `granted` read — so "the same grant set" cannot mean two things
+  across them. The key recorded is the one **as passed** to the builder, before the
+  [ADR-0028](0028-user-voice-is-typed-and-lives-in-the-home.md) narrowing: the narrowing is the
+  contract's own deterministic downstream step, and the rule a producer holds is the simple one —
+  *hand the bake the same grant attrset you handed the builder*.
+- **A home built without the builder still bakes.** Not every producer uses `mkContractHome` (a
+  hand-rolled or future nix-darwin home bakes through the generic kernel), so an absent marker
+  **skips** the check rather than firing it. The builder stays a convenience, not a requirement.
+
+**Why the returned value rather than a home option.** The alternative — a contract-owned read-only
+option the home carries, read off `config` — was rejected on two counts. `homeModules.default` must
+stay evaluable by bare `evalModules` with no home-manager
+([ADR-0004](0004-extract-contract-flake.md)/[0008](0008-greeter-is-a-contract-deliverable.md)), and
+a nullable option would be needed anyway to tell "not set" from "baked with nothing". More
+importantly, `contract.*` in a home is the **user's** voice
+([ADR-0028](0028-user-voice-is-typed-and-lives-in-the-home.md)): a producer-written key there is a
+second spelling of a fact the home already reads as `hostFacts.granted`, in the one namespace the
+home itself can write. On the returned value it is unspoofable from inside the home, invisible to
+the home's eval, and degrades to "absent" exactly when it should.
+
+Conformance covers both directions: `conformance/contract-home.nix` proves the builder attaches the
+key (and *only* that — the builder's arguments are untouched, so the home never sees it), while
+`conformance/contract-package.nix` and `conformance/turnkey-bind.nix` prove the matching case bakes
+unchanged, the mispaired case is a hard error by every route out of the bake, and an unmarked home
+still bakes.

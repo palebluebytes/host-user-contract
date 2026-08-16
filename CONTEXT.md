@@ -395,8 +395,9 @@ the term is stable, the code is pending (see the cited issue).
   primitives off an already-evaluated home (`home.activationPackage`,
   `home.config.contract.requests`, `home.config.home.{packages,username}`) and forwards them. It
   does **not** import home-manager (only *reads* attributes), so the package-free invariant
-  (ADR-0004) holds. **Not a flake output** — [[mkContractUser]] bakes each variant through it
-  (ADR-0026). **(built — issue #23)** (ADR-0016)
+  (ADR-0004) holds. It is where a home and a grant set join into a published artifact, so it is
+  also where the [[bake pairing]] is verified. **Not a flake output** — [[mkContractUser]] bakes
+  each variant through it (ADR-0026). **(built — issues #23, #56)** (ADR-0016)
 - **`bindContractPackage`** *(internal kernel)* — the package-level host bind:
   `bindContractPackage { contractPackage; identity; grants }`. Returns a NixOS module that reads
   `contract-requests.json` at eval time via the [[manifest module]]'s `readManifest`, bridges
@@ -426,14 +427,17 @@ the term is stable, the code is pending (see the cited issue).
 - **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
   = { identity; offer; variants = [{ granted; package }] }`. Plain data (no IFD), so a host
   selects a [[variant]] without building any of them. Identity is resolved once from the ADR-0020
-  path; the `offer` is harvested from the home's [[wants]] (ADR-0028). **(built — issue #25)**
-  (ADR-0025)
+  path; the `offer` is harvested from the home's [[wants]] (ADR-0028); each variant's `granted` is
+  the [[grant-key]], and cannot disagree with the home's own recorded key (the [[bake pairing]]
+  guard rides the whole variant record). **(built — issues #25, #56)** (ADR-0025)
 - **`mkContractUser`** — the **singular public producer** and the twin of the consumer's
   [[bindContractUser]] (make one contract-user ⇄ bind one): `{ name; variants; pkgs; system;
   usersDir }` — no `offer`, it is harvested from each variant's home and must be
   variant-invariant (ADR-0028). Bakes ONE user's [[variant]]s into the named packages and its
   `contractUsers.<sys>.<user>` [[binding index]] entry — the ready-to-`inherit … packages
-  contractUsers` flake-output shape, so a single-user repo needs no roster. **(built — ADR-0026)**
+  contractUsers` flake-output shape, so a single-user repo needs no roster. It verifies the
+  [[bake pairing]] on the whole variant record, so neither the index's [[grant-key]] nor the
+  published package's name can reach a flake output mispaired. **(built — ADR-0026; issue #56)**
 - **`mkContractUsers`** — the **roster public producer**: [[mkContractUser]] mapped over a whole
   `users` flake and merged, so a multi-user repo (ADR-0020) bakes its entire roster in **one** call.
   The turnkey producer for the multi-user shape exactly as [[bindContractUser]] is the turnkey
@@ -449,7 +453,8 @@ the term is stable, the code is pending (see the cited issue).
   seam (confinement probes, `greeterDesktop`, markers, repo glue) that lets one builder serve the
   roster homes, the greeter-login mapper, and the confinement check over the SAME module set.
   `home.homeDirectory = "/home/<username>"` is a fixed contract rule, matching the realized
-  account. **(built — issue #45)** (ADR-0029)
+  account. Its result CARRIES the [[grant-key]] it was baked under, which is what makes the
+  [[bake pairing]] checkable. **(built — issues #45, #56)** (ADR-0029)
 - **home baseline** — the contract-shipped **universal home hygiene** (`homeModules.baseline`, kit
   attr `homeBaselineModule`): the standing, uniform-across-users home-manager posture every
   produced home starts from — the self-manage CLI, plus `systemd.user.startServices = "sd-switch"`
@@ -476,6 +481,24 @@ the term is stable, the code is pending (see the cited issue).
   enforced until ADR-0025; maximal-subset selection in [[bindContractUser]] satisfies it by
   construction, so the check is defense-in-depth for the internal kernel. **(built — issue #25)**
   (ADR-0016, ADR-0025)
+- **grant-key** — the sorted **enabled feature names** of a grant set: the canonical,
+  order-independent identity of a [[variant]]. One projection (`grantKey`) behind the variant
+  *label* (`base` when empty, else the names joined), the [[binding index]]'s `granted`, and the
+  [[bake pairing]] guard — so "the same grant set" cannot mean two things across them.
+  **(built — issue #56)** (ADR-0025, ADR-0029 amendment; `lib.nix`)
+- **bake pairing** — the **join** the contract owns between its two ends of a bake:
+  [[mkContractHome]] evaluates a home *under* a grant set, the producer coin bakes it *with* one,
+  and a producer re-pairs `{ grants; home }` by label in between. The home **carries the
+  [[grant-key]] it was baked under** (`contractBakedGrantKey`, attached to the builder's returned
+  value — *not* a home option: `homeModules.default` stays tracer-pure, and `contract.*` in a home
+  is the user's voice, so a producer-written key there would be a spoofable second spelling of
+  `hostFacts.granted`), and [[mkContractPackageForHome]] and [[mkContractUser]] cross-check it. A
+  mispairing — a `base` home published under a `gui` key — is a hard bake error naming the user,
+  the baked key and the passed key, where before it was *structurally* undetectable: the manifest's
+  `granted`, the index's `granted`, and so the [[coupling guard]] and maximal-variant selection all
+  read the grant passed *alongside* the home, never the home. A home built without the builder
+  carries no key, so the check is **skipped, not fired** — the builder is a convenience, not a
+  requirement. **(built — issue #56)** (ADR-0029 amendment)
 
 ## Program scope and package policy
 
