@@ -173,6 +173,22 @@ in
     mkContractUsers =
       args: contractLib.mkContractUsers (args // { inherit (identityJson) loadIdentity; });
     inherit (contractLib) bindContractUser;
+    # mkContractHome (ADR-0029, issue #40): the producer HOME builder — the contract-owned mkHome
+    # composition (umbrella + baseline + the user's home.nix + the identity/home.* inline module +
+    # the narrowed hostFacts specialArg). Package-free by INJECTION: the consumer passes
+    # `home-manager.lib.homeManagerConfiguration` verbatim (ADR-0004, the buildHome trick). The
+    # umbrella, the baseline hygiene module, and the identity loader are injected here (exactly as
+    # homeModule is for traceUser and loadIdentity for the producer coin), so a caller passes only
+    # its own side: { homeManagerConfiguration; pkgs; userDir; stateVersion; … }.
+    mkContractHome =
+      args:
+      contractLib.mkContractHome (
+        args
+        // {
+          inherit (identityJson) loadIdentity;
+          inherit (modules) homeModule homeBaselineModule;
+        }
+      );
     # The CHECK KIT (issue #35) — the two proofs only a consumer can run, over material only it
     # has. They join the ADR-0026 surface deliberately (it is fixed at what a consumer needs, not
     # frozen), because each is otherwise ~20 lines of `tryEval`/`hasPrefix` boilerplate re-typed
@@ -219,8 +235,15 @@ in
     inherit (checkKit) outOfUniverseProbes;
   };
 
-  # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0008) + the
-  # home-manager-aware desktop-choice helper (ADR-0013, separate from the tracer-pure homeModule).
-  inherit (modules) nixosModule homeModule homeGreeterDesktopModule;
+  # The umbrella modules (one per eval-side) + the opt-in reference greeter (ADR-0008) + the two
+  # home-manager-aware helpers, each SEPARATE from the tracer-pure homeModule because they set
+  # home-manager options: the desktop-choice surface (ADR-0013) and the home baseline hygiene
+  # `mkContractHome` composes by default (issue #42, ADR-0029).
+  inherit (modules)
+    nixosModule
+    homeModule
+    homeGreeterDesktopModule
+    homeBaselineModule
+    ;
   inherit greeterModule;
 }

@@ -29,6 +29,12 @@
       # Separate from default because it touches home-manager's `home.file` (default stays
       # tracer-pure — evaluable with no home-manager, ADR-0008).
       homeModules.greeterDesktop = kit.homeGreeterDesktopModule;
+      # The home baseline (ADR-0029, issue #42): the standing home-manager hygiene every produced
+      # home starts from — every line mkDefault, so a user's plain definition wins per-option.
+      # `lib.mkContractHome` composes it by default; exposed here so a consumer building homes by
+      # hand can opt in. Separate from default for the same reason greeterDesktop is: it references
+      # home-manager option paths, and the default umbrella stays tracer-pure.
+      homeModules.baseline = kit.homeBaselineModule;
       # Legacy-spelling alias: `homeModules` is the modern name (mirrors nixosModules/darwinModules
       # and home-manager's own `<x>Modules.default` outputs), but the older `homeManagerModules`
       # spelling is still common in the wild, so expose the same values under it for discoverability.
@@ -67,6 +73,7 @@
           greeterModule = self.nixosModules.greeter;
           homeModule = self.homeModules.default;
           homeGreeterDesktopModule = self.homeModules.greeterDesktop;
+          homeBaselineModule = self.homeModules.baseline;
           inherit (self)
             safeSet
             variants
@@ -82,6 +89,7 @@
             mkIdentityPostureCheck
             mkContractUser
             mkContractUsers
+            mkContractHome
             bindContractUser
             renderNixConfig
             hostFactsFor

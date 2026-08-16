@@ -318,6 +318,74 @@ let
       contractUsers.${system} = lib.foldl' (acc: o: acc // o.contractUsers.${system}) { } outs;
     };
 
+  # mkContractHome (ADR-0029, issue #40): the producer HOME builder — absorbs the mkHome glue every
+  # producer hand-wrote (the umbrella + the user's home.nix + the identity/home.* inline module +
+  # the hostFactsFor specialArg) into the one contract-owned composition. ADR-0004's package-free
+  # invariant holds by INJECTION: the consumer passes home-manager's own entry point
+  # (`home-manager.lib.homeManagerConfiguration`) verbatim, and the contract only composes the
+  # arguments and applies the consumer's function — the same trick as mkConfinementCheck's
+  # `buildHome`. `homeModule`/`homeBaselineModule`/`loadIdentity` are injected by the kit (as
+  # `homeModule` is for traceUser), so a caller passes only its own side.
+  #
+  # What stays consumer-side BY DESIGN: `pkgs` (each home layers its own overlays/config, and the
+  # platform is read off it), `stateVersion` (a consumer fact — real repos differ — so no contract
+  # default), and everything threaded through the two open seams: `extraModules` (confinement
+  # probes, greeterDesktop, marker files, repo glue) and `extraSpecialArgs` (opaque passthrough,
+  # e.g. the ADR-0020 `inputs` convention). `hostFacts` is contract-owned and WINS over any
+  # extraSpecialArgs entry: the narrowing (ADR-0028) is the contract's rule, so a caller cannot
+  # accidentally hand a home an un-narrowed grant set by spelling the specialArg itself.
+  mkContractHome =
+    {
+      # Kit-injected (a caller never passes these): the home umbrella, the baseline hygiene
+      # module composed by default, and the identity.json loader behind `identity`'s default.
+      homeModule,
+      homeBaselineModule,
+      loadIdentity,
+      # THE INJECTION SURFACE: home-manager's own builder, passed verbatim (ADR-0004).
+      homeManagerConfiguration,
+      # Per-user pkgs — consumer-side by design; also the source of `platform`.
+      pkgs,
+      # The user's subdir (ADR-0020 layout): holds home.nix, and identity.json unless `identity`
+      # is passed.
+      userDir,
+      # Resolved-once override; defaults to the kit-injected loader over userDir (ADR-0009: one
+      # identity loader, and the home HOLDS its identity rather than loading it).
+      identity ? loadIdentity (userDir + "/identity.json"),
+      # The grant this variant is baked with; narrowed to the variant axes by hostFactsFor
+      # (ADR-0028), so no caller re-derives that rule.
+      granted ? { },
+      # REQUIRED consumer fact — the real repos differ, so the contract carries no default.
+      stateVersion,
+      # The open seam: everything that makes one producer's homes differ from another's.
+      extraModules ? [ ],
+      # Opaque passthrough; `hostFacts` is contract-owned and wins (see above).
+      extraSpecialArgs ? { },
+    }:
+    homeManagerConfiguration {
+      inherit pkgs;
+      modules = [
+        homeModule
+        homeBaselineModule
+        (userDir + "/home.nix")
+        {
+          inherit identity;
+          home.username = identity.username;
+          # A fixed contract rule, not a knob: the realized account lands at the same path (the
+          # normal-user default the realization keeps, and the literal the greeter's provision
+          # writes), so home and account can never disagree about where home is.
+          home.homeDirectory = "/home/${identity.username}";
+          home.stateVersion = stateVersion;
+        }
+      ]
+      ++ extraModules;
+      extraSpecialArgs = extraSpecialArgs // {
+        hostFacts = hostFactsFor {
+          inherit granted;
+          platform = pkgs.stdenv.hostPlatform.system;
+        };
+      };
+    };
+
   # bindContractPackage (ADR-0016, issue #16): the INTERNAL package-level kernel `bindContractUser`
   # binds through. It reads the already-built `contract-requests.json` from a pinned store path and
   # bridges the feature requests via `mkUserAccount`/`bridgeRequests`. No home-manager dependency.
@@ -649,6 +717,7 @@ in
     bindContractPackage
     mkContractUser
     mkContractUsers
+    mkContractHome
     bindContractUser
     ;
 }

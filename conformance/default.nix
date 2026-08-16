@@ -19,6 +19,7 @@
   greeterModule,
   homeModule,
   homeGreeterDesktopModule,
+  homeBaselineModule,
   safeSet,
   variantAxes,
   variants,
@@ -35,6 +36,7 @@
   outOfUniverseProbes,
   mkContractUser,
   mkContractUsers,
+  mkContractHome,
   bindContractUser,
   mkContractPackage,
   mkContractPackageForHome,
@@ -131,6 +133,14 @@ let
         readManifest
         manifestFileName
         greeterGrants
+        ;
+    })
+    (import ./contract-home.nix {
+      inherit
+        lib
+        homeGreeterDesktopModule
+        homeBaselineModule
+        mkContractHome
         ;
     })
     (import ./turnkey-bind.nix {

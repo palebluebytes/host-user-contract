@@ -119,6 +119,28 @@
     };
   };
 
+  # The HOME BASELINE (issue #42): the standing, uniform-across-users home-manager hygiene every
+  # produced home starts from — `mkContractHome` composes it by default, and it is also exposed as
+  # the opt-in `homeModules.baseline` (the greeterDesktop exposure pattern). It lives OUTSIDE
+  # `homeModules.default` because it sets home-manager options: the default umbrella must stay
+  # tracer-pure — evaluable by bare evalModules with no home-manager (ADR-0004/0008).
+  #
+  # HYGIENE IS A PINNED POSTURE, NOT AN OPINION SET: every line is `lib.mkDefault`, so there is no
+  # opt-out knob — a user module's PLAIN definition wins per-option (prio 100 < 1000), while the
+  # pin still beats an upstream option default (prio 1000 < 1500). What earns a line here is
+  # "uniform across users AND worth pinning against upstream churn" — user intent (packages,
+  # `xdg.mimeApps`) stays out; see ADR-0029 for the boundary.
+  homeBaselineModule = _: {
+    # Self-manage: the home-manager CLI rides the home it manages — the one line with live effect
+    # today (home-manager does not enable it by default in a standalone homeManagerConfiguration).
+    programs.home-manager.enable = lib.mkDefault true;
+    # PIN: upstream's default is already `true` (the option's apply maps "sd-switch" -> true), so
+    # this line changes nothing TODAY. It is kept to pin the restart-on-switch semantics against
+    # upstream default churn: a home whose services silently stop restarting on switch is a drift
+    # no test catches.
+    systemd.user.startServices = lib.mkDefault "sd-switch";
+  };
+
   # Home helper (ADR-0013): auto-surface the user's DESKTOP CHOICE so the greeter's session
   # launcher can read it. The greeter runs the session BEFORE evaluating the home's Nix, so it
   # reads the choice from a dotfile (`~/.contract-desktop`, see contract-greeter-session); this
