@@ -6,7 +6,9 @@
 # grants cleo containers she is in `docker`; on any host that does not, the clamp drops it silently.
 # She is also a gui user (gnome), to vary the desktop from ada's plasma across the fleet.
 #
-# Contract-pure (ADR-0008): only contract/home-profile + request options.
+# Contract-pure (ADR-0008): only contract wants + request options, and so no
+# `custom.home.profiles.*` (see the contract's `home-profiles.nix`). Her gui-ness is her desktop
+# request and the host's grant, which is all a portable user needs to say.
 { ... }:
 {
   # What cleo ASKS a host for (ADR-0028), declared in her own home rather than in the producer's
@@ -15,5 +17,4 @@
   # safe-set default, so it needs no line here.
   contract.wants.containers.enable = true;
   contract.requests.gui.desktop = "gnome";
-  custom.home.profiles.gui.enable = true;
 }

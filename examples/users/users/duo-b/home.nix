@@ -16,5 +16,8 @@
   # Same story as duo-a: no `contract.wants` line, so the safe-set default is the whole offer
   # (ADR-0028); a different desktop, because sharing a module costs a user none of its own voice.
   contract.requests.gui.desktop = "cosmic";
-  custom.home.profiles.gui.enable = true;
+
+  # No `custom.home.profiles.*` line either: duo-b gates nothing on the grant — its whole content
+  # comes from the shared module, which is identical in every bake. The grant wire and the content
+  # it gates are duo-a's story (issue #55); what duo-b proves is the shared-code half, unchanged.
 }

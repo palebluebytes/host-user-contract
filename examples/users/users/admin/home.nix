@@ -7,12 +7,12 @@
 # credential for a reference account, and a demonstration that the login credential travels with the
 # user as public data (ADR-0019).
 #
-# Contract-pure (ADR-0008): cli-only, no home-manager options.
+# Contract-pure (ADR-0008): cli-only, no home-manager options — and so no `custom.home.profiles.*`,
+# which is a switch a home gates its own content on (see the contract's `home-profiles.nix`).
 { ... }:
 {
   # What admin ASKS a host for (ADR-0028): `sudo` is privileged, so it must be asked for
   # explicitly. It stays an ask — wheel arrives solely where a host also affords sudo
   # (grant = affordances ∩ offer), and the producer harvests this as admin's published offer.
   contract.wants.sudo.enable = true;
-  custom.home.profiles.cli.enable = true;
 }

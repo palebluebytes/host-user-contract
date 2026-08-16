@@ -12,7 +12,9 @@
 # that logs in. What makes svc distinct is not that it never takes a seat — it is that it never
 # takes a DESKTOP, on any host, by its own choice.
 #
-# Contract-pure (ADR-0008): the smallest home in the roster.
+# Contract-pure (ADR-0008), and down to a single line of voice: the veto itself. Like every
+# contract-pure home it declares no `custom.home.profiles.*`, having no content to gate (see the
+# contract's `home-profiles.nix`).
 { ... }:
 {
   # What svc asks a host for (ADR-0028): everything non-privileged EXCEPT gui — the explicit
@@ -20,5 +22,4 @@
   # desktop has to say so; this is the one line that keeps "never gui" true even on a seat that
   # affords it, and the only worked example of that escape hatch in the repo.
   contract.wants.gui.enable = false;
-  custom.home.profiles.cli.enable = true;
 }
