@@ -301,7 +301,9 @@ the term is stable, the code is pending (see the cited issue).
   invariant that keeps this rebuild-free: safe-set membership requires the effect be **uniformly
   pre-realizable** as a seat capability — anything needing per-login system mutation is build-time
   only, like privilege. Scoped to **single-seat personal machines** (laptop / single-monitor
-  desktop), where greetd serializes `seat0` so logins never overlap. (ADR-0006, ADR-0008)
+  desktop), where greetd serializes `seat0` so logins never overlap. Its home-side sibling is the
+  [[home baseline]] — same species (a standing, uniform-across-users posture), the opposite
+  negotiability (the host owns the seat; the user owns the home). (ADR-0006, ADR-0008)
 - **desktop choice** — which DESKTOP (GNOME, Plasma, a WM…) a greeter user logs into, chosen
   **per user** (ADR-0013). The user carries a **free-form** name in their home
   (`contract.requests.gui.desktop`) so it travels with the identity — same desktop on any seat that
@@ -428,6 +430,32 @@ the term is stable, the code is pending (see the cited issue).
   `users` flake and merged, so a multi-user repo (ADR-0020) bakes its entire roster in **one** call.
   The turnkey producer for the multi-user shape exactly as [[bindContractUser]] is the turnkey
   consumer. **(built — issue #25; singularised ADR-0026)** (ADR-0025)
+- **`mkContractHome`** — the **producer home builder** (ADR-0029, issue #40): the contract-owned
+  composition every producer's `mkHome` glue previously hand-wrote — the home umbrella +
+  [[home baseline]] + the user's `home.nix` + the inline identity/`home.*` module + the narrowed
+  [[hostFacts]] specialArg (via `hostFactsFor`). Package-free by **injection**: the consumer passes
+  `home-manager.lib.homeManagerConfiguration` **verbatim** (ADR-0004; the check kit's `buildHome`
+  posture) and the contract only composes arguments and applies the consumer's function. `hostFacts`
+  is contract-owned and WINS over `extraSpecialArgs` (a caller cannot hand a home an un-narrowed
+  grant set); `pkgs` and `stateVersion` stay consumer facts by design; `extraModules` is the open
+  seam (confinement probes, `greeterDesktop`, markers, repo glue) that lets one builder serve the
+  roster homes, the greeter-login mapper, and the confinement check over the SAME module set.
+  `home.homeDirectory = "/home/<username>"` is a fixed contract rule, matching the realized
+  account. **(built — issue #45)** (ADR-0029)
+- **home baseline** — the contract-shipped **universal home hygiene** (`homeModules.baseline`, kit
+  attr `homeBaselineModule`): the standing, uniform-across-users home-manager posture every
+  produced home starts from — the self-manage CLI, plus `systemd.user.startServices = "sd-switch"`
+  **pinned** (a no-op today — upstream's default already maps there — kept to pin restart-on-switch
+  semantics against upstream churn). **Hygiene is a pinned posture, not an opinion set**: every line
+  is `lib.mkDefault` and there is no opt-out knob — a user module's plain definition wins
+  per-option, while a pin still beats an upstream option default. Composed by default by
+  [[mkContractHome]]; lives OUTSIDE `homeModules.default` (it sets home-manager options; the
+  default umbrella stays tracer-pure). The same species as the [[greeter-seat baseline]] — a
+  standing, uniform-across-users posture, as against per-user intent — with opposite negotiability:
+  the seat baseline is non-negotiable (the host owns the seat), the home baseline overridable
+  per-option (the user owns the home). Deliberately NOT in it: `xdg.mimeApps` (opinion), packages
+  (user intent), `greeterDesktop` (reference convention; opt-in via `extraModules`). (ADR-0029;
+  `modules.nix`)
 - **`bindContractUser`** — the **sole public consumer bind**: `{ usersFlake; username }`, **no
   `grants`**. Reads `contract.affordances` and the user's [[binding index]], derives
   `grant = affordances ∩ offer` (always negotiated), selects the **maximal baked [[variant]] whose

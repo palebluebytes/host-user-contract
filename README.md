@@ -18,8 +18,10 @@ user-flake shape that consume it).
   handles no secrets beyond the login credential (ADR-0023).
 - `lib` — the derivation functions: the producer/consumer coin `mkContractUser`/`mkContractUsers`
   (a user fleet bakes its contractPackages + binding index) and `bindContractUser` (a host binds one
-  indexed user, grant = affordances ∩ offer), plus `traceUser` (dry-run inspect), `loadIdentity`,
-  and `renderNixConfig`. It also ships the **check kit** — the two proofs only a consumer can run,
+  indexed user, grant = affordances ∩ offer), plus `mkContractHome` (the producer home builder —
+  home-manager injected per call, never a contract input; composes `homeModules.baseline`, the
+  per-option-overridable home hygiene, by default — ADR-0029), `traceUser` (dry-run inspect),
+  `loadIdentity`, and `renderNixConfig`. It also ships the **check kit** — the two proofs only a consumer can run,
   over material only it has: `mkConfinementCheck` (this repo's *real* module set still has no system
   channel — positive control included) and `mkIdentityPostureCheck` (this repo's own roster carries
   the credential posture *this* repo chose, `require = "yescrypt"` for a public one — opt-in,
