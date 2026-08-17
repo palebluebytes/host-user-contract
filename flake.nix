@@ -84,6 +84,7 @@
             ;
           inherit (self.lib)
             loadIdentity
+            mkBakeMatrix
             mkContractRoster
             traceUser
             mkConfinementCheck
@@ -100,6 +101,7 @@
           # conformance suite proves them in isolation.
           inherit (kit.internal)
             variantAxes
+            bakeMatrixOver
             mkContractPackage
             mkContractPackageForHome
             bindContractPackage

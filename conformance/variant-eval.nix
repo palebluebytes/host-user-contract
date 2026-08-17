@@ -31,7 +31,7 @@ let
     activationPackage.drvPath = throw "package 'emacs-pgtk' missing on this system";
   };
 
-  # The decided reference shape (#43): a per-system, consumer-owned bake matrix —
+  # The decided reference shape (#43): a consumer's per-system bake-matrix rows, as HOMES —
   # x86_64 {base, gui}, aarch64 {base}. The helper takes it as handed and asserts ALL of it.
   matrix = {
     "x86_64-linux" = {

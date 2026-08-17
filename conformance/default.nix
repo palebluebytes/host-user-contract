@@ -23,6 +23,7 @@
   safeSet,
   variantAxes,
   variants,
+  bakeMatrixOver,
   hostFactsFor,
   greeterGrants,
   tier1EvalConfig,
@@ -30,6 +31,7 @@
   featureGroups,
   privilegedGroups,
   loadIdentity,
+  mkBakeMatrix,
   mkContractRoster,
   traceUser,
   mkConfinementCheck,
@@ -99,6 +101,14 @@ let
         lib
         pkgs
         mkVariantEvalCheck
+        ;
+    })
+    (import ./bake-matrix.nix {
+      inherit
+        lib
+        variants
+        bakeMatrixOver
+        mkBakeMatrix
         ;
     })
     (import ./roster.nix {
