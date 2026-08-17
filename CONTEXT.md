@@ -54,7 +54,7 @@ the term is stable, the code is pending (see the cited issue).
   ADR-0025 formalised it per-user in the `users` flake; since ADR-0028 it is **declared in the
   user's own home** as [[wants]] and **harvested** into the [[binding index]] by
   [[mkContractUser]] — the producer passes no `offer`. A grant is derived as host [[affordance]] ∩
-  offer; the home-affecting subset of the offer is what the producer bakes as [[variant]]s.
+  offer; the home-affecting subset of the offer is what the producer builds [[home]]s for.
   (ADR-0002, ADR-0025, ADR-0028)
 - **homeAffecting** — the contract's public name list of features whose grant may reach HOME
   content, so a home may legitimately fan out on them (`{gui}` today; the per-feature
@@ -62,7 +62,7 @@ the term is stable, the code is pending (see the cited issue).
   bound on what a home may even see: a producer NARROWS [[hostFacts]]`.granted` with it (so a home
   reading a bind-riding grant like `sudo` structurally gets `false` forever) and
   `powerset(homeAffecting)` bounds its baked set (the per-system subset it actually bakes is the
-  consumer's fleet fact — see [[bake matrix]]). One surface, so no producer re-implements the rule in prose.
+  consumer's fleet fact — see [[home matrix]]). One surface, so no producer re-implements the rule in prose.
   (ADR-0028; `lib.nix`)
 
 ## Grants and confinement
@@ -74,6 +74,22 @@ the term is stable, the code is pending (see the cited issue).
   ∧ user [[offer]], *both necessary* — never a unilateral host write (the direct-grant primitive
   `bindContractPackage { grants }` is now an internal kernel, not a consumer path; ADR-0026). It
   remains the sole privilege source the realization reads. (ADR-0001 mechanic 2, ADR-0025, ADR-0026)
+- **grant vocabulary** — the naming rule for the grant concept: **one word, one type** (ADR-0030).
+  **`grants`** is the ATTRSET (`{ <feature>.enable = bool; }`) and is the name of every ARGUMENT
+  holding one: [[mkContractUser]]'s `homes = [{ grants; home }]`, [[mkContractHome]]'s `grants`,
+  `hostFactsFor`'s `grants`, [[mkContractPackageForHome]]'s `grants`, [[home matrix]] rows'
+  `{ grants; label; }`. **[[grant-key]]** is the sorted NAME LIST, and names every argument and field
+  holding one: the [[binding index]]'s `contractPackages[].grantKey`, `writeManifest`'s `grantKey` argument,
+  `readManifest`'s `grantKey` field. **`granted`** is the ATTRSET seen as an OPTION PATH —
+  `custom.users.<u>.granted`, [[hostFacts]]`.granted` — and nothing else; it never denotes a list and
+  is never an argument. Before this rule one value travelled as `grants` → `granted` → `granted`
+  → `contractBakedGrantKey` → `grants` across four hops, and `granted` meant an attrset at one
+  site and a sorted list at another.
+  **The one exception, scoped:** the manifest's WIRE key in `contract-requests.json` is still
+  `granted` (v2 shipped it; a JSON key is a format commitment). `manifest.nix` owns the translation
+  — `grantKey` on both Nix faces, the wire spelling named once as `grantKeyWireField` — so no
+  reader downstream meets the mismatched word. It moves on the next manifest version bump, whatever
+  triggers it.
 - **affordance** / **`contract.affordances`** — the **host's** voice (system-side), shaped
   `{ <feature>.enable = bool; }`: the features this host is willing to grant to users who
   [[offer]] them, declared **once** per host. The symmetric counterpart of [[request]]
@@ -89,7 +105,7 @@ the term is stable, the code is pending (see the cited issue).
   features are wanted by default, privileged ones must be asked for — per FEATURE, so asking for
   one keeps the rest; a user wanting no desktop writes `contract.wants.gui.enable = false` — and
   must then carry no [[request]] data for it, the one place the two halves of the voice are held to
-  each other (issue #59). It must be **variant-invariant**: a want that reads [[hostFacts]]`.granted`
+  each other (issue #59). It must be **bake-invariant**: a want that reads [[hostFacts]]`.granted`
   is circular (the grant is derived *from* the offer) and fails the bake with a named error.
   (ADR-0028; `homeModules.default`)
 - **deny** — the **absence of a grant**. Not a veto, not a default-open block — a host runs
@@ -168,20 +184,20 @@ the term is stable, the code is pending (see the cited issue).
   into the consumer's OWN home builder. Includes the **positive control** — a legitimate home
   option must still evaluate — without which a builder that rejects everything reads as confined.
   **(built — issue #35)** (ADR-0002, ADR-0004)
-- **`mkRosterChecks`** — the **roster adapter** over the [[check kit]] (`check-kit.nix`):
-  `{ roster; homes; buildHome; require; pkgs; force ? …; positiveControl ? … }` → the whole
-  per-user check set (`home-confinement-<user>`, `variant-eval-<user>`, one `identity-posture`),
-  under names the kit single-sources. The helpers are roster-generic because a hand-listed set
+- **`mkMemberChecks`** — the **members adapter** over the [[check kit]] (`check-kit.nix`):
+  `{ members; homes; buildHome; require; pkgs; force ? …; positiveControl ? … }` → the whole
+  per-user check set (`home-confinement-<user>`, `bake-eval-<user>`, one `identity-posture`),
+  under names the kit single-sources. The helpers are members-generic because a hand-listed set
   always misses the entry someone forgot to add — and applying them by hand re-introduced exactly
   that fold in every consumer, so the contract performs it. It **replaces** none of them: the three
-  stay public and separately callable (a single-user repo has no roster to adapt). Adds no
+  stay public and separately callable (a single-user repo has no members to adapt). Adds no
   `tryEval` and no filtering, so every helper guard survives, plus the traps that only exist at the
-  fold — an **empty roster**, **homes naming no system**, and **homes that do not cover the
-  roster** — each of which would otherwise yield a *smaller* check set, and a missing check reads
-  exactly like a passing one (with two shape guards under those diagnoses, so a non-attrset roster
+  fold — an **empty members**, **homes naming no system**, and **homes that do not cover the
+  members** — each of which would otherwise yield a *smaller* check set, and a missing check reads
+  exactly like a passing one (with two shape guards under those diagnoses, so a non-attrset members
   or row is named as such rather than reported as empty). The coverage rule is the one thing it
   asks that the helpers do not: **every member bakes on every system in `homes`**, the shape
-  [[bake matrix]] already implies (rows are per *system*); a fleet baking different members on
+  [[home matrix]] already implies (rows are per *system*); a fleet baking different members on
   different systems calls the helpers per user. `require` has no default here either: the
   [[credential posture]] stays the consumer's (ADR-0019). **(built — issue #60)** (ADR-0004,
   ADR-0020)
@@ -214,11 +230,14 @@ the term is stable, the code is pending (see the cited issue).
   **incapacity**, not a ban. Keep "ban"/"prohibition" reserved for a real security *rule* so
   the word keeps its weight; don't model "no screen" as a ban. (ADR-0002)
 - **hostFacts** — the restricted, read-only, **self-scoped** projection of host state a
-  user's home module may read: `{ exposed, platform, granted }`. Deliberately excludes
+  user's home module may read: `{ exposed, platform, granted }`. Built by `hostFactsFor { grants;
+  platform; exposed ? false; }` — the argument is `grants` (the attrset name every function on this
+  surface takes) and the field is `granted` (the option path a home reads it back on); see
+  [[grant vocabulary]]. Deliberately excludes
   `hostName` so adaptation keys on *semantic* facts, not host identity. `granted` is **narrowed to
   [[homeAffecting]]** (ADR-0028) — a home may only see the grants something bakes for, so it cannot
   become grant-sensitive on a bind-riding feature. The value is supplied by
-  whoever builds the home (the producer bakes it per variant, hand-built inline — there is no host
+  whoever builds the home (the producer builds it per home, hand-built inline — there is no host
   `config` at bake time). The `mkHostFacts` config-projector was **deleted** as caller-less (the
   pre-built path never evaluates a home host-side, ADR-0026); the no-`hostName` confinement is now a
   **convention** the producer keeps, unenforced until `hostFacts` is a typed option rather than a
@@ -236,7 +255,7 @@ the term is stable, the code is pending (see the cited issue).
   `contract.affordances` once and binds one indexed user with `{ usersFlake; username }`. Reads the
   user's [[binding index]] entry, derives `grant = affordances ∩ offer` (always **negotiated** —
   there is no unilateral direct-grant path on the public surface), selects the maximal covering
-  [[variant]], and delegates to the internal [[bindContractPackage]] kernel. The consumer twin of
+  [[home]]'s package, and delegates to the internal [[bindContractPackage]] kernel. The consumer twin of
   the producer's [[mkContractUser]] (bind one contract-user ⇄ make one). **(built — issue #25)**
 - **`traceUser`** — the home-manager-free **dry-run inspector**, and the one request→grant→bridge
   tool **outside** the contractUser produce/consume coin. Given a *contract-pure* home module +
@@ -377,8 +396,8 @@ the term is stable, the code is pending (see the cited issue).
   **public/shared** one. **Conditional and consumer-owned**, never a contract invariant — so
   [[identity.json]]'s `loadIdentity` imposes none. Asserted by the **opt-in**
   `mkIdentityPostureCheck { identities; require; pkgs }` (`check-kit.nix`), which a repo calls over
-  its own — derived, never hardcoded — roster with the posture *it* chose; `require` has no default,
-  an unknown posture name is a loud error, and an empty roster is a hard error rather than a vacuous
+  its own — derived, never hardcoded — members with the posture *it* chose; `require` has no default,
+  an unknown posture name is a loud error, and an empty members is a hard error rather than a vacuous
   pass. **(built — issue #35)** (ADR-0019)
 - **inert payload vs exec payload** — a request payload the host merely *reads* (the
   `session` enum) is **inert**; one the host *executes with privilege* (a `kanata-with-cmd`
@@ -390,16 +409,17 @@ the term is stable, the code is pending (see the cited issue).
 - **contractPackage** — the user flake's `packages.${system}.contractPackage` output: a
   content-addressed store path the host pins as a flake input and activates at switch time.
   Contains the home activation script and a `contract-requests.json` sidecar
-  (`{ version, username, requests, packages }`). The host reads `contract-requests.json` at
+  (`{ version, username, requests, packages, granted }` on the wire). The host reads `contract-requests.json` at
   eval time (no IFD — it is pre-built and pinned) and bridges granted feature requests; at switch
   time it runs the activation then replaces `~/.nix-profile` with a host-built package profile. The
   **one binding mode** (ADR-0026 retired the inline-eval alternative). **(built — issue #16)**
   (ADR-0016; amends ADR-0007)
 - **manifest module** *(internal)* — the single owner of the `contract-requests.json` schema: the
   seam between the producer [[mkContractPackage]] and the consumer [[bindContractPackage]]. It owns
-  the manifest **version**, its **field set** (`version`, `username`, `requests`, `packages`,
-  `granted`), the seam **filename**, and the **v1→v2 compat read** (v2 added the `granted`
-  coupling-guard field; a v1 manifest predates it and reads back as `[ ]`). `writeManifest`
+  the manifest **version**, its **field set** (`version`, `username`, `requests`, `packages`, and
+  the coupling-guard grant-key — `granted` on the wire, `grantKey` on both Nix faces), the seam
+  **filename**, and the **v1→v2 compat read** (v2 added the grant-key field; a v1 manifest predates
+  it and reads back as `[ ]`). `writeManifest`
   serializes a manifest to a store path at eval time (`builtins.toFile`, no IFD); `readManifest`
   parses a pinned/realized store path back into the canonical field set. The producer writes
   *through* `writeManifest` and the consumer reads *through* `readManifest`, so neither re-encodes
@@ -421,7 +441,7 @@ the term is stable, the code is pending (see the cited issue).
   does **not** import home-manager (only *reads* attributes), so the package-free invariant
   (ADR-0004) holds. It is where a home and a grant set join into a published artifact, so it is
   also where the [[bake pairing]] is verified. **Not a flake output** — [[mkContractUser]] bakes
-  each variant through it (ADR-0026). **(built — issues #23, #56)** (ADR-0016)
+  each bake through it (ADR-0026). **(built — issues #23, #56)** (ADR-0016)
 - **`bindContractPackage`** *(internal kernel)* — the package-level host bind:
   `bindContractPackage { contractPackage; identity; grants }`. Returns a NixOS module that reads
   `contract-requests.json` at eval time via the [[manifest module]]'s `readManifest`, bridges
@@ -429,33 +449,39 @@ the term is stable, the code is pending (see the cited issue).
   `bridgeRequests` kernel, and registers a `system.activationScripts` entry that runs
   `contractPackage/activate` at switch time. When `custom.host.packagePolicy.allowedPrograms` is
   non-empty it also builds and links a host-built package profile. **Not a flake output** — the
-  public consumer [[bindContractUser]] selects a variant and delegates here; the grant model is
+  public consumer [[bindContractUser]] selects a home's package and delegates here; the grant model is
   negotiation-only, so its unilateral `grants` argument is never a consumer entry (ADR-0026).
   **(built — issue #16)** (ADR-0016)
-- **variant** — a **baked home identified by the grant set it was baked with**. `mkContractPackage`
+- **home** *(as the producer's unit)* — a **built home identified by the grant set it was built under**. `mkContractPackage`
   freezes `activationPackage`, so a grant that *changes the baked home* (a **home-affecting**
-  grant — one the user's `home.nix` fans out on, e.g. `gui` → emacs/ai) must be its own variant,
+  grant — one the user's `home.nix` fans out on, e.g. `gui` → emacs/ai) must be its own home,
   while a grant conferring only host-side effects (a privileged group) rides the bind and needs
-  no bake. Which grants a home *may* branch on is contract data since ADR-0028 ([[homeAffecting]],
+  no home of its own. Which grants a home *may* branch on is contract data since ADR-0028 ([[homeAffecting]],
   the upper bound `hostFacts.granted` is narrowed to, so `powerset(homeAffecting)` bounds the
   baked set); whether *that* repo's home actually branches stays the producer's
-  call, so a repo whose homes read no grant still bakes a single `base`. `powerset(homeAffecting)`
+  call, so a repo whose homes read no grant still builds a single `base` home. `powerset(homeAffecting)`
   is the upper bound on what a host could grant, **not** a per-system baking obligation: *which*
-  variants a fleet bakes per system is its [[bake matrix]], the **consumer's fleet fact**
+  homes a fleet builds per system is its [[home matrix]], the **consumer's fleet fact**
   (decision #43). The contract keeps answering "what could a host grant"; the
-  roster-generic `mkVariantEvalCheck` proves whatever IS baked evaluates, without opining on that
+  members-generic `mkHomeEvalCheck` proves whatever IS baked evaluates, without opining on that
   matrix. A
-  variant's name (`<user>-contractPackage-<key>`, key = sorted home-affecting grant names, empty
-  ⇒ `base`) is a cosmetic label, not a parse target. **(built — issue #25)** (ADR-0025)
-- **bake matrix** — *which* [[variant]]s a fleet bakes per system, declared as ONE fact:
-  **`mkBakeMatrix { systems = { <system> = { <axis> = bool; }; }; }`** → `{ <system> = [ variant ]; }`.
-  A row per system the fleet bakes, naming only the [[variant]] axes that system's **seats cannot
+  home's published name (`<user>-contractPackage-<key>`, key = sorted home-affecting grant names, empty
+  ⇒ `base`) is a cosmetic label, not a parse target.
+  **ONE shape, filled progressively** (ADR-0030): a row is `{ grants; label; }` as
+  [[home matrix]] hands it out, and gains `home` when the producer makes it — so a
+  producer writes `row // { home = …; }` rather than building a fresh record, and the grants a home
+  was baked *under* and the grants it is published *with* are the same value by construction (which
+  is what the [[bake pairing]] guard checks). It was called a **variant** until ADR-0030, a third noun for something `grants`,
+  `home` and [[contractPackage]] already named between them; the older ADRs keep that word. **(built — issue #25)** (ADR-0025, ADR-0030)
+- **home matrix** — *which* [[home]]s a fleet builds per system, declared as ONE fact:
+  **`mkHomeMatrix { systems = { <system> = { <axis> = bool; }; }; }`** → `{ <system> = [ bake ]; }`.
+  A row per system the fleet bakes, naming only the [[home]] axes that system's **seats cannot
   use** (`{ }` = can use everything the contract names; `{ gui = false; }` = a headless tier). A
   producer's per-system rows of homes and packages (`{ <system> = { <label> = home; }; }`) are
   projections of the result, and *which members* bake is the same fleet fact one rung up
   ([[mkContractUsers]]' `users`). The *fact* stays the consumer's (decision #43); the **shape** of
   the declaration is the contract's, because an under-bake is **silent** — [[bindContractUser]]
-  binds the maximal variant that *does* exist, so a missing one costs a home its content with
+  binds the maximal bake that *does* exist, so a missing one costs a home its content with
   nothing objecting. Hence an **omitted axis is usable**: a registry that gains one bakes it
   *everywhere*, restricted systems included, with no edit in any consumer repo. That is
   ADR-0002's "one mechanism, opposite defaults" read for **coverage** rather than privilege — the
@@ -470,46 +496,52 @@ the term is stable, the code is pending (see the cited issue).
   and a matrix over no systems. Producers previously hand-wrote the filter *and* the assert catching
   their own filter's failure. **(built — issue #58)** (ADR-0026, ADR-0028)
 - **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
-  = { identity; offer; variants = [{ granted; package }] }`. Plain data (no IFD), so a host
-  selects a [[variant]] without building any of them. Identity comes from the user's [[member]]
-  (resolved once, by the [[roster]]); the `offer` is harvested from the home's [[wants]] (ADR-0028); each variant's `granted` is
-  the [[grant-key]], and cannot disagree with the home's own recorded key (the [[bake pairing]]
-  guard rides the whole variant record). **(built — issues #25, #56)** (ADR-0025)
-- **roster** — the answer to *who is in this users repo*: `{ <name> = [[member]]; }`, derived from
-  an ADR-0020 users directory by **`mkContractRoster { usersDir }`**. Every subdirectory holding an
+  = { identity; offer; bakes = [{ grantKey; package }] }`. Plain data (no IFD), so a host
+  selects a [[home]]'s package without building any of them. Identity comes from the user's [[member]]
+  (resolved once, by the [[members]]); the `offer` is harvested from the home's [[wants]] (ADR-0028); each bake's `grantKey` is
+  its [[grant-key]], and cannot disagree with the home's own recorded key (the [[bake pairing]]
+  guard rides the whole bake record). **(built — issues #25, #56)** (ADR-0025)
+- **members** — the answer to *who is in this users repo*: `{ <name> = [[member]]; }`, derived from
+  an ADR-0020 users directory by **`mkMembers { usersDir }`**. Every subdirectory holding an
   `identity.json` is a member, keyed by its directory name; a directory without one (a half-added
   user) and a non-directory entry are skipped, and a directory yielding **no** member at all is a
-  hard error rather than an empty roster (which would bake, publish and check nothing while every
+  hard error rather than an empty members (which would bake, publish and check nothing while every
   output stayed green). It is the one **resolution site** for the ADR-0020 layout — the rule was
   previously re-spelled by each producer's own `readDir` filter and identity map, and again inside
   [[mkContractUser]] and [[mkContractHome]]; the path joins those two still need for their
-  roster-less shapes are single-sourced helpers, so the layout is one edit.
+  members-less shapes are single-sourced helpers, so the layout is one edit.
   Liftability is untouched: it reads `users/<u>/` and adds no knowledge at the
   users-repo root, so lifting a user out stays a directory move. **(built — issue #57)** (ADR-0020,
   ADR-0009)
-- **member** — one roster entry: `{ name; dir; identity; }` — a user's directory-name, its
+- **member** — one entry of the [[members]] set: `{ name; dir; identity; }` — a user's directory-name, its
   directory, and its identity **already resolved** through [[identity.json]]'s single
   `loadIdentity` (ADR-0009). The unit the producer
   coin and the home builder take (`member`), so no identity path is re-derived downstream and each
   `identity.json` is read exactly once per evaluation. A single-user repo needs no member: `name` +
-  `usersDir` (the coin) and `userDir` (the builder) still resolve for themselves. **(built — issue
+  `usersDir` (the coin) and `memberDir` (the builder) still resolve for themselves. Both routes run
+  through **one resolver** with **one rule** — *a member answers every field, and a field passed
+  beside a member may restate it but never replace it* — so a member handed a disagreeing `name`,
+  `memberDir` or `identity` is a named error rather than a silent override. (Previously three
+  resolution sites with three error texts and two contradicting precedence rules.) **(built — issue
   #57)**
 - **`mkContractUser`** — the **singular public producer** and the twin of the consumer's
-  [[bindContractUser]] (make one contract-user ⇄ bind one): `{ member; variants; pkgs; system }`
-  (or, without a roster, `name` + `usersDir`) — no `offer`, it is harvested from each variant's home
-  and must be variant-invariant (ADR-0028). Bakes ONE user's [[variant]]s into the named packages and its
+  [[bindContractUser]] (make one contract-user ⇄ bind one): `{ member; bakes; pkgs }`
+  (or, without a member set, `name` + `usersDir`) — no `system`, which is read off `pkgs` as
+  [[mkContractHome]] and [[bindContractUser]] already do, so the outputs cannot be keyed by a system
+  their `pkgs` was not built for; and no `offer`, it is harvested from each bake's home
+  and must be home-invariant (ADR-0028). Builds ONE user's [[home]]s into the named packages and its
   `contractUsers.<sys>.<user>` [[binding index]] entry — the ready-to-`inherit … packages
-  contractUsers` flake-output shape, so a single-user repo needs no roster. It verifies the
-  [[bake pairing]] on the whole variant record, so neither the index's [[grant-key]] nor the
+  contractUsers` flake-output shape, so a single-user repo needs no members. It verifies the
+  [[bake pairing]] on the whole home record, so neither the index's [[grant-key]] nor the
   published package's name can reach a flake output mispaired. **(built — ADR-0026; issue #56)**
-- **`mkContractUsers`** — the **roster public producer**: [[mkContractUser]] mapped over a whole
-  `users` flake and merged, so a multi-user repo (ADR-0020) bakes its entire roster in **one** call.
+- **`mkContractUsers`** — the **members public producer**: [[mkContractUser]] mapped over a whole
+  `users` flake and merged, so a multi-user repo (ADR-0020) bakes its entire members in **one** call.
   The turnkey producer for the multi-user shape exactly as [[bindContractUser]] is the turnkey
-  consumer. Takes the [[roster]] plus a `users` attrset of `{ variants }`: *who* the members are is
-  the roster's answer, *which* of them bake and with which variants is the producer's [[bake
-  matrix]] — the same fleet fact the per-system variant narrowing is. A `users` key the roster does not
+  consumer. Takes the [[members]] plus a `users` attrset of `{ bakes }`: *who* the members are is
+  the members' answer, *which* of them build and with which homes is the producer's [[home
+  matrix]] — the same fleet fact the per-system bake narrowing is. A `users` key the members does not
   hold is a hard bake error (a hand-listed name that has drifted from the directory).
-  **(built — issue #25; singularised ADR-0026; roster-fed issue #57)** (ADR-0025)
+  **(built — issue #25; singularised ADR-0026; members-fed issue #57)** (ADR-0025)
 - **`mkContractHome`** — the **producer home builder** (ADR-0029, issue #40): the contract-owned
   composition every producer's `mkHome` glue previously hand-wrote — the home umbrella +
   [[home baseline]] + the user's `home.nix` + the inline identity/`home.*` module + the narrowed
@@ -519,11 +551,14 @@ the term is stable, the code is pending (see the cited issue).
   is contract-owned and WINS over `extraSpecialArgs` (a caller cannot hand a home an un-narrowed
   grant set); `pkgs` and `stateVersion` stay consumer facts by design; `extraModules` is the open
   seam (confinement probes, `greeterDesktop`, markers, repo glue) that lets one builder serve the
-  roster homes, the greeter-login mapper, and the confinement check over the SAME module set.
+  members homes, the greeter-login mapper, and the confinement check over the SAME module set.
   `home.homeDirectory = "/home/<username>"` is a fixed contract rule, matching the realized
   account. Its result CARRIES the [[grant-key]] it was baked under, which is what makes the
   [[bake pairing]] checkable. Takes a [[member]] (supplying both the user directory and the
-  already-resolved identity) or a bare `userDir` it resolves for itself.
+  already-resolved identity) or a bare `memberDir` it resolves for itself — the same resolver the
+  producer coin uses, under the same rule. The grant it bakes under is `grants`, the [[grant
+  vocabulary]]'s one argument name for a grant attrset, so a producer hands the builder and the coin
+  the identically-named value.
   **(built — issues #45, #56, #57)** (ADR-0029)
 - **home baseline** — the contract-shipped **universal home hygiene** (`homeModules.baseline`, kit
   attr `homeBaselineModule`): the standing, uniform-across-users home-manager posture every
@@ -541,20 +576,21 @@ the term is stable, the code is pending (see the cited issue).
   `modules.nix`)
 - **`bindContractUser`** — the **sole public consumer bind**: `{ usersFlake; username }`, **no
   `grants`**. Reads `contract.affordances` and the user's [[binding index]], derives
-  `grant = affordances ∩ offer` (always negotiated), selects the **maximal baked [[variant]] whose
+  `grant = affordances ∩ offer` (always negotiated), selects the **maximal built [[home]] whose
   grant-key ⊆ grant** (no unique maximum ⇒ hard error), and delegates to the internal
   [[bindContractPackage]] kernel with the derived grant and index-supplied identity. The host holds
-  **zero** users-repo internals (no variant names, no identity paths). Consumer twin of
+  **zero** users-repo internals (no bake names, no identity paths). Consumer twin of
   [[mkContractUser]]. **(built — issue #25; renamed ADR-0026)** (ADR-0025)
 - **coupling guard** — `bindContractPackage`'s assertion `manifest.granted ⊆ grantedNamesOf grants`:
-  a [[variant]] may bind only if its baked grants are all granted. Required by ADR-0016 but never
+  a [[home]]'s package may bind only if its baked grants are all granted. Required by ADR-0016 but never
   enforced until ADR-0025; maximal-subset selection in [[bindContractUser]] satisfies it by
   construction, so the check is defense-in-depth for the internal kernel. **(built — issue #25)**
   (ADR-0016, ADR-0025)
 - **grant-key** — the sorted **enabled feature names** of a grant set: the canonical,
-  order-independent identity of a [[variant]]. One projection (`grantKey`) behind the variant
-  *label* (`base` when empty, else the names joined), the [[binding index]]'s `granted`, and the
-  [[bake pairing]] guard — so "the same grant set" cannot mean two things across them.
+  order-independent identity of a [[home]]. One projection (`grantKey`) behind the home
+  *label* (`base` when empty, else the names joined), the [[binding index]]'s `grantKey`, the
+  manifest's, and the [[bake pairing]] guard — so "the same grant set" cannot mean two things across
+  them. It also NAMES each of those fields, per [[grant vocabulary]].
   **(built — issue #56)** (ADR-0025, ADR-0029 amendment; `lib.nix`)
 - **bake pairing** — the **join** the contract owns between its two ends of a bake:
   [[mkContractHome]] evaluates a home *under* a grant set, the producer coin bakes it *with* one,
@@ -565,7 +601,7 @@ the term is stable, the code is pending (see the cited issue).
   `hostFacts.granted`), and [[mkContractPackageForHome]] and [[mkContractUser]] cross-check it. A
   mispairing — a `base` home published under a `gui` key — is a hard bake error naming the user,
   the baked key and the passed key, where before it was *structurally* undetectable: the manifest's
-  `granted`, the index's `granted`, and so the [[coupling guard]] and maximal-variant selection all
+  grant-key, the index's, and so the [[coupling guard]] and maximal-bake selection all
   read the grant passed *alongside* the home, never the home. A home built without the builder
   carries no key, so the check is **skipped, not fired** — the builder is a convenience, not a
   requirement. **(built — issue #56)** (ADR-0029 amendment)
@@ -614,7 +650,7 @@ the term is stable, the code is pending (see the cited issue).
   the `traceUser` dry-run kernel, `mkContractPackage` content,
   `mkContractPackageForHome`'s home-attribute projection (same content-addressed store path as the
   direct call), `mkContractUser`/`mkContractUsers` parity, `bindContractPackage` reproducing the
-  `traceUser` kernel's account + gui surface from a pre-built manifest, and the [[bake matrix]]'s own
+  `traceUser` kernel's account + gui surface from a pre-built manifest, and the [[home matrix]]'s own
   guards (`bake-matrix.nix`: each under-bake the narrowing must refuse, and a synthetic second axis
   propagating to restricted and unrestricted systems alike). **VM
   tests** (each a `runNixOSTest` boot): `vm.nix` (gui-union renders), `greeter-vm.nix`
@@ -623,17 +659,17 @@ the term is stable, the code is pending (see the cited issue).
   `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
   `daemon-restricted-vm.nix` (hello on PATH, curl absent, daemon refused).
 - **check kit** — the checks the contract SHIPS rather than runs (`check-kit.nix`, issues #35, #49):
-  [[mkConfinementCheck]], the [[credential posture]] check, and `mkVariantEvalCheck` (every baked
-  [[variant]] × every baked system evaluates — roster-generic, applied per user by the consumer's
-  mapper; deliberately no `tryEval`, and shape-agnostic about *which* variants a fleet bakes, the
-  consumer's fact — decision #43) — plus [[mkRosterChecks]], the **roster adapter** that applies
-  all three across a roster in one call (issue #60). Each proves something only a **consumer** can
-  prove — over its own real module set, over its own roster, over its own bake matrix — so the
+  [[mkConfinementCheck]], the [[credential posture]] check, and `mkHomeEvalCheck` (every baked
+  [[home]] × every baked system evaluates — members-generic, applied per user by the consumer's
+  mapper; deliberately no `tryEval`, and shape-agnostic about *which* bakes a fleet bakes, the
+  consumer's fact — decision #43) — plus [[mkMemberChecks]], the **members adapter** that applies
+  all three across a whole member set in one call (issue #60). Each proves something only a **consumer** can
+  prove — over its own real module set, over its own members, over its own home matrix — so the
   contract hands over the technique, not the verdict. Their own logic is proven in the suite
   (`conformance/confinement.nix`, `conformance/identity-posture.nix`,
-  `conformance/variant-eval.nix`, `conformance/roster-checks.nix`): each accepting case, each
+  `conformance/bake-eval.nix`, `conformance/members-checks.nix`): each accepting case, each
   rejecting case, and that a helper FAILS when its positive control is broken, when its home is
-  never forced, when a posture is asked for that an identity does not carry, and when a bake matrix
+  never forced, when a posture is asked for that an identity does not carry, and when a home matrix
   is emptied or under-forced — each of those re-driven **through** the adapter too, since a fold is
   where anti-vacuity quietly dies.
 - **coherence gate** — the thin host-side check (in the consuming repo) that every real host's
@@ -649,6 +685,11 @@ the term is stable, the code is pending (see the cited issue).
   keep the word disciplined for when one returns.)
 - a feature's **grant** (the yes/no) vs its **configuration / parameters** (the knobs):
   never call configuration a "grant."
+- **`grants`** vs **`granted`** vs **[[grant-key]]** — see [[grant vocabulary]]. One word, one type:
+  `grants` is always the attrset, `grantKey` always the sorted name list, `granted` always the
+  attrset-as-option-path. Do not introduce a fourth spelling for a value already travelling under one
+  of these, and do not name anything `granted` because the option it eventually feeds is called that.
+  The manifest's wire key is the single scoped exception.
 - **wants** (which features a user asks for) vs **requests** (the parameters of a feature) —
   both are the user's voice, home-side, but only [[wants]] feeds the negotiation. Say "wants" (or
   its published form, the [[offer]]) when you mean the feature selection; never call a request an
@@ -669,10 +710,10 @@ the term is stable, the code is pending (see the cited issue).
   services, groups); program scope (what applications a user runs) is the user's
   sovereign concern and always advisory when daemon access is present. Do not conflate
   "host controls feature grants" with "host controls what programs can run."
-- **roster vs bake matrix** — the [[roster]] answers *who is in this users repo* (contract-derived
-  from the ADR-0020 directory); the [[bake matrix]] answers *which of them this fleet bakes, for
-  which system, in which [[variant]]s* (the consumer's own fleet fact, narrowed and guarded by the
-  contract's `mkBakeMatrix`). Never call the bake matrix "the roster," and never let a hand-listed
+- **members vs home matrix** — the [[members]] answers *who is in this users repo* (contract-derived
+  from the ADR-0020 directory); the [[home matrix]] answers *which of them this fleet bakes, for
+  which system, in which [[home]]s* (the consumer's own fleet fact, narrowed and guarded by the
+  contract's `mkHomeMatrix`). Never call the home matrix "the members," and never let a hand-listed
   set of names stand in for one.
 - **`contractPackage` vs `activationPackage`** — `contractPackage` is the contract-level
   content-addressed flake output (activation + `contract-requests.json` sidecar);
@@ -693,6 +734,6 @@ the term is stable, the code is pending (see the cited issue).
   are declared in the user's own home and carry no freeform, so a typo is an eval error; the
   producer passes neither. The one tolerant reader is the `traceUser` inspector. (ADR-0028)
 - **A user can only see what it may vary on** — `hostFacts.granted` is narrowed to
-  [[homeAffecting]], and an offer that varies across variants fails the bake. (ADR-0028)
+  [[homeAffecting]], and an offer that varies across bakes fails the bake. (ADR-0028)
 - **A request names a host effect but never performs it** — the host writes, only on grant.
 - **Data before code** — authenticate on `identity.json` before evaluating any user Nix.
