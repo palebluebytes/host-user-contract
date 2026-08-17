@@ -189,6 +189,14 @@ in
       ok = !(passes { homes.x86_64-linux = [ "not-an-attrset" ]; });
     }
     {
+      # The two SHAPE guards under the diagnoses above: a roster handed as a list (the
+      # `lib.attrValues` the posture helper wants, one call too early) and homes handed as
+      # something other than a per-system attrset. Both must be told what they are, rather than
+      # reported as EMPTY — which is a different mistake with a different fix.
+      name = "roster adapter: a roster or a homes that is not an attrset is named as a shape error";
+      ok = !(passes { roster = lib.attrValues roster; }) && !(passes { homes = [ ]; });
+    }
+    {
       # --- the helpers' own guards, re-driven THROUGH the adapter ---
       # Confinement: a module set that reopens a system channel fails, even though its positive
       # control still evaluates.

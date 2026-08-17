@@ -175,11 +175,16 @@ the term is stable, the code is pending (see the cited issue).
   always misses the entry someone forgot to add — and applying them by hand re-introduced exactly
   that fold in every consumer, so the contract performs it. It **replaces** none of them: the three
   stay public and separately callable (a single-user repo has no roster to adapt). Adds no
-  `tryEval` and no filtering, so every helper guard survives, plus the two vacuity traps that only
-  exist at the fold — an **empty roster** and **homes that do not cover the roster**, both of which
-  would otherwise yield a *smaller* check set, and a missing check reads exactly like a passing
-  one. `require` has no default here either: the [[credential posture]] stays the consumer's
-  (ADR-0019). **(built — issue #60)** (ADR-0004, ADR-0020)
+  `tryEval` and no filtering, so every helper guard survives, plus the traps that only exist at the
+  fold — an **empty roster**, **homes naming no system**, and **homes that do not cover the
+  roster** — each of which would otherwise yield a *smaller* check set, and a missing check reads
+  exactly like a passing one (with two shape guards under those diagnoses, so a non-attrset roster
+  or row is named as such rather than reported as empty). The coverage rule is the one thing it
+  asks that the helpers do not: **every member bakes on every system in `homes`**, the shape
+  [[bake matrix]] already implies (rows are per *system*); a fleet baking different members on
+  different systems calls the helpers per user. `require` has no default here either: the
+  [[credential posture]] stays the consumer's (ADR-0019). **(built — issue #60)** (ADR-0004,
+  ADR-0020)
 - **model A / B / C** — trust postures for the user surface (ADR-0001 mechanic 7): A = user
   exports arbitrary modules (in-repo migration only; "deny" cosmetic); B = flat data only
   (deny enforceable, expressiveness lost); C = restricted `evalModules` over a curated

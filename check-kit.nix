@@ -386,10 +386,19 @@ let
   #               through the adapter rather than only through the helpers.
   #
   # Every anti-vacuity guard the helpers carry survives, because the adapter adds no `tryEval` and
-  # no filtering: it passes the material through. What it adds is the two vacuity traps that only
-  # exist ONE LEVEL UP, where the fold is — a roster with no members, and homes that do not cover
-  # the roster. Both would otherwise yield a check set that is merely SMALLER, and a missing check
-  # is indistinguishable from a passing one in `nix flake check` output.
+  # no filtering: it passes the material through. What it adds is the traps that only exist ONE
+  # LEVEL UP, where the fold is — a roster with no members, homes naming no system, and homes that
+  # do not cover the roster. Each of those yields a check set that is merely SMALLER, and a missing
+  # check is indistinguishable from a passing one in `nix flake check` output. (Plus the two SHAPE
+  # guards those diagnoses need to stay honest: a roster or a homes row that is not an attrset gets
+  # told so, rather than being reported as empty or iterated over.)
+  #
+  # The coverage rule is worth stating outright, because it is the one thing the adapter asks of a
+  # consumer that the helpers do not: every member bakes on every system in `homes`. That is the
+  # shape `mkBakeMatrix` already implies — its rows are per SYSTEM, not per user — and it is what
+  # makes "who is unchecked" answerable at all. A fleet that genuinely bakes different members on
+  # different systems is outside this fold and calls the three helpers per user, which is one more
+  # reason they stay public.
   mkRosterChecks =
     {
       roster,
@@ -401,8 +410,13 @@ let
       positiveControl ? defaultPositiveControl,
     }:
     let
-      systems = lib.attrNames homes;
-      memberNames = lib.attrNames roster;
+      shapelyHomes = lib.isAttrs homes;
+      systems = lib.optionals shapelyHomes (lib.attrNames homes);
+      memberNames = lib.optionals (lib.isAttrs roster) (lib.attrNames roster);
+      # The system rows that ARE `{ <user> = …; }` attrsets, and the ones that are not. Split once:
+      # the coverage fold below can only ask a well-formed row who it holds, and reporting a
+      # malformed row as "holds nobody" would name the wrong mistake.
+      wellFormedRows = lib.filter (sys: lib.isAttrs homes.${sys}) systems;
       malformedRows = lib.filter (sys: !(lib.isAttrs homes.${sys})) systems;
       # Every system × member the handed homes do NOT hold. Checked here rather than left to the
       # raw `attribute missing` a lookup would throw, because the diagnosis is specific: the roster
@@ -410,20 +424,27 @@ let
       # them, not a member that should be skipped.
       uncovered = lib.concatMap (
         sys: map (n: "${sys}/${n}") (lib.filter (n: !(homes.${sys} ? ${n})) memberNames)
-      ) (lib.filter (sys: lib.isAttrs homes.${sys}) systems);
+      ) wellFormedRows;
     in
-    # Ordered deliberately, as in the helpers: report a set that would check NOBODY before
-    # reporting anything about what it checked.
-    assert lib.assertMsg (lib.isAttrs roster && roster != { }) (
+    # Ordered deliberately, as in the helpers: report a SHAPE that cannot be read before reading it,
+    # and a set that would check NOBODY before reporting anything about what it checked.
+    assert lib.assertMsg (lib.isAttrs roster) (
+      "mkRosterChecks: the roster is not an attrset — it is `mkContractRoster`'s own value "
+      + "(`{ <name> = { name; dir; identity; }; }`), keyed by member name, not a list of members."
+    );
+    assert lib.assertMsg (roster != { }) (
       "mkRosterChecks: the roster is empty — a check set over zero members is green forever, and "
       + "every proof the kit ships would silently apply to nothing. Derive it from the users "
       + "directory (`mkContractRoster { usersDir = ./users; }`), which refuses an empty one at the "
       + "source."
     );
-    assert lib.assertMsg (lib.isAttrs homes && homes != { }) (
-      "mkRosterChecks: `homes` names no system — it is the consumer's per-system homes "
-      + "(`{ <system>.<user>.<label> = home; }`) and its key set is what the variant-eval checks "
-      + "run over, so an empty one checks no bake at all."
+    assert lib.assertMsg shapelyHomes (
+      "mkRosterChecks: `homes` is not an attrset — it is the consumer's per-system homes, keyed by "
+      + "system: `{ <system> = { <user> = { <label> = home; }; }; }`."
+    );
+    assert lib.assertMsg (homes != { }) (
+      "mkRosterChecks: `homes` names no system — its key set is what the variant-eval checks run "
+      + "over, so an empty one checks no bake at all."
     );
     assert lib.assertMsg (malformedRows == [ ]) (
       "mkRosterChecks: the `homes` row(s) for [${lib.concatStringsSep ", " malformedRows}] are not "
@@ -434,7 +455,9 @@ let
       "mkRosterChecks: no baked homes for [${lib.concatStringsSep ", " uncovered}] — the ROSTER "
       + "says who exists, so every member needs a bake on every system in `homes`. A member the "
       + "mapper skipped would otherwise lose its variant-eval check entirely, which reads exactly "
-      + "like a passing one. Build `homes` from the roster itself."
+      + "like a passing one. Build `homes` from the roster itself — or, if this fleet deliberately "
+      + "bakes different members on different systems, call the three helpers per user instead of "
+      + "folding over the roster."
     );
     lib.mapAttrs' (
       n: member:
