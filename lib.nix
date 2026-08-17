@@ -235,6 +235,24 @@ let
       acc: f: if requests ? ${f} then acc // { ${f} = requests.${f}; } else acc
     ) { } grantedNames;
 
+  # The UNTOUCHED value of every request namespace — `featureConfigOptions` evaluated with no
+  # definitions at all. `contract.requests` is fully typed and carries no freeform (ADR-0028), so
+  # every declared feature key is ALWAYS present on a harvested home whether or not the user said
+  # anything: "did this home ask for gui's parameters?" cannot be answered by key presence, only by
+  # comparison against this. Derived from the same option fragments the umbrella declares the
+  # namespace from, so the baseline cannot drift from the schema. (Bare `lib.evalModules` — no
+  # home-manager, ADR-0004.)
+  defaultRequests = (lib.evalModules { modules = [ { options = featureConfigOptions; } ]; }).config;
+  # The features a harvested `contract.requests` actually CARRIES DATA for: those whose namespace
+  # differs from the untouched default above. A feature absent from the attrset entirely (a
+  # synthetic home that names only the keys it sets) carries nothing, same as one left at its
+  # default.
+  requestingFeatures =
+    requests:
+    lib.filter (f: (requests.${f} or defaultRequests.${f}) != defaultRequests.${f}) (
+      lib.attrNames defaultRequests
+    );
+
   # The system account fragment a bind PRODUCES, given the user's identity, the host's grants,
   # and the user's harvested `contract.requests`: the account the realization materializes, the
   # grants that power it, and the granted requests bridged into feature configuration. BOTH the
@@ -348,6 +366,44 @@ let
       + "this would publish a home under a grant set it was never built with — and every "
       + "downstream guard (the ADR-0016 coupling guard, maximal-variant selection) would read the "
       + "wrong one. Pass each variant the SAME grant attrset you passed `mkContractHome`."
+    );
+
+  # assertNoVetoedRequests (issue #59): the second bake-time guard on a variant's home — the two
+  # halves of the user's VOICE (ADR-0028) held to each other. `contract.wants` (which features) and
+  # `contract.requests` (their parameters) are typed independently, so one home can veto a feature
+  # and still carry its parameters. Those parameters can then never bridge on ANY host, because the
+  # grant is `affordances ∩ offer` and the user's side of that intersection is already empty. That
+  # is dead data in the user's own repo: exactly the class ADR-0028 closed the freeform to catch,
+  # arriving through the other half of the voice.
+  #
+  # It is NOT the ADR-0002 case, which stands unchanged. A request for a feature the user WANTS but
+  # this host does not grant is INERT, never an error — the host's veto degrades silently by design,
+  # because a roaming home must bind everywhere. Only the USER's own veto is unrescuable, and so a
+  # defect rather than a degradation. The two are told apart on `wants` alone, which is why this
+  # reads nothing else: no host is consulted here at all.
+  #
+  # Absence reads as EMPTY on both halves — an unnamed feature carries no request data, and an
+  # unnamed want asks for nothing — so a hand-built home naming only the keys it sets is judged on
+  # what it actually said. The message therefore states the want half as "does not ask for", which is
+  # true whether the home wrote `enable = false` or never named the feature; a real harvested home
+  # always carries every declared key (no freeform, ADR-0028), so the two coincide there.
+  assertNoVetoedRequests =
+    { username, home }:
+    let
+      wants = home.config.contract.wants;
+      vetoed = lib.filter (f: !(wants.${f}.enable or false)) (
+        requestingFeatures home.config.contract.requests
+      );
+    in
+    lib.assertMsg (vetoed == [ ]) (
+      "mkContractUser: self-contradictory voice for '${username}' — "
+      + lib.concatMapStringsSep "; " (
+        f: "it sets `contract.requests.${f}.*` while its `contract.wants` does not ask for ${f}"
+      ) vetoed
+      + ". A feature the USER vetoed can never be granted by any host (the grant is affordances ∩ "
+      + "offer), so those parameters can never bridge — they are dead data in the user's own home. "
+      + "Want the feature, or drop its requests. (A request for a feature the user DOES want but a "
+      + "HOST does not grant is inert by design, ADR-0002; this is the other case.)"
     );
 
   # mkContractPackageForHome (ADR-0016, issue #23): the OPTIONAL home-manager producer adapter. It mirrors
@@ -493,6 +549,12 @@ let
   # depends on `hostFacts.granted` is circular — the harvest would differ per variant and the
   # published offer would be whichever variant happened to be first. That is a bake-time error here,
   # not a subtle mis-negotiation later.
+  #
+  # Harvesting the offer is also where the user's TWO halves meet, so it is where they are held to
+  # each other (issue #59): a home carrying `contract.requests` data for a feature its own
+  # `contract.wants` vetoes fails the bake, because that is the one contradiction no host can
+  # rescue. Both halves are typed, but typed independently, so this is the only site that sees them
+  # together — see `assertNoVetoedRequests`.
   mkContractUser =
     {
       loadIdentity,
@@ -542,17 +604,27 @@ let
             + "either — there is no identity.json to resolve. Pass a `mkContractRoster` entry, or "
             + "the users directory to resolve the ADR-0020 path under."
           );
-      # The guard rides the whole variant RECORD (issue #56), so reading any of its three fields —
-      # the index's grant-key, the published package NAME, or the package itself — forces it. That
-      # is every route a mispaired variant could take out of this bake, not just the manifest
-      # `mkContractPackageForHome` guards on its own. (The user-level `identity` and `offer` sit
-      # OUTSIDE the record and stay readable: they are per-user facts a mispairing cannot corrupt.)
+      # Both guards ride the whole variant RECORD (issues #56, #59), so reading any of its three
+      # fields — the index's grant-key, the published package NAME, or the package itself — forces
+      # them. That is every route a mispaired variant could take out of this bake, not just the
+      # manifest `mkContractPackageForHome` guards on its own. (The user-level `identity` and `offer`
+      # sit OUTSIDE the record and stay readable: they are per-user facts a mispairing cannot
+      # corrupt.)
+      #
+      # The voice guard rides the record too, rather than the published `offer`, for two reasons: a
+      # home's REQUESTS may legitimately differ across variants (only `wants` may not), so the check
+      # is per-variant; and the repo that must catch its own dead data is the USER's, whose flake
+      # check builds the packages and never reads the index a host binds through.
       built = map (
         v:
         assert assertBakePairing {
           context = "mkContractUser";
           username = userName;
           inherit (v) home grants;
+        };
+        assert assertNoVetoedRequests {
+          username = userName;
+          inherit (v) home;
         };
         {
           # The index publishes the GRANT-KEY — the very projection the guard above compared the
