@@ -317,6 +317,61 @@ let
         };
       }).packages.${system}
   );
+  # --- (h) the coin takes a ROSTER MEMBER (issue #57) ---
+  # A `mkContractRoster` entry, stood in for by hand so these stay claims about the COIN. Its
+  # `identity` deliberately does NOT match the one on disk under its `dir` (the fixture's own
+  # `name` is "Ada Reference"), so the index can only carry it if `mkContractUser` stopped
+  # resolving `<usersDir>/<name>/identity.json` for itself — which is the whole point: the roster
+  # resolved that file once, and the coin reads the member.
+  #
+  # The `usersDir` + `name` calls above are the same claim from the other side: they still work, so
+  # a single-user repo (and every existing producer) bakes without constructing a roster at all.
+  adaMember = {
+    name = "ada";
+    dir = ../examples/users/users/ada;
+    identity = adaIdentity // {
+      name = "Rosa Roster";
+    };
+  };
+  memberUser = mkContractUser {
+    inherit pkgs system;
+    member = adaMember;
+    variants = adaVariants;
+  };
+  memberRoster = mkContractUsers {
+    inherit pkgs system;
+    roster = {
+      ada = adaMember;
+    };
+    users.ada.variants = adaVariants;
+  };
+  # A member handed alongside a DISAGREEING `name`: the package name and the index key come from
+  # `name`, the identity from the member, so this would publish ada's identity under ben's name —
+  # invisible downstream, since a host binds by the index key it finds. Both routes out of the bake
+  # are probed, as for the bake pairing.
+  mismatched =
+    read:
+    builtins.tryEval (
+      read (mkContractUser {
+        inherit pkgs system;
+        member = adaMember;
+        name = "ben";
+        variants = adaVariants;
+      })
+    );
+  mismatchedIndex = mismatched (u: u.contractUsers.${system});
+  mismatchedPackageName = mismatched (u: lib.attrNames u.packages.${system});
+  # A `users` entry naming somebody the roster does not hold — a hand-listed name that has drifted
+  # from the directory. It must be a named error, never a member silently baked from nothing.
+  strayEval = builtins.tryEval (
+    (mkContractUsers {
+      inherit pkgs system;
+      roster = {
+        ada = adaMember;
+      };
+      users.ben.variants = adaVariants;
+    }).contractUsers.${system}.ben.identity
+  );
   varyingUser = builtins.tryEval (
     (mkContractUser {
       inherit pkgs system;
@@ -408,6 +463,38 @@ in
     {
       name = "mkContractUser: a user with no variants has no home to harvest ⇒ hard bake error";
       ok = !noVariantUser.success;
+    }
+
+    # (h) the roster member as the coin's input
+    {
+      name = "mkContractUser: a roster member's identity reaches the index (no path re-derived)";
+      ok = memberUser.contractUsers.${system}.ada.identity.name == "Rosa Roster";
+    }
+    {
+      name = "mkContractUsers: a roster's members are what its `users` entries bake";
+      ok =
+        memberRoster.contractUsers.${system}.ada.identity.name == "Rosa Roster"
+        && memberRoster.packages.${system} ? "ada-contractPackage-base";
+    }
+    {
+      name = "mkContractUsers: a `users` entry the roster does not hold is a hard bake error";
+      ok = !strayEval.success;
+    }
+    {
+      name = "mkContractUser: a member paired with a disagreeing `name` is a hard bake error (index + package name)";
+      ok = !mismatchedIndex.success && !mismatchedPackageName.success;
+    }
+    {
+      # …and the positive control for it: the agreeing pair (a roster's own key beside its own
+      # member, which is what mkContractUsers always passes) must still bake.
+      name = "mkContractUser: a member paired with its own name bakes (the guard is not blanket)";
+      ok =
+        (mkContractUser {
+          inherit pkgs system;
+          member = adaMember;
+          name = "ada";
+          variants = adaVariants;
+        }).contractUsers.${system}.ada.identity.name == "Rosa Roster";
     }
 
     # (g) the bake pairing: the home's own key must match the one it is published under

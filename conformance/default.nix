@@ -30,6 +30,7 @@
   featureGroups,
   privilegedGroups,
   loadIdentity,
+  mkContractRoster,
   traceUser,
   mkConfinementCheck,
   mkIdentityPostureCheck,
@@ -98,6 +99,13 @@ let
         lib
         pkgs
         mkVariantEvalCheck
+        ;
+    })
+    (import ./roster.nix {
+      inherit
+        lib
+        loadIdentity
+        mkContractRoster
         ;
     })
     (import ./identity-posture.nix {

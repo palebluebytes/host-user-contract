@@ -84,6 +84,7 @@
             ;
           inherit (self.lib)
             loadIdentity
+            mkContractRoster
             traceUser
             mkConfinementCheck
             mkIdentityPostureCheck

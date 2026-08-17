@@ -1,5 +1,8 @@
 # Conformance fixtures
 
+`roster/` is a synthetic ADR-0020 users directory for the roster derivation — a member, a
+half-added directory, and a non-directory entry. It has its own README.
+
 `reference-contract-package/` and `reference-contract-package-gui/` are `contractPackage`-shaped
 directories (an `activate` stub + a `contract-requests.json` sidecar) that stand in for a pinned,
 realized `contractPackage` — so `bindContractPackage` reads them as plain repo paths, with no

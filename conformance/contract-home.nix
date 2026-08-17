@@ -88,6 +88,37 @@ let
   };
   overriddenInline = inlineOf overridden;
 
+  # --- the roster member as the builder's input (issue #57) ---
+  # A `mkContractRoster` entry, stood in for by hand so this stays a claim about the BUILDER: its
+  # `dir` is ada's real directory while its `identity` is somebody else's. Both must be taken from
+  # the member — which is only possible if the builder no longer re-resolves `<dir>/identity.json`
+  # for itself. The roster resolved it once; a third resolution site is what this removes.
+  memberBuilt = mkContractHome {
+    homeManagerConfiguration = recordingHMC;
+    pkgs = stubPkgs;
+    member = {
+      name = "ada";
+      dir = ../examples/users/users/ada;
+      identity = {
+        username = "rosa";
+      };
+    };
+    stateVersion = "25.11";
+  };
+  memberInline = inlineOf memberBuilt;
+
+  # Neither a member nor a userDir: there is no user directory to compose from, so this is a named
+  # error rather than a home assembled from a missing path.
+  sourcelessEval = builtins.tryEval (
+    lib.elemAt
+      (mkContractHome {
+        homeManagerConfiguration = recordingHMC;
+        pkgs = stubPkgs;
+        stateVersion = "25.11";
+      }).modules
+      2
+  );
+
   # --- the home baseline's mkDefault posture, in a merged eval ---
   # Stub declarations of the two home-manager option paths the baseline pins (we evaluate with no
   # home-manager, ADR-0004), with CONTRARY upstream defaults so the pin is observable: a mkDefault
@@ -165,6 +196,20 @@ in
         && overriddenInline.home.username == "sol"
         && overriddenInline.home.homeDirectory == "/home/sol"
         && overriddenInline.home.stateVersion == "26.05";
+    }
+
+    # --- the roster member (issue #57) ---
+    {
+      name = "mkContractHome: a roster member supplies the userDir AND the already-resolved identity";
+      ok =
+        lib.elemAt memberBuilt.modules 2 == ../examples/users/users/ada/home.nix
+        && memberInline.identity.username == "rosa"
+        && memberInline.home.username == "rosa"
+        && memberInline.home.homeDirectory == "/home/rosa";
+    }
+    {
+      name = "mkContractHome: with neither a member nor a userDir there is no home to compose ⇒ hard error";
+      ok = !sourcelessEval.success;
     }
 
     # --- the specialArgs: hostFacts is contract-owned; the rest is opaque passthrough ---
