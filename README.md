@@ -22,7 +22,10 @@ user-flake shape that consume it).
   home-manager injected per call, never a contract input; composes `homeModules.baseline`, the
   per-option-overridable home hygiene, by default, and gives the home the **grant-key it was baked
   under** so the producer coin rejects a mispaired `{ grants; home }` at bake time — ADR-0029),
-  `traceUser` (dry-run inspect), `loadIdentity`, and `renderNixConfig`. It also ships the
+  `mkContractRoster` (the ADR-0020 users directory read once into `{ <name> = { name; dir;
+  identity; }; }` — the members the coin and the builder take, so no producer re-writes the layout
+  rule or re-resolves an `identity.json`), `traceUser` (dry-run inspect), `loadIdentity`, and
+  `renderNixConfig`. It also ships the
   **check kit** — the proofs only a
   consumer can run, over material only it has: `mkConfinementCheck` (this repo's *real* module set
   still has no system channel — positive control included), `mkIdentityPostureCheck` (this

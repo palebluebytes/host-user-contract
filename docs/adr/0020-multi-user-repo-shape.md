@@ -1,6 +1,6 @@
 # The `users` repo: a multi-user grouping of the operator's own accounts
 
-**Status:** Accepted. **Extends** [ADR-0007](0007-user-flake-shape.md) (the single-user flake shape) — it does not replace it. Both shapes consume the contract identically, via `bindContractPackage` (ADR-0016) per user. **Amended in place (2026-08-15, issue #36)** — sharing modules/overlays is permitted, not required, and the home parameterization gains an `inputs` specialArg; see the amendment at the end. The decision and its reasoning stand.
+**Status:** Accepted. **Extends** [ADR-0007](0007-user-flake-shape.md) (the single-user flake shape) — it does not replace it. Both shapes consume the contract identically, via `bindContractPackage` (ADR-0016) per user. **Amended in place (2026-08-15, issue #36)** — sharing modules/overlays is permitted, not required, and the home parameterization gains an `inputs` specialArg; see the amendment at the end. **Amended again (2026-08-16, issue #57)** — the layout rule is now derived by the contract's own `mkContractRoster` rather than transcribed per producer. The decision and its reasoning stand.
 
 [ADR-0007](0007-user-flake-shape.md) fixed what *a* user flake exports: `identity.json`, a
 contract-parameterized home module, its overlays. It framed the user singular. But a fleet operator
@@ -118,3 +118,26 @@ illustration loosens:
 - the **single-visibility consequence** ([ADR-0019](0019-login-credential-travels-with-the-user.md))
   — a shared repo still makes every member's login hash public together, so a user needing a
   different visibility posture still does not belong in it.
+
+## Amendment (2026-08-16) — the layout rule is contract-shipped (issue #57)
+
+The layout above is a rule about a *directory*, and until now every producer implemented it itself:
+a `readDir` over `users/` filtered on the presence of an `identity.json`, then an identity map over
+the names it found. The contract then implemented it twice more, resolving
+`<usersDir>/<name>/identity.json` inside `mkContractUser` and `<userDir>/identity.json` inside
+`mkContractHome` — so each identity file was read two or three times per evaluation, by three
+owners, and the rule this ADR states in prose had four independent transcriptions in code.
+
+The contract now ships the derivation: **`mkContractRoster { usersDir } → { <name> = { name; dir;
+identity; }; }`**, one **member** per subdir holding an `identity.json`
+([ADR-0026](0026-consumer-producer-public-surface.md)'s amendment records it as public surface). The
+producer coin and the home builder take a member, so no identity path is re-derived downstream. A
+directory whose `home.nix` has landed but whose `identity.json` has not is skipped, as is a
+non-directory entry; a `usersDir` holding no member at all is a named error rather than an empty
+roster.
+
+Nothing in this ADR's shape changes, and **liftability is the constraint it is written against**:
+the roster reads `users/<u>/` and adds no index file, no manifest and no knowledge at the repo root,
+so lifting one user out into its own single-user flake ([ADR-0007](0007-user-flake-shape.md)) stays
+a literal directory move — and a single-user repo, having no roster to derive, still bakes by
+handing `mkContractUser` a `name` + `usersDir` directly.

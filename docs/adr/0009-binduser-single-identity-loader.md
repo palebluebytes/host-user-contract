@@ -1,6 +1,6 @@
 # bindUser is the single identity loader; the home holds its identity, it does not load it
 
-**Status:** Accepted. **Amends** [ADR-0007](0007-user-flake-shape.md), which said the home module "loads it (`fromJSON`) so it owns it." `bindUser` now loads `identity.json` once and injects the value into both the system account and the home.
+**Status:** Accepted. **Amends** [ADR-0007](0007-user-flake-shape.md), which said the home module "loads it (`fromJSON`) so it owns it." `bindUser` now loads `identity.json` once and injects the value into both the system account and the home. **Amended (2026-08-16, issue #57)** — the single loader gains a single *resolution site*, `mkContractRoster`; see the amendment at the end.
 
 [ADR-0007](0007-user-flake-shape.md) gave the user's home module the job of loading its own
 `identity.json` ("so it owns it"), while `bindUser` separately loaded the same file for the
@@ -36,3 +36,16 @@ injects when the user is bound.
   or the example flake's standalone `homeConfigurations`). `bindUser`'s own harvest eval reads
   only `contract.requests`, so the injected identity is observed there for consistency (the
   conformance tracer asserts the home holds it) but used by the dotfiles only in the full build.
+
+## Amendment (2026-08-16) — one loader, and now one resolution *site* (issue #57)
+
+This ADR fixed **who parses** `identity.json`: `loadIdentity`, once, its value injected into both
+sides. It said nothing about **who names the file**, and by the time the producer coin
+(`mkContractUser`), the home builder (`mkContractHome`) and every producer's own directory scan each
+resolved the [ADR-0020](0020-multi-user-repo-shape.md) path for themselves, one loader was being
+called from three owners two or three times per user per evaluation. Same loader, three sites — which
+is the drift this ADR exists to prevent, one level up.
+
+`mkContractRoster` (ADR-0020's own amendment) closes it: the roster resolves each member's identity
+once, and everything downstream takes the resolved **member** rather than a path. The rule now reads:
+one loader, one resolution site, one value to every consumer of it.

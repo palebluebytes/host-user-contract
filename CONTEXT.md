@@ -426,14 +426,33 @@ the term is stable, the code is pending (see the cited issue).
   ⇒ `base`) is a cosmetic label, not a parse target. **(built — issue #25)** (ADR-0025)
 - **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
   = { identity; offer; variants = [{ granted; package }] }`. Plain data (no IFD), so a host
-  selects a [[variant]] without building any of them. Identity is resolved once from the ADR-0020
-  path; the `offer` is harvested from the home's [[wants]] (ADR-0028); each variant's `granted` is
+  selects a [[variant]] without building any of them. Identity comes from the user's [[member]]
+  (resolved once, by the [[roster]]); the `offer` is harvested from the home's [[wants]] (ADR-0028); each variant's `granted` is
   the [[grant-key]], and cannot disagree with the home's own recorded key (the [[bake pairing]]
   guard rides the whole variant record). **(built — issues #25, #56)** (ADR-0025)
+- **roster** — the answer to *who is in this users repo*: `{ <name> = [[member]]; }`, derived from
+  an ADR-0020 users directory by **`mkContractRoster { usersDir }`**. Every subdirectory holding an
+  `identity.json` is a member, keyed by its directory name; a directory without one (a half-added
+  user) and a non-directory entry are skipped, and a directory yielding **no** member at all is a
+  hard error rather than an empty roster (which would bake, publish and check nothing while every
+  output stayed green). It is the one **resolution site** for the ADR-0020 layout — the rule was
+  previously re-spelled by each producer's own `readDir` filter and identity map, and again inside
+  [[mkContractUser]] and [[mkContractHome]]; the path joins those two still need for their
+  roster-less shapes are single-sourced helpers, so the layout is one edit.
+  Liftability is untouched: it reads `users/<u>/` and adds no knowledge at the
+  users-repo root, so lifting a user out stays a directory move. **(built — issue #57)** (ADR-0020,
+  ADR-0009)
+- **member** — one roster entry: `{ name; dir; identity; }` — a user's directory-name, its
+  directory, and its identity **already resolved** through [[identity.json]]'s single
+  `loadIdentity` (ADR-0009). The unit the producer
+  coin and the home builder take (`member`), so no identity path is re-derived downstream and each
+  `identity.json` is read exactly once per evaluation. A single-user repo needs no member: `name` +
+  `usersDir` (the coin) and `userDir` (the builder) still resolve for themselves. **(built — issue
+  #57)**
 - **`mkContractUser`** — the **singular public producer** and the twin of the consumer's
-  [[bindContractUser]] (make one contract-user ⇄ bind one): `{ name; variants; pkgs; system;
-  usersDir }` — no `offer`, it is harvested from each variant's home and must be
-  variant-invariant (ADR-0028). Bakes ONE user's [[variant]]s into the named packages and its
+  [[bindContractUser]] (make one contract-user ⇄ bind one): `{ member; variants; pkgs; system }`
+  (or, without a roster, `name` + `usersDir`) — no `offer`, it is harvested from each variant's home
+  and must be variant-invariant (ADR-0028). Bakes ONE user's [[variant]]s into the named packages and its
   `contractUsers.<sys>.<user>` [[binding index]] entry — the ready-to-`inherit … packages
   contractUsers` flake-output shape, so a single-user repo needs no roster. It verifies the
   [[bake pairing]] on the whole variant record, so neither the index's [[grant-key]] nor the
@@ -441,7 +460,11 @@ the term is stable, the code is pending (see the cited issue).
 - **`mkContractUsers`** — the **roster public producer**: [[mkContractUser]] mapped over a whole
   `users` flake and merged, so a multi-user repo (ADR-0020) bakes its entire roster in **one** call.
   The turnkey producer for the multi-user shape exactly as [[bindContractUser]] is the turnkey
-  consumer. **(built — issue #25; singularised ADR-0026)** (ADR-0025)
+  consumer. Takes the [[roster]] plus a `users` attrset of `{ variants }`: *who* the members are is
+  the roster's answer, *which* of them bake and with which variants is the producer's **bake
+  matrix** — the same fleet fact the per-system variant filter is. A `users` key the roster does not
+  hold is a hard bake error (a hand-listed name that has drifted from the directory).
+  **(built — issue #25; singularised ADR-0026; roster-fed issue #57)** (ADR-0025)
 - **`mkContractHome`** — the **producer home builder** (ADR-0029, issue #40): the contract-owned
   composition every producer's `mkHome` glue previously hand-wrote — the home umbrella +
   [[home baseline]] + the user's `home.nix` + the inline identity/`home.*` module + the narrowed
@@ -454,7 +477,9 @@ the term is stable, the code is pending (see the cited issue).
   roster homes, the greeter-login mapper, and the confinement check over the SAME module set.
   `home.homeDirectory = "/home/<username>"` is a fixed contract rule, matching the realized
   account. Its result CARRIES the [[grant-key]] it was baked under, which is what makes the
-  [[bake pairing]] checkable. **(built — issues #45, #56)** (ADR-0029)
+  [[bake pairing]] checkable. Takes a [[member]] (supplying both the user directory and the
+  already-resolved identity) or a bare `userDir` it resolves for itself.
+  **(built — issues #45, #56, #57)** (ADR-0029)
 - **home baseline** — the contract-shipped **universal home hygiene** (`homeModules.baseline`, kit
   attr `homeBaselineModule`): the standing, uniform-across-users home-manager posture every
   produced home starts from — the self-manage CLI, plus `systemd.user.startServices = "sd-switch"`
@@ -594,6 +619,10 @@ the term is stable, the code is pending (see the cited issue).
   services, groups); program scope (what applications a user runs) is the user's
   sovereign concern and always advisory when daemon access is present. Do not conflate
   "host controls feature grants" with "host controls what programs can run."
+- **roster vs bake matrix** — the [[roster]] answers *who is in this users repo* (contract-derived
+  from the ADR-0020 directory); the **bake matrix** answers *which of them this fleet bakes, for
+  which system, in which [[variant]]s* (the consumer's own fleet fact). Never call a producer's
+  per-system variant filter "the roster," and never let a hand-listed set of names stand in for one.
 - **`contractPackage` vs `activationPackage`** — `contractPackage` is the contract-level
   content-addressed flake output (activation + `contract-requests.json` sidecar);
   `activationPackage` is home-manager's internal term for the derivation that activates the
