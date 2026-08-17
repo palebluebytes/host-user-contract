@@ -461,11 +461,14 @@ let
       shapelyHomes = lib.isAttrs homes;
       systems = lib.optionals shapelyHomes (lib.attrNames homes);
       memberNames = lib.optionals (lib.isAttrs members) (lib.attrNames members);
-      # The system rows that ARE `{ <user> = …; }` attrsets, and the ones that are not. Split once:
-      # the coverage fold below can only ask a well-formed row who it holds, and reporting a
-      # malformed row as "holds nobody" would name the wrong mistake.
-      wellFormedRows = lib.filter (sys: lib.isAttrs homes.${sys}) systems;
-      malformedRows = lib.filter (sys: !(lib.isAttrs homes.${sys})) systems;
+      # The system rows that ARE `{ <user> = …; }` attrsets, and the ones that are not. Split once,
+      # by PARTITION rather than two negated filters: the coverage fold below can only ask a
+      # well-formed row who it holds, and reporting a malformed row as "holds nobody" would name the
+      # wrong mistake — so the two sets must stay exact complements, and a partition makes that
+      # structural instead of a rule two hand-written predicates have to keep agreeing on.
+      rows = lib.partition (sys: lib.isAttrs homes.${sys}) systems;
+      wellFormedRows = rows.right;
+      malformedRows = rows.wrong;
       # Every system × member the handed homes do NOT hold. Checked here rather than left to the
       # raw `attribute missing` a lookup would throw, because the diagnosis is specific: the members
       # is the authority on who exists, so a member with no homes is a gap in the mapper that built
