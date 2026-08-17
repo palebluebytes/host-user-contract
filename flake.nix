@@ -69,50 +69,13 @@
           inherit system;
           inherit (nixpkgs) lib;
           pkgs = nixpkgs.legacyPackages.${system};
-          contractModule = self.nixosModules.default;
-          greeterModule = self.nixosModules.greeter;
-          homeModule = self.homeModules.default;
-          homeGreeterDesktopModule = self.homeModules.greeterDesktop;
-          homeBaselineModule = self.homeModules.baseline;
-          inherit (self)
-            safeSet
-            homes
-            greeterGrants
-            tier1EvalConfig
-            featureGroups
-            privilegedGroups
-            ;
-          inherit (self.lib)
-            loadIdentity
-            mkHomeMatrix
-            mkMembers
-            traceUser
-            mkConfinementCheck
-            mkIdentityPostureCheck
-            mkHomeEvalCheck
-            mkMemberChecks
-            mkContractUser
-            mkContractUsers
-            mkContractHome
-            bindContractUser
-            renderNixConfig
-            hostFactsFor
-            ;
-          # Internal derivation logic (ADR-0026): not flake outputs, but the in-repo
-          # conformance suite proves them in isolation.
-          inherit (kit.internal)
-            homeAxes
-            homeMatrixOver
-            mkContractPackage
-            mkContractPackageForHome
-            bindContractPackage
-            accountPlan
-            writeManifest
-            readManifest
-            manifestFileName
-            outOfUniverseProbes
-            ;
           nixosSystem = nixpkgs.lib.nixosSystem;
+          # The suite reads what it needs off these two, rather than this file re-listing every
+          # name a domain happens to want. `self` deliberately, not `kit`: the suite then exercises
+          # the REAL flake outputs, so an output wired to the wrong kit attr fails here instead of
+          # shipping. `kit` is passed only for `internal` — the in-repo kernels that are not
+          # outputs (ADR-0026).
+          inherit self kit;
         };
 
         # Runtime proof (a booted VM): the session-agnostic gui-surface decision RENDERS — one seat,

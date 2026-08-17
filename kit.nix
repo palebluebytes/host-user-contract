@@ -142,8 +142,10 @@ in
   inherit (identityJson) identityFile identitySchema;
 
   # Public derivation functions consumers use (ADR-0004 Q4, surface fixed by ADR-0026). The
-  # package-level kernels (mkContractPackage/mkContractPackageForHome/bindContractPackage) and the
-  # predicate (runtimeEligibleFeature) stay INTERNAL — see `internal` below.
+  # package-level kernels (mkContractPackage/mkContractPackageForHome/bindContractPackage) stay
+  # INTERNAL — see `internal` below. (`runtimeEligibleFeature` is not exposed anywhere: it is
+  # private to lib.nix, where `safeSet` is its only reader. This comment used to claim it lived in
+  # `internal`, which it never did.)
   lib = {
     inherit (contractLib) renderNixConfig;
     # The producer-side hostFacts projection (ADR-0028): narrows the `grants` it is handed to the
@@ -241,7 +243,20 @@ in
   #     THROUGH — a consumer never calls them directly (the grant model is negotiation-only; a bare
   #     contractPackage has no public consumer).
   internal = {
-    # The bake-axis projection behind the public `bakes`/`hostFactsFor` (ADR-0028). Internal
+    # NOT flake outputs, and not a consumer surface — but reachable BY NAME from inside this repo,
+    # which is the whole membership rule: an entry is here when something in-repo must import it and
+    # a public export would be wrong.
+    #
+    # "Something in-repo" is usually the conformance suite proving a kernel in isolation. It is NOT
+    # only the suite: `accountPlan` is imported at LOGIN TIME by the greeter's
+    # `contract-account-plan` tool, which re-evaluates it from a pinned contract source
+    # (`greeter/account-plan-eval.nix`) — so this attrset is load-bearing at runtime, not just under
+    # test, and must not be renamed to something that says "for the tests".
+    #
+    # Re-exposing an entry publicly stays a one-line move to `lib` above, plus an ADR amendment
+    # (ADR-0026's posture).
+    #
+    # The home-axis projection behind the public `bakes`/`hostFactsFor` (ADR-0028). Internal
     # because no consumer needs the raw list once both derived forms ship; exposed here so the
     # conformance suite can prove the taxonomy itself (which features ride the bind) in isolation.
     inherit (contractLib) homeAxes;
@@ -255,9 +270,12 @@ in
       mkContractPackageForHome
       bindContractPackage
       ;
-    # The shared account plan (issue #30/#31), exposed so the greeter-provision VM can render the
-    # BUILD-TIME account for a fixture identity and assert the runtime `provision` reproduces it —
-    # proving build↔runtime realization parity from the ONE plan both adapters render (ADR-0012).
+    # The shared account plan (issues #30/#31, ADR-0027) — the one entry here with a RUNTIME
+    # consumer as well as a test one. `greeter/account-plan-eval.nix` pins the contract source and
+    # evaluates `kit.internal.accountPlan` at every greeter login, so `provision` renders the record
+    # rather than re-spelling the fold in jq; the greeter-provision VM then asserts the runtime
+    # render reproduces the BUILD-TIME account for a fixture identity, proving build↔runtime parity
+    # from the ONE plan both adapters execute (ADR-0012, ADR-0027).
     inherit accountPlan;
     # The manifest schema owner (issue #27): the producer/consumer seam, exposed so the
     # conformance suite proves the write→read round-trip and generates its fixtures through it.

@@ -4,7 +4,8 @@
 # binds one indexed user, grant = affordances ∩ offer); `traceUser` is the home-manager-free
 # dry-run inspector. `mkContractPackageForHome`/`mkContractPackage`/`bindContractPackage` are
 # the INTERNAL kernels those speak through (package-level, one rung below the user-level public
-# surface), as is `runtimeEligibleFeature` (the kit's `safeSet` closes over it). `renderNixConfig`
+# surface). `runtimeEligibleFeature` is a PRIVATE predicate — `safeSet` is its only reader and the
+# only form anything outside this file needs. `renderNixConfig`
 # is the one public greeter helper here; `safeSet` is the derived value.
 {
   lib,
@@ -1138,7 +1139,6 @@ let
 in
 {
   inherit
-    runtimeEligibleFeature
     safeSet
     homeAxes
     homes

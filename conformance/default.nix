@@ -1,59 +1,62 @@
-# The contract's OWN conformance suite (ADR-0004 Q5): proves the contract's promises in
-# ISOLATION — synthetic manifests bound on synthetic systems built from the contract
-# umbrella + bare nixpkgs, with no host repo, no real user, and no host bindings. This is
-# what gives the contract independent CI and protects it for every consumer.
-#
-# Because the display *backend* is a host binding (the contract only decides), this suite
-# asserts the session-agnostic gui-surface DECISION (custom.gui.surface.enabled), not SDDM/Plasma;
-# the session type is the seat's concern (ADR-0021). The rendering test (the gui-surface VM) and
-# the real-fleet coherence gate stay in the host repo.
-#
-# Structure: ./toolkit.nix builds the shared synthetic-world fixtures once; each domain file
-# (./realization.nix, ./requests.nix, ./bind.nix, ./greeter.nix, ./matrix.nix) is a focused list
-# of `{ name; ok; }` claims (+ optional `drvs` for execution proofs). This file just aggregates
-# them: concat the assertions, merge the drvs (so they build), render the report, gate the build.
 {
   lib,
   pkgs,
-  contractModule,
-  greeterModule,
-  homeModule,
-  homeGreeterDesktopModule,
-  homeBaselineModule,
-  safeSet,
-  homeAxes,
-  homes,
-  homeMatrixOver,
-  hostFactsFor,
-  greeterGrants,
-  tier1EvalConfig,
-  renderNixConfig,
-  featureGroups,
-  privilegedGroups,
-  loadIdentity,
-  mkHomeMatrix,
-  mkMembers,
-  traceUser,
-  mkConfinementCheck,
-  mkIdentityPostureCheck,
-  mkHomeEvalCheck,
-  mkMemberChecks,
-  outOfUniverseProbes,
-  mkContractUser,
-  mkContractUsers,
-  mkContractHome,
-  bindContractUser,
-  mkContractPackage,
-  mkContractPackageForHome,
-  bindContractPackage,
-  accountPlan,
-  writeManifest,
-  readManifest,
-  manifestFileName,
-  nixosSystem,
   system,
+  nixosSystem,
+  # The contract's own flake outputs, and the kit behind them. The suite reads what each domain
+  # needs off these rather than taking three dozen formals that `flake.nix` had to re-list — one
+  # more place every new name had to be threaded through, and a place it could be forgotten.
+  #
+  # `self` rather than `kit` for everything public, deliberately: the domains below then exercise
+  # the REAL flake outputs, so an output wired to the wrong kit attr fails the suite. `kit` is read
+  # ONLY for `internal` — the in-repo kernels that are not outputs (ADR-0026), including the
+  # `accountPlan` the greeter also evaluates at login.
+  self,
+  kit,
 }:
 let
+  contractModule = self.nixosModules.default;
+  greeterModule = self.nixosModules.greeter;
+  homeModule = self.homeModules.default;
+  homeGreeterDesktopModule = self.homeModules.greeterDesktop;
+  homeBaselineModule = self.homeModules.baseline;
+  inherit (self)
+    safeSet
+    homes
+    greeterGrants
+    tier1EvalConfig
+    featureGroups
+    privilegedGroups
+    ;
+  inherit (self.lib)
+    loadIdentity
+    mkHomeMatrix
+    mkMembers
+    traceUser
+    mkConfinementCheck
+    mkIdentityPostureCheck
+    mkHomeEvalCheck
+    mkMemberChecks
+    mkContractUser
+    mkContractUsers
+    mkContractHome
+    bindContractUser
+    renderNixConfig
+    hostFactsFor
+    ;
+  inherit (kit.internal)
+    homeAxes
+    homeMatrixOver
+    mkContractPackage
+    mkContractPackageForHome
+    bindContractPackage
+    accountPlan
+    writeManifest
+    readManifest
+    manifestFileName
+    outOfUniverseProbes
+    ;
+
   toolkit = import ./toolkit.nix {
     inherit
       lib
