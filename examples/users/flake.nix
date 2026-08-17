@@ -86,9 +86,9 @@
       #     so ada is gui on a seat that affords gui and cli-only on a headless host.
       roster = contract.lib.mkContractRoster { usersDir = ./users; };
       # Two projections OF the roster, for the sites that want a list rather than the attrset: the
-      # member names (the `concatMap`s below) and the members' identities (the posture check, which
-      # takes identities and knows nothing of members). Projections, never a second derivation of
-      # "who is here" or a second read of an identity.json.
+      # member names (the `concatMap`s below) and the members' identities (the offender probe among
+      # the checks, which appends a synthetic identity to the real ones). Projections, never a
+      # second derivation of "who is here" or a second read of an identity.json.
       userNames = lib.attrNames roster;
       rosterIdentities = map (m: m.identity) (lib.attrValues roster);
 
@@ -330,63 +330,45 @@
         sys:
         packages.${sys}
         // lib.optionalAttrs (sys == system) (
-          # Structural confinement, per user (check kit, issue #35). `conformance/confinement.nix`
-          # proves the contract UMBRELLA declares no system channel; that says nothing about whether
-          # THIS repo's imports smuggled one back in. `mkConfinementCheck` closes that half by
-          # probing the real `mkHome` above: an out-of-universe option must be unexpressible
-          # (throws) while a legitimate home option still evaluates (the positive control that stops
-          # the check passing vacuously). Run over EVERY user, because a system channel arrives
-          # through an import and each user owns its own imports — the duo-a-only economy this flake
-          # used to run was a fact about these particular fixtures, not about the shape being taught.
-          # These call sites are also what exercise the helper's two DEFAULTS (the
+          # The whole check kit, folded over the roster in ONE call (issue #60) — yielding
+          # `home-confinement-<user>` and `variant-eval-<user>` per member plus one
+          # `identity-posture`, so this file names no check and no user:
+          #
+          #   - CONFINEMENT, per user. `conformance/confinement.nix` proves the contract UMBRELLA
+          #     declares no system channel; that says nothing about whether THIS repo's imports
+          #     smuggled one back in. The check probes the real `mkHome` above — an out-of-universe
+          #     option must be unexpressible while a legitimate home option still evaluates. Over
+          #     EVERY user, because a system channel arrives through an import and each user owns
+          #     its own imports.
+          #   - BAKE EVALUABILITY, per user: every variant this repo bakes for that user, on every
+          #     system in `homes`, forces to a derivation. The failing arch is always the one
+          #     nothing builds by default here, so an x86_64-only package added to base content
+          #     throws HERE rather than on the aarch64 seat hours later. It reads the shared `homes`
+          #     eval, so it costs nothing the packages have not already paid for natively.
+          #   - The ADR-0019 CREDENTIAL POSTURE over the roster's identities, ENFORCED rather than
+          #     merely documented. This repo is PUBLIC, so a world-readable hash must be
+          #     memory-hard: every identity ships `$y$`, and this is what keeps that true — a member
+          #     added with a `$6$` hash fails the flake check rather than being noticed in review,
+          #     or not. `require` has no default anywhere in the kit: the posture is this repo's own
+          #     choice, and stating it is the point.
+          #
+          # This flake used to hand-write that fold — two `mapAttrs'` over the roster, each check's
+          # name spelled twice, and a closure threaded per user — which is the hand-listing the
+          # mapper exists to kill, one level up. What is left is only what is genuinely this repo's:
+          # its builder, its homes, its posture. The material handed over is the SAME `mkHome` and
+          # the SAME `homes` the packages are built from — a check over a separately assembled
+          # module set would prove nothing about what ships.
+          #
+          # These call sites are also what exercise the kit's two DEFAULTS (the
           # `activationPackage.drvPath` force and the `home.sessionVariables` positive control),
-          # which the contract's own suite structurally cannot reach.
-          lib.mapAttrs' (
-            n: member:
-            lib.nameValuePair "home-confinement-${n}" (
-              contract.lib.mkConfinementCheck {
-                inherit pkgs;
-                name = "home-confinement-${n}";
-                buildHome = extraModules: mkHome { inherit member extraModules; };
-              }
-            )
-          ) roster
-          // lib.mapAttrs' (
-            n: _:
-            lib.nameValuePair "variant-eval-${n}" (
-              # Bake evaluability, per user (check kit, issue #49): every variant this repo bakes for
-              # that user, on every system it bakes for, forces to a derivation. This is the
-              # roster-generic replacement for the cross-arch eval checks a user's own checks.nix
-              # would otherwise hand-write — the failing arch is always the one nothing builds by
-              # default here, so an x86_64-only package added to base content throws in THIS check
-              # rather than on the aarch64 seat hours later.
-              #
-              # It reads the shared `homes` eval, so it costs nothing the packages have not already
-              # paid for natively, and its own anti-vacuous assert is a second net under an emptied
-              # bake (`mkBakeMatrix` refuses one at the source). WHICH variants belong in the matrix is
-              # deliberately not its business — that is `bakedVariants` above, each fact stated once.
-              contract.lib.mkVariantEvalCheck {
-                inherit pkgs systems;
-                name = "variant-eval-${n}";
-                homesFor = sys: homes.${sys}.${n};
-              }
-            )
-          ) roster
+          # which the contract's own suite structurally cannot reach (ADR-0004).
+          contract.lib.mkRosterChecks {
+            inherit pkgs roster homes;
+            buildHome = member: extraModules: mkHome { inherit member extraModules; };
+            require = "yescrypt";
+          }
           // {
-            # ADR-0019's credential posture, ENFORCED rather than merely documented (issue #35).
-            # This repo is PUBLIC, so a world-readable hash must be memory-hard: every roster
-            # identity ships `$y$`, and this is what keeps that true — a member added with a `$6$`
-            # hash fails the flake check rather than being noticed in review, or not. The roster is
-            # DERIVED, so a new user is covered the moment it exists; a hand-listed set is the
-            # failure mode this check is for, since the offender is always the entry someone forgot
-            # to add to the list.
-            identity-posture = contract.lib.mkIdentityPostureCheck {
-              inherit pkgs;
-              identities = rosterIdentities;
-              require = "yescrypt";
-            };
-
-            # …and the proof that the check above can actually FAIL. Kept here deliberately, as a
+            # The proof that the posture check above can actually FAIL. Kept here deliberately, as a
             # teaching extra a real users repo does not carry: a posture check that passes because
             # its identity list is empty, or because the derivation quietly yielded nothing, reads
             # identically to one that passes on merit — the same vacuity trap the confinement check's
