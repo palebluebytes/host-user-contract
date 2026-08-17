@@ -846,6 +846,213 @@ let
       contractUsers.${system} = lib.foldl' (acc: o: acc // o.contractUsers.${system}) { } outs;
     };
 
+  # mkContractFleet (ADR-0029's second amendment, issue #62): the FLEET-LEVEL producer — one rung
+  # above `mkContractUsers`, owning the residual JOIN that a multi-user, multi-system producer was
+  # otherwise left holding. Given WHO is here (`members`, issue #57) and WHAT each system bakes
+  # (`homeMatrix`, issue #58), it builds every member's every home on every system and emits the
+  # whole published producer surface:
+  #
+  #   { homes; packages; contractUsers; systems; pkgsBySystem; }
+  #
+  # so `inherit (fleet) packages contractUsers;` IS the flake outputs, and `fleet.homes` is the
+  # `<system>.<user>.<label>` shape `mkMemberChecks` and a producer's own checks already consume.
+  #
+  # ADR-0029 REJECTED a fatter producer, and that rejection was overturned by its own second
+  # amendment: both of its grounds were answered by surface that shipped afterwards. What was left
+  # repo-side was mechanics rather than choices — the per-home eval loop, the members × system ×
+  # home fold, the grants↔home re-pairing, the two output merges, and the `systems`/`pkgs`
+  # derivation — re-typed character-for-character in a second producer.
+  #
+  # THE HOME ARRIVES BY INJECTED CLOSURE (ADR-0004). `buildHome` is the CONSUMER's, so this function
+  # names neither `mkContractHome` nor `stateVersion`, `extraModules` or `extraSpecialArgs`, and
+  # never imports home-manager. That is what keeps three separate promises: the contract stays
+  # package-free by the same posture `mkConfinementCheck`'s `buildHome` takes; a producer threads its
+  # own `extraSpecialArgs` (the ADR-0020 `inputs` convention) without the contract learning what
+  # `inputs` is; and a home built WITHOUT `mkContractHome` still bakes through here, because nothing
+  # in this fold knows which builder made it (issue #56's guarantee, one layer up). Taking the
+  # builder's own arguments instead would re-fuse builder to bake — the very thing the overturned
+  # ground feared, and the thing this shape avoids.
+  #
+  # `buildHome` takes an ATTRSET, `{ member, grants, pkgs }`. That is a third `buildHome` spelling
+  # beside `mkConfinementCheck`'s `extraModules: home` and `mkMemberChecks`' curried
+  # `member: extraModules: home`, and the inconsistency is deliberate: three positional arguments in
+  # a fixed order is the worse footgun, since transposing `grants` and `pkgs` is a type error
+  # nowhere. `grants` is the attrset name the matrix, the builder and the pairing guard all use
+  # (ADR-0030) — `granted` is an option path and is never a parameter.
+  #
+  # `pkgsFor` IS A FUNCTION, not an attrset, for two reasons that compound. The ordering one:
+  # `systems` is derived from `homeMatrix`, so a consumer handing over a pre-built `pkgsBySystem`
+  # must derive `systems` itself first and the absorption never completes. The load-bearing one: the
+  # producer then owns the MEMOIZATION rule both producers previously carried as prose — `import
+  # nixpkgs` is not memoized across applications, so it must be instantiated once per SYSTEM and
+  # never once per member × home × system. The fold below applies `pkgsFor` exactly once per system,
+  # and `pkgsBySystem` is RETURNED so the rule is a value a caller can hold (and a suite can pin)
+  # rather than a comment it has to trust.
+  #
+  # THE CROSS-PRODUCT IS HARD-WIRED: every member bakes every home in its system's row. That is the
+  # call `mkMemberChecks` already made, whose coverage rule is the same "every member on every
+  # system". A producer whose bake is NOT a full cross-product drops to `mkContractUsers`, which
+  # stays PUBLIC for exactly that reason — the contract is consumed at a URL, so internalizing it
+  # would lock out a third-party producer with no way back in.
+  #
+  # WHAT STAYS THE CONSUMER'S: `pkgsFor`, the members, the matrix, the `mkHome` partial application
+  # (its `homeManagerConfiguration` and `stateVersion`), any unbaked home (a greeter-login mapper
+  # keeps calling `mkContractHome` directly — it is exempt by design, not served), the
+  # `homeConfigurations` published-name rule, and the checks.
+  mkContractFleet =
+    {
+      # Kit-injected (a caller never passes it): forwarded to `mkContractUsers` below.
+      loadIdentity,
+      # WHO is in this repo — the `mkMembers` attrset (issue #57).
+      members,
+      # WHAT each system bakes — `mkHomeMatrix`'s value, `{ <system> = [ { grants; label; } ]; }`
+      # (issue #58). Its key set is this fleet's `systems`, which is why neither is stated twice.
+      homeMatrix,
+      # `system -> pkgs`. Applied once per system; see above.
+      pkgsFor,
+      # `{ member, grants, pkgs } -> home` — the consumer's own builder (ADR-0004).
+      buildHome,
+    }:
+    let
+      systems = lib.attrNames homeMatrix;
+      rowOf = sys: homeMatrix.${sys};
+      malformedRows = lib.filter (sys: !lib.isList (rowOf sys)) systems;
+      wellFormedRows = lib.filter (sys: lib.isList (rowOf sys)) systems;
+      emptyRows = lib.filter (sys: rowOf sys == [ ]) wellFormedRows;
+
+      # THE MEMO. One application of `pkgsFor` per system, and the guard that the answer is about
+      # the system it was asked for rides each entry — so it fires when that system's homes are
+      # forced rather than when a caller merely reads `systems`, and a fleet is never charged for
+      # instantiating nixpkgs for a system nothing asked about.
+      #
+      # Worth a named error because the raw one is opaque: `mkContractUsers` reads the system it
+      # keys its outputs by off the `pkgs` it is handed (so a caller cannot key packages by a system
+      # its pkgs was not built for), so a `pkgsFor` that answers the wrong system lands as an
+      # `attribute '<system>' missing` from the merge below, naming nothing that went wrong.
+      pkgsBySystem = lib.genAttrs systems (
+        sys:
+        let
+          p = pkgsFor sys;
+        in
+        assert diag.must {
+          ok = p.stdenv.hostPlatform.system == sys;
+          who = "mkContractFleet";
+          problem =
+            "`pkgsFor ${showName sys}` returned pkgs for " + "${showName p.stdenv.hostPlatform.system} instead";
+          why =
+            "The outputs for a system are keyed by the system its own `pkgs` was built for, so "
+            + "this fleet would publish one system's homes under another's name.";
+          fix =
+            "`pkgsFor` answers about the system it is asked for — " + "`sys: nixpkgs.legacyPackages.\${sys}`.";
+        };
+        p
+      );
+
+      # THE JOIN, and the only place it happens: ONE shape filled in progressively (ADR-0030). The
+      # matrix hands out `{ grants; label; }` and this adds the `home` built under those very
+      # `grants`, so nothing is re-keyed and the grants a home was built UNDER and the grants it is
+      # published WITH are the same value by construction — which is the pairing `mkContractUser`'s
+      # guard then checks anyway (issue #56), because right-by-construction is a property of this
+      # file rather than of the shape being taught.
+      rows = lib.genAttrs systems (
+        sys:
+        lib.mapAttrs (
+          _: member:
+          map (
+            row:
+            row
+            // {
+              home = buildHome {
+                inherit member;
+                inherit (row) grants;
+                pkgs = pkgsBySystem.${sys};
+              };
+            }
+          ) (rowOf sys)
+        ) members
+      );
+
+      # The per-system bake, `mkContractUsers` handed the filled rows directly — its `homes`
+      # argument IS `{ <user> = [ { grants; label; home } ]; }`, so there is no reshaping between
+      # the two and no second spelling of the fold.
+      bindings = lib.mapAttrs (
+        sys: byMember:
+        mkContractUsers {
+          inherit loadIdentity members;
+          pkgs = pkgsBySystem.${sys};
+          homes = byMember;
+        }
+      ) rows;
+    in
+    # Ordered as everywhere else here, most specific first: a shape that cannot be read before
+    # anything is read off it, and a fold that would build NOBODY before any verdict about what it
+    # built.
+    assert diag.must {
+      ok = lib.isAttrs members;
+      who = "mkContractFleet";
+      problem = "the member set is not an attrset";
+      fix =
+        "It is `mkMembers`'s own value (`{ <name> = { name; dir; identity; }; }`), keyed by member "
+        + "name, not a list of members.";
+    };
+    assert diag.must {
+      ok = members != { };
+      who = "mkContractFleet";
+      problem = "the member set is empty";
+      why = diag.vacuity { subject = "member set"; };
+      fix =
+        "Derive it from the users directory (`mkMembers { usersDir = ./users; }`), which refuses "
+        + "an empty one at the source.";
+    };
+    assert diag.must {
+      ok = lib.isAttrs homeMatrix;
+      who = "mkContractFleet";
+      problem = "`homeMatrix` is not an attrset";
+      fix =
+        "It is `mkHomeMatrix`'s own value, keyed by system: " + "`{ <system> = [ { grants; label; } ]; }`.";
+    };
+    assert diag.must {
+      ok = homeMatrix != { };
+      who = "mkContractFleet";
+      problem = "`homeMatrix` names no system";
+      why = diag.vacuity { subject = "matrix"; };
+      fix = "Its key set is the systems this fleet bakes for.";
+    };
+    assert diag.must {
+      ok = malformedRows == [ ];
+      who = "mkContractFleet";
+      problem = "the `homeMatrix` row(s) for ${showList malformedRows} are not lists";
+      fix = "Each system's row is a LIST of `{ grants; label; }` — one entry per home it bakes.";
+    };
+    assert diag.must {
+      ok = emptyRows == [ ];
+      who = "mkContractFleet";
+      problem = "system(s) ${showList emptyRows} name no home at all";
+      why = diag.vacuity {
+        subject = "row";
+        verbs = "build, publish and check";
+      };
+      fix =
+        "Leave a system out of the matrix entirely if this fleet does not bake for it. "
+        + "`mkHomeMatrix` refuses an emptied row at the source.";
+    };
+    {
+      inherit systems pkgsBySystem;
+      # `<system>.<user>.<label>` — the shape a producer's checks and its `homeConfigurations`
+      # naming rule already read, so adopting this moves nothing downstream.
+      homes = lib.mapAttrs (
+        _: byMember:
+        lib.mapAttrs (
+          _: memberRows: lib.listToAttrs (map (row: lib.nameValuePair row.label row.home) memberRows)
+        ) byMember
+      ) rows;
+      # Nested by system, so `inherit (fleet) packages contractUsers;` is the flake outputs. Each
+      # system's bake already keys its own outputs by that system, so this only unwraps the key it
+      # was going to be looked up under anyway — never a re-keying.
+      packages = lib.mapAttrs (sys: b: b.packages.${sys}) bindings;
+      contractUsers = lib.mapAttrs (sys: b: b.contractUsers.${sys}) bindings;
+    };
+
   # mkContractHome (ADR-0029, issue #40): the producer HOME builder — absorbs the mkHome glue every
   # producer hand-wrote (the umbrella + the user's home.nix + the identity/home.* inline module +
   # the hostFactsFor specialArg) into the one contract-owned composition. ADR-0004's package-free
@@ -1293,6 +1500,7 @@ in
     mkMembers
     mkContractUser
     mkContractUsers
+    mkContractFleet
     mkContractHome
     bindContractUser
     ;

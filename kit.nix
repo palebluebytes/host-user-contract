@@ -190,6 +190,18 @@ in
       args: contractLib.mkContractUser (args // { inherit (identityJson) loadIdentity; });
     mkContractUsers =
       args: contractLib.mkContractUsers (args // { inherit (identityJson) loadIdentity; });
+    # mkContractFleet (ADR-0029's second amendment, issue #62): the FLEET-level producer, one rung
+    # above `mkContractUsers` — `{ members; homeMatrix; pkgsFor; buildHome }` in, and the whole
+    # published surface out (`{ homes; packages; contractUsers; systems; pkgsBySystem; }`). It owns
+    # the residual join a multi-user, multi-system producer was left holding: the home eval loop,
+    # the members × system × home fold, the grants↔home pairing, the output merges, and the
+    # once-per-system `pkgs`. Package-free by the same injection posture as everything else here —
+    # `buildHome` is the consumer's closure, so this never names `mkContractHome` and a home built
+    # WITHOUT the builder still bakes through it. `loadIdentity` is injected as it is for the coin.
+    # The arity reads honestly: `mkContractUser` (one user) / `mkContractUsers` (a member set you
+    # enumerate) / `mkContractFleet` (one you DERIVE, across systems).
+    mkContractFleet =
+      args: contractLib.mkContractFleet (args // { inherit (identityJson) loadIdentity; });
     inherit (contractLib) bindContractUser;
     # mkContractHome (ADR-0029, issue #40): the producer HOME builder — the contract-owned mkHome
     # composition (umbrella + baseline + the user's home.nix + the identity/home.* inline module +
