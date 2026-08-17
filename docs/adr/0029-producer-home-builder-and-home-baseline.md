@@ -6,7 +6,9 @@ public surface grows by the front door) and the [ADR-0004](0004-extract-contract
 precedent from the check kit, issue #35). Executes wayfinder tickets #40 (the builder shape) and #42
 (who owns universal home hygiene). **Amended in place (2026-08-16)** — the builder now gives the
 home the grant-key it was baked under, so the producer coin verifies the pairing instead of trusting
-the caller's; see the amendment at the end.
+the caller's; see the amendment at the end. **Amended again (2026-08-17)** — the fatter producer
+this ADR rejected under Considered Options is **overturned**: the contract also ships
+`mkContractFleet`, the fleet-level producer that owns the residual join. See the second amendment.
 
 The glue that turns a user's directory into a `homeManagerConfiguration` call was hand-written three
 times across two repos — twice in `examples/users/flake.nix` (the roster homes and the greeter-login
@@ -135,6 +137,9 @@ which builds its `homeConfigurations` through this builder.
   variants to bake is the producer's call ([ADR-0028](0028-user-voice-is-typed-and-lives-in-the-home.md)),
   and the greeter-login mapper needs the *same* composition outside any bake (a different grant,
   extra modules) — a builder fused to the bake could not dissolve that third call site.
+  **OVERTURNED (2026-08-17, issue #61) — do not read this rejection as standing.** Both grounds
+  were answered by surface that shipped afterwards; the fleet producer layers *over* this ADR's
+  builder rather than fusing with it. See the second amendment at the end.
 - **Injecting the whole `home-manager.lib`, or a bespoke builder closure.** Rejected: the contract
   needs exactly one capability — build a home from modules + specialArgs — and
   `homeManagerConfiguration` verbatim is that capability's own name. A wider surface invites the
@@ -203,3 +208,141 @@ key (and *only* that — the builder's arguments are untouched, so the home neve
 `conformance/contract-package.nix` and `conformance/turnkey-bind.nix` prove the matching case bakes
 unchanged, the mispaired case is a hard error by every route out of the bake, and an unmarked home
 still bakes.
+
+## Amendment (2026-08-17) — the fatter producer is overturned: `mkContractFleet` owns the residual join (issue #61)
+
+The **A fatter `mkContractUsers`** option above is rejected no longer. Its two grounds were both
+answered by surface that shipped *after* this ADR was accepted, and the shape that answers them is
+not the shape it rejected: the fleet producer layers **over** `mkContractHome` rather than fusing
+with it.
+
+### The residue, measured
+
+Measured at `2b6254f`, with the four blockers landed (#56 the bake pairing, #57 the roster, #58 the
+bake matrix, #60 the roster check adapter) — the decision is made on the *remainder*, never on the
+file as it stood when the candidate was first raised. `examples/users/flake.nix` is 577 lines, of
+which 314 are comments and 125 more are shell inside two teaching checks; the join itself is **99
+code lines**. Of those, 37 are mechanics re-typed character-for-character in a second, independently
+evolved producer (`~/code/users`): the per-variant home loop, the roster × system × variant fold,
+the grants↔home re-pairing into `mkContractUsers`, the two output merges, and the `systems`/`pkgs`
+derivation. Absorbing them costs ~9 lines back at the new call site — **a net ~28 of 99, about 27%.**
+
+### Decision: `contract.lib.mkContractFleet`
+
+```nix
+contract.lib.mkContractFleet {
+  roster;                                     # from mkContractRoster (#57)
+  bakedVariants;                              # from mkBakeMatrix (#58) — the consumer's fleet fact
+  pkgsFor = sys: …;                           # a FUNCTION, not an attrset — see below
+  buildHome = { member, granted, pkgs }: …;   # injected closure (ADR-0004)
+}
+# → { homes; packages; contractUsers; systems; pkgsBySystem; }
+```
+
+- **The home arrives by injected closure, not by the contract calling its own builder.** `buildHome`
+  is the consumer's, so the fleet producer never names `mkContractHome`, `stateVersion`,
+  `extraModules` or `extraSpecialArgs` — which is what preserves the first amendment's guarantee
+  that *a home built without the builder still bakes*, lets a producer thread its own
+  `extraSpecialArgs` (the [ADR-0020](0020-multi-user-repo-shape.md) `inputs` convention) without the
+  contract learning what `inputs` is, and keeps the whole thing package-free by the same injection
+  posture as `mkConfinementCheck`'s `buildHome`. Taking `mkContractHome`'s own arguments instead
+  would re-fuse builder to bake — the exact thing the overturned ground feared, and the thing this
+  shape avoids.
+- **`pkgsFor` is a function because an attrset creates an ordering problem.** `systems` is derived
+  from `bakedVariants`, so a consumer handing over a pre-built `pkgsBySystem` must derive `systems`
+  first and the absorption never completes. With a function, the producer derives `systems`, folds
+  `pkgs` per system **once**, and returns both. That fold is the point: both producers carry
+  near-identical prose warning that `import nixpkgs` is not memoized across applications and must be
+  instantiated once per *system*, never once per user × variant × system. A performance trap
+  re-typed twice is contract material.
+- **Every roster member bakes every variant in its system's row — hard-wired.** This is the call
+  `mkRosterChecks` already made (#60), whose coverage rule is "every member bakes on every system in
+  `homes`" with the odd fleet dropping to the per-user helpers. Same structure here: a producer
+  wanting a partial roster bake drops to `mkContractUsers`.
+- **`packages` and `contractUsers` come out nested by system**, so `inherit (fleet) packages
+  contractUsers;` *is* the flake outputs. `homes` is `<system>.<user>.<label>` — the shape
+  `mkRosterChecks` and the example's teaching checks already consume, so nothing downstream moves.
+  All five returned attributes are conformance-covered: a returned value nobody pins is a rule
+  nobody holds.
+
+**What stays the consumer's.** `pkgsFor`, where the roster lives, the bake matrix, the `mkHome`
+partial application (`homeManagerConfiguration` verbatim, `stateVersion`), the greeter-login block,
+the `homeConfigurations` published-name rule, and the checks. The published names in particular are
+*not* absorbed: both producers say in prose that those names are their own and owe the published
+packages nothing, which makes the rule a choice however mechanical it looks.
+
+### The two grounds, answered
+
+1. **"Which variants to bake is the producer's call" — stale, not wrong.** It was true when
+   written. `mkBakeMatrix` (#58) has since made the matrix a value the consumer *states* and hands
+   over; `mkContractFleet` takes it as a parameter exactly as `mkContractUsers` already takes
+   `users`. The contract still opines on the declaration's *shape* and never on the fact.
+2. **"The greeter-login mapper needs the same composition outside any bake" — answered by
+   non-fusion, with the coverage gap conceded.** `mkContractHome` stays public and separate; the
+   greeter-login mapper keeps calling it directly with its own grant and its two extra modules,
+   untouched. The ground assumed a fatter producer would *replace* the builder, and this one does
+   not. **Conceded:** `mkContractFleet` therefore serves 2 of the 3 home-building call sites in this
+   repo, and the greeter mapper is exempt **by design** rather than served. It is not "the one way a
+   producer builds homes", and no future proposal should claim it became one.
+
+### Consequences, including what this costs
+
+- **The public `lib` grows to eleven, and `mkContractUsers` stays in it** (recorded as an amendment
+  in [ADR-0026](0026-consumer-producer-public-surface.md)). Both reference producers stop calling
+  it, which is precisely the caller-less condition ADR-0026 used to internalize four functions —
+  and it is kept anyway, for one reason: the contract is consumed at a **URL**. Under
+  internalization, any third-party producer whose bake is not a full cross-product is locked out
+  entirely, and ADR-0026's "one-line move back from `kit.internal`" is no escape hatch for someone
+  who does not own this repo. Since the cross-product is hard-wired above, `mkContractUsers` **is**
+  the escape hatch, and an escape hatch has to be reachable. The arity reads honestly:
+  `mkContractUser` (one user) / `mkContractUsers` (a roster you enumerate) / `mkContractFleet` (a
+  roster you *derive*, across systems).
+- **A third `buildHome` spelling, accepted deliberately.** The kit already has two —
+  `mkConfinementCheck` takes `extraModules: home`, `mkRosterChecks` takes `member: extraModules:
+  home` curried. This one takes an **attrset**, `{ member, granted, pkgs }`, because three
+  positional arguments in a fixed order is the worse failure mode: silently transposing `granted`
+  and `pkgs` is a type error nowhere. The inconsistency is named here rather than hidden.
+- **The symmetry framing is retired.** The candidate was raised on an asymmetry — a host binds with
+  one call while the producer spends hundreds of lines. That framing does not survive the
+  measurement and must not be reused: two thirds of the example's length is teaching prose, and
+  ~60 code lines *remain* after this lands. A producer genuinely holds more choices than a consumer
+  does, so the two sides will never be one call each. A future architecture review that observes the
+  remaining asymmetry has observed a fact about producers, not a defect.
+- **This ADR's own unfulfilled consequence lands.** "A producer's `mkHome` becomes policy-only" was
+  recorded above and did not fully arrive; after `mkContractFleet` what remains repo-side really is
+  policy — which `pkgs`, which `stateVersion`, which matrix, which names, which greeter convention.
+- **The case rests on verbosity alone, and that is the weaker half.** The *safety* half of this
+  candidate — a mispaired `{ grants; home }` shipping a base home under a `gui` grant-key — was
+  already spent by the first amendment (#56), which made it a hard eval error. What is left is 37
+  mechanical lines, and the honest bar they clear is ADR-0026's: real call sites that cannot get the
+  result without re-typing it, and not a second spelling of anything kept.
+- **The second call site is evidence, not a commitment.** The 37 identical lines were *observed* in
+  `~/code/users`, which has taken none of #45/#57/#58/#60 and is **not scheduled to converge** on
+  this dialect. So the duplication is real and measured, while the "two adopting producers" claim is
+  not made. This is the weakest link in the rationale and is left visible on purpose: one operator's
+  two repos is thin ground for growing a published surface, and a future review is entitled to weigh
+  it again on that basis.
+
+### Considered and rejected within this amendment
+
+- **Absorbing the `homeConfigurations` published-name rule** (13 more lines). Rejected: the names
+  are the producer's own and owe the published packages nothing — a choice, however mechanical the
+  loop around it looks.
+- **Absorbing the greeter/unbaked homes.** Rejected: one call site, not two — `~/code/users` has no
+  greeter block at all — and it would fuse the builder to the bake for the sake of the one home that
+  is never baked.
+- **Absorbing the check-kit fold** (`fleet.checks`). Rejected: `mkRosterChecks` shipped for exactly
+  this six commits earlier, and re-wrapping it is the "second spelling of something kept" that
+  [ADR-0026](0026-consumer-producer-public-surface.md)'s test forbids.
+- **A `members` filter on the roster.** Rejected: speculative generality with zero call sites, and
+  it contradicts the mapper's premise that adding a user needs no edit at the root.
+- **Extending `mkContractUsers` in place with a roster+matrix mode.** Genuinely close — it already
+  carries dual `roster`/`usersDir` modes, so a third costs nothing on the surface budget. Rejected
+  anyway: a function with three modes is the accretion ADR-0026 was written to stop. One more name
+  is cheaper to read than one more mode.
+- **Demoting `mkContractUsers` to `kit.internal`** to hold the surface at ten. Rejected on the
+  published-URL argument above.
+- **Re-rejecting the candidate outright.** The defensible form of this was: #56 already took the
+  half that mattered, and ~28 net lines is not worth an eleventh public name. It is recorded here as
+  a real option rather than a straw one — the deciding argument against it is consistency with the
+  bar the reopening was judged by, which 37 mechanical, twice-typed lines clear.
