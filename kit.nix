@@ -159,6 +159,14 @@ in
     # (`unknown`) instead of throwing — the one tolerant reader of the otherwise fully-typed user
     # voice. Sits OUTSIDE the produce/consume coin (it inspects a home, it never touches the index).
     traceUser = args: contractLib.traceUser (args // { homeModule = modules.homeModule; });
+    # mkContractRoster (ADR-0020, issue #57): the ROSTER derivation over a users directory —
+    # `{ <name> = { name; dir; identity; }; }`, the contract's one answer to "who is in this users
+    # repo". The layout rule and the identity resolution live here rather than in each producer's own
+    # `readDir` + identity map, and its MEMBERS are what the coin and the home builder take, so no
+    # identity path is re-derived downstream. `loadIdentity` is injected here exactly as it is for
+    # the producer coin.
+    mkContractRoster =
+      args: contractLib.mkContractRoster (args // { inherit (identityJson) loadIdentity; });
     # The turnkey producer/consumer COIN over the contractUsers binding index (ADR-0025/0026):
     #   - mkContractUser (producer, singular): bake ONE user's variants into contractPackages +
     #     its `contractUsers.<sys>.<user>` index entry. The per-user partner of bindContractUser.

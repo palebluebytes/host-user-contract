@@ -278,6 +278,73 @@ let
   # parse target (ADR-0025 "Considered Options": name-parse selection rejected).
   variantName = granted: keyLabel (grantKey granted);
 
+  # THE ADR-0020 LAYOUT, spelled once (issue #57): a users directory holds one subdirectory per
+  # user, and each holds that user's `identity.json` + `home.nix`. Every site that must name one of
+  # those paths reads it through these three — the roster derivation below, and the two roster-less
+  # fallbacks the coin and the home builder keep for a single-user repo — so the layout is ONE edit
+  # rather than the four transcriptions this replaces. They are also why the join is spelled one way:
+  # path concatenation, never string interpolation of the directory (which would coerce it into a
+  # store path at a different moment than its siblings).
+  userDirIn = usersDir: name: usersDir + "/${name}";
+  identityFileIn = userDir: userDir + "/identity.json";
+  homeFileIn = userDir: userDir + "/home.nix";
+
+  # mkContractRoster (ADR-0020, issue #57): the contract's ONE answer to "who is in this users
+  # repo, and what is each identity" — the ADR-0020 directory layout, stated once. Given a
+  # `usersDir`, it returns `{ <name> = { name; dir; identity; }; }`: every subdirectory holding an
+  # `identity.json` is a MEMBER, keyed by its directory name, carrying that directory and the
+  # identity resolved through the contract's single loader (ADR-0009).
+  #
+  # It exists because the layout rule was spelled in FOUR places — a producer's own `readDir` filter,
+  # its identity map, `mkContractUser`'s index resolution, and `mkContractHome`'s `identity` default —
+  # so each identity.json was read two or three times per evaluation, by three owners, and a change
+  # to the layout would have to find all four. ADR-0009 made the contract the single identity LOADER;
+  # this makes it the single resolution SITE. A member is what the coin and the home builder now take
+  # (`member`), so nothing downstream re-derives a path from a name.
+  #
+  # LIFTABILITY is preserved (ADR-0020, wayfinder #39): this reads `users/<u>/` and nothing else — no
+  # index file, no manifest, no knowledge at the users-repo root — so lifting one user out into its
+  # own repo stays a literal directory move, and a single-user repo that never calls this can still
+  # bake through `mkContractUser` directly.
+  #
+  # The two non-members are skipped rather than reported: a directory whose `home.nix` has landed but
+  # whose `identity.json` has not is a half-added user (deriving a member there would throw on a file
+  # that does not exist), and a non-directory entry at the root is a README or a shared/ sibling. What
+  # is NOT skipped is the whole directory yielding nothing: a memberless `usersDir` is the wrong-path
+  # mistake (off by a level, or renamed), and it must be a named error rather than an empty roster —
+  # everything downstream maps over the roster, so an empty one bakes, publishes and checks NOTHING
+  # while every flake output stays green (the same vacuity `mkIdentityPostureCheck` refuses).
+  mkContractRoster =
+    {
+      # Kit-injected (a caller never passes it): the identity.json loader, ADR-0009's single loader.
+      loadIdentity,
+      # The ADR-0020 users directory — the parent of the per-user subdirectories.
+      usersDir,
+    }:
+    let
+      entries = builtins.readDir usersDir;
+      names = lib.filter (
+        n: entries.${n} == "directory" && builtins.pathExists (identityFileIn (userDirIn usersDir n))
+      ) (lib.attrNames entries);
+    in
+    assert lib.assertMsg (names != [ ]) (
+      "mkContractRoster: '${toString usersDir}' holds no member — no subdirectory of it has an "
+      + "`identity.json`. A users directory is the ADR-0020 layout `users/<u>/identity.json`; an "
+      + "empty roster would bake, publish and check nothing while every output stayed green, so this "
+      + "is an error rather than `{ }`. Entries seen: ["
+      + "${lib.concatStringsSep ", " (lib.attrNames entries)}]."
+    );
+    lib.genAttrs names (
+      name:
+      let
+        dir = userDirIn usersDir name;
+      in
+      {
+        inherit name dir;
+        identity = loadIdentity (identityFileIn dir);
+      }
+    );
+
   # mkContractUser (ADR-0025, issue #25): the SINGULAR turnkey PRODUCER — the producer twin of the
   # consumer's `bindContractUser` (make one contract-user ⇄ bind one contract-user). A single-user
   # repo calls it once; `mkContractUsers` (below) is nothing but this mapped over a roster. It bakes
@@ -286,11 +353,18 @@ let
   #   - the named packages `<user>-contractPackage-<variantName>` (built via mkContractPackageForHome
   #     — so this stays package-free, only READING attributes off an already-evaluated home, ADR-0004), and
   #   - the pure `contractUsers.<sys>.<user>` BINDING INDEX entry `{ identity; offer; variants = [{
-  #     granted; package }] }`. The index is plain data (identity resolved once via loadIdentity from
-  #     the ADR-0020 `<usersDir>/<user>/identity.json` path; `granted` is the variant's grant-key as a
+  #     granted; package }] }`. The index is plain data (`granted` is the variant's grant-key as a
   #     NAME LIST; `package` is the built derivation), so a host's `bindContractUser` selects a variant
   #     by reading it — never by building every variant to inspect a baked manifest (the ADR-0016
   #     "can't read manifests cheaply" trap, sidestepped).
+  #
+  # WHO this user is comes in one of two ways (issue #57). Preferred: a `member` — a
+  # `mkContractRoster` entry `{ name; dir; identity; }`, whose identity is ALREADY resolved, so this
+  # re-derives no path and the `identity.json` is read once per evaluation for the whole repo.
+  # Otherwise: `name` + `usersDir`, and the ADR-0020 path is resolved here through the kit-injected
+  # `loadIdentity` (ADR-0009) — the shape a SINGLE-USER repo keeps, since one user is not a roster
+  # and constructing one to bake it would be ceremony.
+  #
   # `variants` is `[{ grants; home }]` — `grants` is the grant ATTRSET the variant is baked with (same
   # `{ <feature>.enable = bool; }` shape as everywhere else, and what `mkContractPackageForHome`
   # consumes); it is projected to the index's `granted` NAME LIST by `grantedNamesOf`. `loadIdentity`
@@ -308,11 +382,50 @@ let
       loadIdentity,
       pkgs,
       system,
-      usersDir,
-      name,
+      # A roster entry (see mkContractRoster). Supplies both the name and the resolved identity.
+      member ? null,
+      # The user's name, for a caller with no roster. `null` means "not passed": passing it
+      # ALONGSIDE a member is allowed only while the two agree — see the guard below.
+      name ? null,
+      usersDir ? null,
       variants,
     }:
     let
+      # The name the outputs are keyed by. A member carries its own, and a `name` passed beside it
+      # must MATCH: the published package name and the index key come from here while the identity
+      # comes from the member, so a disagreement would put one user's identity under another's name
+      # — the same species of silent mispairing the bake pairing rejects (issue #56), and equally
+      # invisible downstream (a host binds by the index key it finds).
+      userName =
+        if member != null then
+          assert lib.assertMsg (name == null || name == member.name) (
+            "mkContractUser: mismatched user — the member is '${member.name}' but `name` says "
+            + "'${name}'. The package name and the binding-index key come from `name` while the "
+            + "identity comes from the member, so publishing these together would name one user's "
+            + "artifacts after another. Pass the member alone, or a `name` that matches it."
+          );
+          member.name
+        else if name != null then
+          name
+        else
+          throw (
+            "mkContractUser: pass either `member` (a `mkContractRoster` entry) or `name` + "
+            + "`usersDir` (the ADR-0020 path to resolve this user's identity.json from)."
+          );
+      # Resolved ONCE, and only here: from the member if there is one (the roster already read the
+      # file), otherwise from the ADR-0020 path. Nothing downstream of this re-derives it — the home
+      # builder takes the same member, and the index below publishes this value.
+      identity =
+        if member != null then
+          member.identity
+        else if usersDir != null then
+          loadIdentity (identityFileIn (userDirIn usersDir userName))
+        else
+          throw (
+            "mkContractUser: '${userName}' was given a `name` but no `usersDir`, and no `member` "
+            + "either — there is no identity.json to resolve. Pass a `mkContractRoster` entry, or "
+            + "the users directory to resolve the ADR-0020 path under."
+          );
       # The guard rides the whole variant RECORD (issue #56), so reading any of its three fields —
       # the index's grant-key, the published package NAME, or the package itself — forces it. That
       # is every route a mispaired variant could take out of this bake, not just the manifest
@@ -322,7 +435,7 @@ let
         v:
         assert assertBakePairing {
           context = "mkContractUser";
-          username = name;
+          username = userName;
           inherit (v) home grants;
         };
         {
@@ -345,14 +458,14 @@ let
       offer =
         if variants == [ ] then
           throw (
-            "mkContractUser: '${name}' declares no variants, so there is no evaluated home to "
+            "mkContractUser: '${userName}' declares no variants, so there is no evaluated home to "
             + "harvest `contract.wants` from — a user must bake at least one variant."
           )
         else if lib.all (o: o == lib.head offeredNames) offeredNames then
           lib.head harvestedWants
         else
           throw (
-            "mkContractUser: variant-varying offer for '${name}' — its `contract.wants` differs "
+            "mkContractUser: variant-varying offer for '${userName}' — its `contract.wants` differs "
             + "across baked variants ("
             + lib.concatMapStringsSep "; " (o: "[${lib.concatStringsSep ", " o}]") offeredNames
             + "). An offer that depends on `hostFacts.granted` is circular: the grant is DERIVED "
@@ -361,11 +474,10 @@ let
     in
     {
       packages.${system} = lib.listToAttrs (
-        map (v: lib.nameValuePair "${name}-contractPackage-${v.label}" v.package) built
+        map (v: lib.nameValuePair "${userName}-contractPackage-${v.label}" v.package) built
       );
-      contractUsers.${system}.${name} = {
-        identity = loadIdentity "${usersDir}/${name}/identity.json";
-        inherit offer;
+      contractUsers.${system}.${userName} = {
+        inherit identity offer;
         variants = map (v: { inherit (v) granted package; }) built;
       };
     };
@@ -375,18 +487,38 @@ let
   # call and `inherit … packages contractUsers`. It is the turnkey producer for the multi-user shape
   # (ADR-0020) exactly as `bindContractUser` is the turnkey consumer; the singular `mkContractUser`
   # is the true per-user partner underneath. Each input user is `{ variants }`, forwarded to
-  # `mkContractUser` (the offer is harvested from each variant's home, ADR-0028 — a roster carries
-  # no `offer` field). Adds no logic of its own beyond the roster fold — the per-user bake, naming,
-  # and index shape all live in `mkContractUser`.
+  # `mkContractUser` (the offer is harvested from each variant's home, ADR-0028 — a users entry
+  # carries no `offer` field). Adds no logic of its own beyond the roster fold — the per-user bake,
+  # naming, and index shape all live in `mkContractUser`.
+  #
+  # WHO the users are is a `roster` (issue #57): the `mkContractRoster` attrset, whose member for
+  # each `users` key supplies that user's directory and already-resolved identity. `users` keys stay
+  # the caller's own list because WHICH members it bakes, and with which variants, is the producer's
+  # bake matrix — the same fleet fact the per-system variant filter is (decision #43), and not
+  # something the contract opines on. A key the roster does NOT hold is the other story: that is a
+  # hand-listed name that has drifted from the directory, so it is a named error rather than a bake
+  # of nobody. (The pre-roster `usersDir` shape still works, and resolves per user as before.)
   mkContractUsers =
     {
       loadIdentity,
       pkgs,
       system,
-      usersDir,
+      roster ? null,
+      usersDir ? null,
       users,
     }:
     let
+      memberFor =
+        name:
+        if roster == null then
+          null
+        else
+          roster.${name} or (throw (
+            "mkContractUsers: '${name}' is not in the roster — its `users` entry names somebody the "
+            + "users directory does not hold (roster members: "
+            + "[${lib.concatStringsSep ", " (lib.attrNames roster)}]). A `users` key is a member to "
+            + "bake, so a name that has drifted from the directory is an error, not an empty bake."
+          ));
       outs = lib.mapAttrsToList (
         name: u:
         mkContractUser {
@@ -397,6 +529,7 @@ let
             usersDir
             name
             ;
+          member = memberFor name;
           inherit (u) variants;
         }
       ) users;
@@ -440,12 +573,32 @@ let
       homeManagerConfiguration,
       # Per-user pkgs — consumer-side by design; also the source of `platform`.
       pkgs,
+      # A roster entry (see mkContractRoster): supplies BOTH the user's directory and its
+      # already-resolved identity, so a producer that has a roster hands this one value and no
+      # identity path is resolved a second time (issue #57).
+      member ? null,
       # The user's subdir (ADR-0020 layout): holds home.nix, and identity.json unless `identity`
-      # is passed.
-      userDir,
-      # Resolved-once override; defaults to the kit-injected loader over userDir (ADR-0009: one
-      # identity loader, and the home HOLDS its identity rather than loading it).
-      identity ? loadIdentity (userDir + "/identity.json"),
+      # is passed. Defaulted from the member; still passable on its own, so a single-user repo
+      # (or a hand-driven build) needs no roster.
+      #
+      # These two are OVERRIDES, deliberately, and they win over the member: composing a home from
+      # one directory while holding an identity from elsewhere is what the pre-roster `identity`
+      # argument always allowed (the conformance suite drives the builder that way), and unlike the
+      # coin's `name` it publishes nothing — the composed home is exactly what the caller asked for,
+      # and its username follows the identity it was handed.
+      userDir ? (
+        if member != null then
+          member.dir
+        else
+          throw (
+            "mkContractHome: pass either `member` (a `mkContractRoster` entry) or `userDir` (the "
+            + "ADR-0020 user directory holding home.nix) — there is no home to compose without one."
+          )
+      ),
+      # Resolved-once override; taken from the member when there is one, else from the kit-injected
+      # loader over userDir (ADR-0009: one identity loader, and the home HOLDS its identity rather
+      # than loading it).
+      identity ? (if member != null then member.identity else loadIdentity (identityFileIn userDir)),
       # The grant this variant is baked with; narrowed to the variant axes by hostFactsFor
       # (ADR-0028), so no caller re-derives that rule.
       granted ? { },
@@ -461,7 +614,7 @@ let
       modules = [
         homeModule
         homeBaselineModule
-        (userDir + "/home.nix")
+        (homeFileIn userDir)
         {
           inherit identity;
           home.username = identity.username;
@@ -815,6 +968,7 @@ in
     mkContractPackage
     mkContractPackageForHome
     bindContractPackage
+    mkContractRoster
     mkContractUser
     mkContractUsers
     mkContractHome
