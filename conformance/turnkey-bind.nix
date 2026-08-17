@@ -206,19 +206,28 @@ let
     printf '#!/bin/sh\necho activated\n' > $out/activate
     chmod +x $out/activate
   '';
-  mkSyntheticHome = wants: {
-    activationPackage = activationStub;
-    config = {
-      contract.requests = {
-        gui.desktop = "plasma";
-      };
-      contract.wants = wants;
-      home = {
-        packages = [ pkgs.hello ];
-        username = "ada";
+  mkSyntheticHomeWith =
+    { wants, requests }:
+    {
+      activationPackage = activationStub;
+      config = {
+        contract.requests = requests;
+        contract.wants = wants;
+        home = {
+          packages = [ pkgs.hello ];
+          username = "ada";
+        };
       };
     };
-  };
+  # The reference synthetic home: gui parameters, and whichever want set the case needs.
+  mkSyntheticHome =
+    wants:
+    mkSyntheticHomeWith {
+      inherit wants;
+      requests = {
+        gui.desktop = "plasma";
+      };
+    };
   # The full want set a real home eval yields: every registry feature present, `.enable` a bool.
   adaWants = {
     gui.enable = true;
@@ -345,6 +354,11 @@ let
     };
     users.ada.variants = adaVariants;
   };
+  # The two routes OUT of a bake, spelled once: the published package NAMES and the binding INDEX.
+  # Every guard that rides the variant record must be probed through both (issues #56, #59), so the
+  # readers are named here rather than re-spelled at each call site.
+  readPackageNames = u: lib.attrNames u.packages.${system};
+  readIndex = u: u.contractUsers.${system};
   # A member handed alongside a DISAGREEING `name`: the package name and the index key come from
   # `name`, the identity from the member, so this would publish ada's identity under ben's name —
   # invisible downstream, since a host binds by the index key it finds. Both routes out of the bake
@@ -359,8 +373,8 @@ let
         variants = adaVariants;
       })
     );
-  mismatchedIndex = mismatched (u: u.contractUsers.${system});
-  mismatchedPackageName = mismatched (u: lib.attrNames u.packages.${system});
+  mismatchedIndex = mismatched readIndex;
+  mismatchedPackageName = mismatched readPackageNames;
   # A `users` entry naming somebody the roster does not hold — a hand-listed name that has drifted
   # from the directory. It must be a named error, never a member silently baked from nothing.
   strayEval = builtins.tryEval (
@@ -391,6 +405,41 @@ let
       ];
     }).contractUsers.${system}.ada.offer
   );
+  # --- (f2) the user's two halves must not contradict each other (issue #59) ---
+  # `contract.wants` and `contract.requests` are typed INDEPENDENTLY, so one home can veto a feature
+  # and still carry its parameters. Those parameters can never bridge on any host — the grant is
+  # `affordances ∩ offer` and the user's side of the intersection is already empty — so this is dead
+  # data in the user's own repo, not a degradation. It must fail the BAKE.
+  #
+  # Like the pairing guard below, this one rides the whole variant RECORD, so both routes out of the
+  # bake are probed: the published package NAME (what a user repo's own `checks = packages` forces —
+  # the repo that owns the defect) and the binding index a host reads.
+  vetoBake =
+    requests:
+    mkContractUser {
+      inherit pkgs system;
+      usersDir = ../examples/users/users;
+      name = "ada";
+      variants = [
+        {
+          grants = { };
+          home = mkSyntheticHomeWith {
+            wants = adaWants // {
+              gui.enable = false;
+            };
+            inherit requests;
+          };
+        }
+      ];
+    };
+  vetoWith = read: requests: builtins.tryEval (builtins.deepSeq (read (vetoBake requests)) true);
+  vetoedRequestPackage = vetoWith readPackageNames { gui.desktop = "plasma"; };
+  vetoedRequestIndex = vetoWith readIndex { gui.desktop = "plasma"; };
+  # The svc posture (examples/users/users/svc): the same veto with the request namespace left at its
+  # DEFAULT is a perfectly good user. Spelled as an explicit `desktop = ""` rather than an absent
+  # key, so this proves the guard tests request DATA against the schema's default and not mere key
+  # presence — every declared key is always present on a real harvested home (ADR-0028, no freeform).
+  vetoNoRequestUser = vetoWith readPackageNames { gui.desktop = ""; };
 in
 {
   assertions = [
@@ -463,6 +512,25 @@ in
     {
       name = "mkContractUser: a user with no variants has no home to harvest ⇒ hard bake error";
       ok = !noVariantUser.success;
+    }
+
+    # (f2) the user's own veto vs its request data (issue #59)
+    {
+      name = "mkContractUser: request data for a feature the USER vetoed is a hard bake error";
+      ok = !vetoedRequestPackage.success && !vetoedRequestIndex.success;
+    }
+    {
+      name = "mkContractUser: the same veto with the request namespace at its default bakes (svc)";
+      ok = vetoNoRequestUser.success;
+    }
+    {
+      # ADR-0002 is UNCHANGED, at the seam the new guard sits on: ada wants gui and carries the SAME
+      # gui.desktop request svc is rejected for, and the only variant baked here grants NOTHING. The
+      # bake still stands and still publishes gui as the offer — an ungranted request is the host's
+      # silent degradation, never a defect. That the request is then not BRIDGED is the other half,
+      # proven where the bridge is (./bind.nix's "an ungranted request is inert").
+      name = "mkContractUser: a request no variant grants stays inert — the bake stands (ADR-0002)";
+      ok = emittedIndex.offer.gui.enable && (lib.head emittedIndex.variants).granted == [ ];
     }
 
     # (h) the roster member as the coin's input
