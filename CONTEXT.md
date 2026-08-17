@@ -168,6 +168,18 @@ the term is stable, the code is pending (see the cited issue).
   into the consumer's OWN home builder. Includes the **positive control** — a legitimate home
   option must still evaluate — without which a builder that rejects everything reads as confined.
   **(built — issue #35)** (ADR-0002, ADR-0004)
+- **`mkRosterChecks`** — the **roster adapter** over the [[check kit]] (`check-kit.nix`):
+  `{ roster; homes; buildHome; require; pkgs; force ? …; positiveControl ? … }` → the whole
+  per-user check set (`home-confinement-<user>`, `variant-eval-<user>`, one `identity-posture`),
+  under names the kit single-sources. The helpers are roster-generic because a hand-listed set
+  always misses the entry someone forgot to add — and applying them by hand re-introduced exactly
+  that fold in every consumer, so the contract performs it. It **replaces** none of them: the three
+  stay public and separately callable (a single-user repo has no roster to adapt). Adds no
+  `tryEval` and no filtering, so every helper guard survives, plus the two vacuity traps that only
+  exist at the fold — an **empty roster** and **homes that do not cover the roster**, both of which
+  would otherwise yield a *smaller* check set, and a missing check reads exactly like a passing
+  one. `require` has no default here either: the [[credential posture]] stays the consumer's
+  (ADR-0019). **(built — issue #60)** (ADR-0004, ADR-0020)
 - **model A / B / C** — trust postures for the user surface (ADR-0001 mechanic 7): A = user
   exports arbitrary modules (in-repo migration only; "deny" cosmetic); B = flat data only
   (deny enforceable, expressiveness lost); C = restricted `evalModules` over a curated
@@ -609,13 +621,16 @@ the term is stable, the code is pending (see the cited issue).
   [[mkConfinementCheck]], the [[credential posture]] check, and `mkVariantEvalCheck` (every baked
   [[variant]] × every baked system evaluates — roster-generic, applied per user by the consumer's
   mapper; deliberately no `tryEval`, and shape-agnostic about *which* variants a fleet bakes, the
-  consumer's fact — decision #43). Each proves something only a **consumer** can prove — over its
-  own real module set, over its own roster, over its own bake matrix — so the contract hands
-  over the technique, not the verdict. Their own logic is proven in the suite
+  consumer's fact — decision #43) — plus [[mkRosterChecks]], the **roster adapter** that applies
+  all three across a roster in one call (issue #60). Each proves something only a **consumer** can
+  prove — over its own real module set, over its own roster, over its own bake matrix — so the
+  contract hands over the technique, not the verdict. Their own logic is proven in the suite
   (`conformance/confinement.nix`, `conformance/identity-posture.nix`,
-  `conformance/variant-eval.nix`): each accepting case, each rejecting case, and that a helper
-  FAILS when its positive control is broken, when its home is never forced, when a posture is
-  asked for that an identity does not carry, and when a bake matrix is emptied or under-forced.
+  `conformance/variant-eval.nix`, `conformance/roster-checks.nix`): each accepting case, each
+  rejecting case, and that a helper FAILS when its positive control is broken, when its home is
+  never forced, when a posture is asked for that an identity does not carry, and when a bake matrix
+  is emptied or under-forced — each of those re-driven **through** the adapter too, since a fold is
+  where anti-vacuity quietly dies.
 - **coherence gate** — the thin host-side check (in the consuming repo) that every real host's
   trait-tuple is archetype-covered and the real manifest realizes — the consuming repo's tie-back to
   the contract suite. (ADR-0004)

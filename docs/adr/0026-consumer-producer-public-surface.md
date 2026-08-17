@@ -134,3 +134,28 @@ Proving that a contract which *gains* an axis extends every system's bake needs 
 ### Divergence from issue #58
 
 Two of the issue's acceptance criteria — "*A system with no exclusions is asserted to bake the contract's full variant set*" and "*Conformance covers the full-set assert firing*" — ask for an **assert** that this shape makes unnecessary. The property they name holds, structurally and unconditionally; there is no firing to cover because there is no way to write the violation. Recorded here rather than quietly satisfied, because "we deleted the assert you asked for" deserves to be legible.
+
+## Amendment (2026-08-17) — the check kit gains a roster adapter
+
+**`mkRosterChecks`** (issue #60) takes the public `lib` to fourteen: `{ roster; homes; buildHome; require; pkgs } → { home-confinement-<u>; variant-eval-<u>; identity-posture }` — the [check kit](../../check-kit.nix)'s three helpers applied across a whole roster in one call.
+
+This is the amendment that most looks like a violation of the ADR's own test, and it should be read as one until the distinction holds: every function it calls is kept and public, and a fold over kept functions is very nearly the definition of "a second spelling of something we already have". Two things save it, and both are checkable.
+
+The first is *why the helpers are roster-generic in the first place*. Decision #43 and issue #49 shaped them that way for one reason: a hand-listed set always misses the entry someone forgot to add, so the offender is precisely the user nobody wrote a check for. Leaving the fold at the call site reinstates that hazard **one level up** — the check set is now the hand-written thing, and a member missing from it fails in the most invisible way a check can, by not existing. A missing check and a passing check are indistinguishable in `nix flake check` output.
+
+The second is the same tell the bake-matrix amendment turned on. The reference fleet hand-wrote two `mapAttrs'` folds over the roster, spelled each check's name **twice** (once as the `checks.<system>` attribute, once as the `name` its failure message reports, free to disagree), threaded a closure per user into each — and carried, per fold, a comment arguing why the fold had to be roster-generic. A producer holding the rule *and* the argument for the rule is holding the contract's work.
+
+### What it does not take
+
+- **It does not pick a posture.** `require` has no default here either. ADR-0019 makes the credential posture consumer-owned, and an adapter that defaulted would impose one repo's posture on every repo that adopted the adapter without thinking about it — a worse version of the policy `loadIdentity` refuses to carry.
+- **It does not decide which proofs a repo runs.** The three helpers stay public and separately callable, and are documented as the primary surface: one user is not a roster, and a repo wanting confinement alone should call for confinement alone. This is a fold over them, written in the same public arguments those calls take.
+- **It does not opine on the bake matrix.** It reads `homes` exactly as handed; *which* variants a fleet bakes for which system remains the fleet's fact (decision #43, and the amendment above).
+- **It is not a flake output the contract writes.** It cannot be: every input is the consumer's — its `pkgs`, its builder, its homes, its posture. It is a function handed over, like everything else on this surface.
+
+### `homes` is data, not a hook
+
+`mkVariantEvalCheck` takes a `homesFor` closure plus a `systems` list, which is right for one user in isolation. The adapter instead takes the consumer's per-system homes **as it already holds them** (`{ <system>.<user>.<label> = home; }`), and that choice buys two things a closure could not. The systems checked are the key set of the material itself, so "which systems this fleet bakes" is read off the homes rather than handed a second time and trusted to agree. And the roster can be checked **against** the homes before any check is built: a member with no bake on some system is a named error naming the pair, where a closure could only have thrown a raw `attribute missing` from inside a helper, or — worse, had the adapter mapped over the homes instead of the roster — quietly checked one member fewer.
+
+That is the shape of everything the adapter adds: it introduces no `tryEval` and no filtering, so each helper's guards survive it untouched, and the only new guards are the two vacuity traps that exist **at the fold** and nowhere else — a roster with no members, and homes that do not cover the roster. Both would otherwise yield a check set that is merely *smaller*.
+
+The `force` and `positiveControl` hooks are forwarded rather than fixed, defaulting to the same home-manager attrpaths the helpers default to. That keeps a hand-rolled home checkable through the adapter — and it is what lets the contract's own suite drive the adapter at all, since the contract has no home-manager (ADR-0004) and must point both hooks at the umbrella's own declared options.

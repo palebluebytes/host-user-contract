@@ -39,7 +39,11 @@ user-flake shape that consume it).
   public one — opt-in, because ADR-0019 makes the posture consumer-owned and `loadIdentity`
   imposes none), and `mkVariantEvalCheck` (every variant this repo bakes for one user *evaluates*
   on every system it bakes — roster-generic, applied per user by a consumer's mapper; *which*
-  variants a fleet bakes per system stays the consumer's fact).
+  variants a fleet bakes per system stays the consumer's fact) — plus `mkRosterChecks`, the
+  **roster adapter** that applies all three across a whole roster in one call (`{ roster; homes;
+  buildHome; require; }`), naming each check for you, so a consumer folds the kit over its members
+  instead of hand-writing the fold the helpers being roster-generic was meant to spare it. The
+  three stay individually callable — a single-user repo has no roster to adapt.
 - data surface — `features` (the single registry), `featureGroups`,
   `privilegedGroups`, `safeSet`, `homeAffecting` (the grants a home may see — a producer narrows
   `hostFacts.granted` with it, and `powerset(homeAffecting)` bounds what it bakes; the per-system
