@@ -39,6 +39,7 @@ let
     mkMemberChecks
     mkContractUser
     mkContractUsers
+    mkContractFleet
     mkContractHome
     bindContractUser
     renderNixConfig
@@ -180,6 +181,16 @@ let
         homeGreeterDesktopModule
         homeBaselineModule
         mkContractHome
+        ;
+    })
+    (import ./contract-fleet.nix {
+      inherit
+        lib
+        pkgs
+        system
+        loadIdentity
+        mkContractFleet
+        mkContractUsers
         ;
     })
     (import ./turnkey-bind.nix {
