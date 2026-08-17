@@ -2,6 +2,9 @@
 
 **Status:** Accepted (2026-08-06). Amends [ADR-0007](0007-user-flake-shape.md) (the binding shapes), [ADR-0008](0008-greeter-is-a-contract-deliverable.md) (the greeter mechanism), [ADR-0016](0016-prebuilt-binding-mode.md) (the pre-built primitives), and [ADR-0025](0025-turnkey-host-side-bind.md) (the turnkey bind). It renames and re-levels the `lib` surface, and **retires** the inline-eval binding path and the unilateral direct-grant posture from the public surface. **Amended in place (2026-08-16)** — the producer data surface swaps `homeAffecting` for `variants` and gains `lib.hostFactsFor`; see the amendment at the end.
 
+> **Terminology note (2026-08-17, [ADR-0030](0030-one-name-per-value-on-the-producer-surface.md)):** this record says **variant and roster**; the code and `CONTEXT.md` now say **home and member set**. The decision below is unchanged — only the vocabulary moved. This ADR is left as written.
+
+
 The `lib` surface had grown by accretion — a function per issue, each named for the trait that distinguished it *when it was added* rather than for which one a consumer should reach for. By ADR-0025 there were eight public functions across two spellings of "bind" and three of "make," and the two a normal consumer actually wants (`bindUserFromFlake`, `mkUserBindings`) had the longest, least-guessable names, while the plainest name — `bindUser` — was taken by a test-only tracer. The reference host fleet had to locally re-alias `bindUserFromFlake` to `bindUserTurnkey` just to read. A naming review turned into a surface review, because several of the eight had no consumer at all.
 
 ## What the trace showed

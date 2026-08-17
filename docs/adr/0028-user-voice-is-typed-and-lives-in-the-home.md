@@ -2,6 +2,9 @@
 
 **Status:** Accepted (2026-08-15). Extends [ADR-0025](0025-turnkey-host-side-bind.md) (the offer is half of the negotiated grant) and [ADR-0026](0026-consumer-producer-public-surface.md) (the producer/consumer coin). **Supersedes the ignore-overreach half of [ADR-0002](0002-user-confinement-manifest-greeter.md)** — the "an unknown request key is *ignored*" posture and the freeform that implemented it — and **amends [ADR-0025](0025-turnkey-host-side-bind.md)'s** "the contract owns no `home` flag; the producer's baked variant set is the taxonomy".
 
+> **Terminology note (2026-08-17, [ADR-0030](0030-one-name-per-value-on-the-producer-surface.md)):** this record says **variant**; the code and `CONTEXT.md` now say **home**. The decision below is unchanged — only the vocabulary moved. This ADR is left as written.
+
+
 A user's voice was split across two repos. Its home emitted `contract.requests` (the *parameters* of a feature), but its `offer` (*which* features it asks for — the half the grant is actually derived from, `affordances ∩ offer`) was declared in the **producer's** `flake.nix`, outside the home entirely. A user could not be read as one thing, and the roster carried per-user policy that belonged to the user.
 
 Three edits close that, and they are one decision: **a user declares what it wants in its own home, typed, and can only see what it may vary on.**

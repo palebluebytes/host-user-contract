@@ -38,10 +38,11 @@ contract ships).
 | [0027](0027-runtime-provision-evaluates-the-shared-rule.md) | Runtime provision *evaluates* the shared `accountPlan` (via `contract-account-plan`) instead of re-spelling it in jq; the rule has one source, the clamp is proven without a boot (extends 0012, completes #30/#31) |
 | [0028](0028-user-voice-is-typed-and-lives-in-the-home.md) | The user's voice is typed and lives in the home: `contract.wants` harvested as the offer, `hostFacts.granted` narrowed to the home-affecting features, no freeform in `contract.requests` (supersedes 0002's ignore-overreach half; amends 0025) |
 | [0029](0029-producer-home-builder-and-home-baseline.md) | The contract ships the producer home builder: `mkContractHome` composes the home with home-manager injected per call, and includes the `homeModules.baseline` pinned hygiene by default (extends 0026 + the 0004 amendment); amended 2026-08-17 to also ship `mkContractFleet`, the fleet-level producer over the residual join — overturning its own fatter-producer rejection |
+| [0030](0030-one-name-per-value-on-the-producer-surface.md) | One name per value on the producer surface — **one word, one type**: `grants` is the attrset, `grantKey` the sorted list, `granted` only an option path; the producer coin reads its system off `pkgs`; one resolver answers "which user is this?" under one rule; and (amendment) the nouns follow — `variant` → **bake** (one shape, filled progressively), `roster` → **members** / `mkMembers` / `mkMemberChecks`, `userDir` → `memberDir`. Renames only: no behaviour changes, and the manifest wire format is untouched |
 
 ## Numbering
 
-The ADRs are numbered **contiguously, `0001`–`0029`** — the numbering used throughout the
+The ADRs are numbered **contiguously, `0001`–`0030`** — the numbering used throughout the
 current tree: the files above, their code comments, and the conformance suite.
 
 The arc was renumbered to this clean sequence on 2026-07-06, from an earlier sparse scheme

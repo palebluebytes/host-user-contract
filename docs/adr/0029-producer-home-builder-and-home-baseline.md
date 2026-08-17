@@ -10,6 +10,9 @@ the caller's; see the amendment at the end. **Amended again (2026-08-17)** — t
 this ADR rejected under Considered Options is **overturned**: the contract also ships
 `mkContractFleet`, the fleet-level producer that owns the residual join. See the second amendment.
 
+> **Terminology note (2026-08-17, [ADR-0030](0030-one-name-per-value-on-the-producer-surface.md)):** this record says **variant**; the code and `CONTEXT.md` now say **home**. The decision below is unchanged — only the vocabulary moved. This ADR is left as written.
+
+
 The glue that turns a user's directory into a `homeManagerConfiguration` call was hand-written three
 times across two repos — twice in `examples/users/flake.nix` (the roster homes and the greeter-login
 mapper), once in the operator's `users` repo — and each copy spelled the same four things: the
@@ -36,6 +39,12 @@ contract.lib.mkContractHome {
   extraSpecialArgs ? { },    # opaque passthrough (threads the ADR-0020 `inputs` convention); hostFacts contract-owned and wins
 }
 ```
+
+> **Renamed since (2026-08-17, [ADR-0030](0030-one-name-per-value-on-the-producer-surface.md)):**
+> `granted` is now **`grants`** — the one argument name a grant attrset takes everywhere on this
+> surface, leaving `granted` for option paths and published fields. `userDir`/`identity` beside a
+> `member` now must agree with it rather than overriding it. The block above is left as written; the
+> composition and every other argument are unchanged.
 
 It composes `[ homeModules.default, homeModules.baseline, userDir + "/home.nix", the inline
 identity/home.* module ] ++ extraModules` and applies the **caller's** builder to them.

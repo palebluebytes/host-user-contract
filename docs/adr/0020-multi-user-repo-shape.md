@@ -2,6 +2,9 @@
 
 **Status:** Accepted. **Extends** [ADR-0007](0007-user-flake-shape.md) (the single-user flake shape) — it does not replace it. Both shapes consume the contract identically, via `bindContractPackage` (ADR-0016) per user. **Amended in place (2026-08-15, issue #36)** — sharing modules/overlays is permitted, not required, and the home parameterization gains an `inputs` specialArg; see the amendment at the end. **Amended again (2026-08-16, issue #57)** — the layout rule is now derived by the contract's own `mkContractRoster` rather than transcribed per producer. The decision and its reasoning stand.
 
+> **Terminology note (2026-08-17, [ADR-0030](0030-one-name-per-value-on-the-producer-surface.md)):** this record says **roster**; the code and `CONTEXT.md` now say **member set / `mkMembers`**. The decision below is unchanged — only the vocabulary moved. This ADR is left as written.
+
+
 [ADR-0007](0007-user-flake-shape.md) fixed what *a* user flake exports: `identity.json`, a
 contract-parameterized home module, its overlays. It framed the user singular. But a fleet operator
 runs **several of their own accounts** — `inkpotmonkey`, the co-admin `eyeofalligator`, a break-glass
