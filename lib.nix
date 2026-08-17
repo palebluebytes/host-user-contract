@@ -61,6 +61,122 @@ let
     }
   ) (lib.foldl' (acc: f: acc ++ map (s: s ++ [ f ]) acc) [ [ ] ] variantAxes);
 
+  # The BAKE MATRIX kernel (issue #58): narrow an upper bound to what each system bakes, and guard
+  # the narrowing. `bakeMatrixOver` takes the bound explicitly; the public `mkBakeMatrix` below is
+  # this closed over the contract's own `variants`, so no consumer-facing argument exists for the
+  # suite's sake. INTERNAL, exposed only so the conformance suite can drive a synthetic TWO-axis
+  # bound — the propagation this design exists for cannot otherwise be shown until some future
+  # feature sets `needsOwnBuild` (the posture `variantAxes` above is exposed under).
+  #
+  # WHICH variants a fleet bakes per system stays the consumer's fleet fact (decision #43): the
+  # matrix is the caller's declaration, and this only applies it. What the CONTRACT owns is the
+  # SHAPE of that declaration, because the failure mode is silent: `bindContractUser` binds the
+  # maximal variant that DOES exist, so an under-baked set costs a home its content with nothing
+  # objecting. Producers hand-wrote the filter AND hand-wrote the assert catching their own filter's
+  # failure — and a producer who writes it against a label list rather than the features, or against
+  # the axes a system CAN use, drops a newly-added registry axis from a system's bake in silence.
+  #
+  # So the declaration is per-AXIS and OPEN by default: an axis a system's row omits is usable, and
+  # a system's row states only what it takes AWAY. That is ADR-0002's "one mechanism, opposite
+  # defaults" read for coverage rather than privilege — the same reasoning that defaults `wants` to
+  # the safe set (ADR-0028): fail-CLOSED is right where the risk of the unknown is admitting
+  # something, fail-OPEN where the risk is omitting it. Under-baking is silent and costly;
+  # over-baking wastes build time and nothing else. A contract that gains an axis therefore bakes it
+  # EVERYWHERE — on the restricted systems too — with no edit in any consumer repo.
+  #
+  # The three under-bakes an earlier shape needed asserts for are now UNEXPRESSIBLE rather than
+  # caught: the matrix is keyed by system, so its rows and its system list cannot disagree; presence
+  # in it IS the classification, so no system can go unclassified; and an unrestricted system is one
+  # whose row takes nothing away, which no separate claim can contradict. What remains guarded is
+  # what the type cannot say.
+  bakeMatrixOver =
+    {
+      # The fleet's whole bake matrix, in ONE fact: `{ <system> = { <axis> = bool; }; }` — which
+      # systems this repo bakes, and, per system, which variant axes its SEATS can use. An axis a
+      # row OMITS is usable (absent ⇒ true), so `{ }` is a system that can use everything the
+      # contract names and `{ gui = false; }` is a headless tier. A system absent from the matrix is
+      # not baked at all.
+      systems,
+      # The bound to narrow — `variants` for the public entry point.
+      upperBound,
+    }:
+    let
+      # The axes of the handed bound — the features any of its variants is baked per. Derived from
+      # the bound rather than read off `variantAxes` so there is ONE input to disagree with: a row's
+      # axis names are checked against the very set the filter cuts by.
+      axes = lib.unique (lib.concatMap (v: lib.attrNames v.grants) upperBound);
+      systemNames = lib.attrNames systems;
+      rowOf = sys: systems.${sys};
+      settingsIn = sys: lib.attrNames (rowOf sys);
+      # The axes a system's seats CANNOT use: the `false` entries of its row, and only those.
+      unusableIn = sys: lib.filter (f: !(rowOf sys).${f}) (settingsIn sys);
+      # The narrowing itself: drop every variant baked per an axis this system's seats cannot use.
+      matrix = lib.genAttrs systemNames (
+        sys: lib.filter (v: !lib.any (f: v.grants ? ${f}) (unusableIn sys)) upperBound
+      );
+
+      showList = xs: "[" + lib.concatStringsSep ", " xs + "]";
+      labelsOf = vs: showList (map (v: v.label) vs);
+      # "<system> [<axis>, …]" — an error names the offending AXES and SYSTEMS, not a count.
+      describe =
+        offendingIn: systemList:
+        lib.concatMapStringsSep ", " (sys: "${sys} ${showList (offendingIn sys)}") systemList;
+
+      malformedRows = lib.filter (sys: !lib.isAttrs (rowOf sys)) systemNames;
+      nonBoolIn = sys: lib.filter (f: !lib.isBool (rowOf sys).${f}) (settingsIn sys);
+      byNonBool = lib.filter (sys: nonBoolIn sys != [ ]) systemNames;
+      # Checked on the KEY whatever the boolean says: `sudo = true` is as much a mistake about what
+      # the bake fans out on as `sudo = false` is, and reads as though it had been considered.
+      nonAxesIn = sys: lib.filter (f: !lib.elem f axes) (settingsIn sys);
+      byNonAxis = lib.filter (sys: nonAxesIn sys != [ ]) systemNames;
+      emptied = lib.filter (sys: matrix.${sys} == [ ]) systemNames;
+    in
+    # Ordered so a broken declaration reports before any verdict about bakes, most specific first:
+    # no systems at all, then a row of the wrong shape, then a non-boolean setting, then a setting
+    # that names nothing the bake fans out on — and only then the one verdict about what IS baked.
+    assert lib.assertMsg (systems != { }) (
+      "mkBakeMatrix: the matrix is empty — a bake matrix over zero systems bakes, publishes and "
+      + "checks NOTHING while every output stays green. `systems` is "
+      + "`{ <system> = { <axis> = bool; }; }`: one entry per system this repo bakes, `{ }` for a "
+      + "system whose seats can use everything the contract names."
+    );
+    assert lib.assertMsg (malformedRows == [ ]) (
+      "mkBakeMatrix: the row(s) for ${showList malformedRows} are not attrsets — each system's row "
+      + "is `{ <axis> = bool; }`, the variant axes its seats can use, and `{ }` for a system that "
+      + "can use everything the contract names."
+    );
+    assert lib.assertMsg (byNonBool == [ ]) (
+      "mkBakeMatrix: non-boolean axis setting(s): ${describe nonBoolIn byNonBool}. Each axis in a "
+      + "row is a BOOL — `false` where that system's seats cannot use it. An omitted axis is usable, "
+      + "so a row states only what it takes away."
+    );
+    assert lib.assertMsg (byNonAxis == [ ]) (
+      "mkBakeMatrix: setting(s) that are not variant AXES: ${describe nonAxesIn byNonAxis}. The axes "
+      + "of this contract are ${showList axes} — only a feature whose grant cannot be applied to an "
+      + "already-built home (`needsOwnBuild`) is one. A bind-riding feature (`sudo`), a variant LABEL "
+      + "(`base`) or a typo names nothing the bake fans out on, so the system would bake the full set "
+      + "while reading as restricted. Name the FEATURES a system's seats cannot use."
+    );
+    assert lib.assertMsg (emptied == [ ]) (
+      "mkBakeMatrix: system(s) ${describe unusableIn emptied} bake NO variant at all — those axes cut "
+      + "every entry of the upper bound ${labelsOf upperBound}. An emptied bake publishes, binds and "
+      + "checks nothing for that system while every output stays green, so it is an error rather "
+      + "than `[ ]`."
+    );
+    matrix;
+
+  # mkBakeMatrix (issue #58): the PUBLIC per-system bake matrix — `bakeMatrixOver` closed over the
+  # contract's own `variants`, which is what makes a registry that gains an axis reach every
+  # consumer's bake with no edit. Returns `{ <system> = [ <variant> ]; }`, each entry the same
+  # `{ grants; label; }` value `variants` hands out, so a producer maps over a row exactly as it
+  # would over the whole set. See `bakeMatrixOver` above for the declaration shape and the guards.
+  mkBakeMatrix =
+    { systems }:
+    bakeMatrixOver {
+      inherit systems;
+      upperBound = variants;
+    };
+
   # The producer-side `hostFacts` projection: what a PRODUCER passes into a home it is baking.
   # Deliberately NOT the retired `mkHostFacts` under a new name — that one projected from a NixOS
   # host `config`, which only exists where a host evaluates a home inline (retired with that path
@@ -822,6 +938,8 @@ in
     safeSet
     variantAxes
     variants
+    bakeMatrixOver
+    mkBakeMatrix
     hostFactsFor
     ;
 

@@ -149,6 +149,13 @@ in
     # The producer-side hostFacts projection (ADR-0028): narrows `granted` to the variant axes,
     # the one rule every producer previously hand-wrote as a `filterAttrs`. See lib.nix.
     inherit (contractLib) hostFactsFor;
+    # mkBakeMatrix (issue #58): the per-system BAKE MATRIX over `variants`. The caller declares its
+    # whole matrix as one fact — `{ <system> = { <axis> = bool; }; }`, a row per system it bakes,
+    # each row naming only the axes that system's seats CANNOT use — and gets the narrowing plus its
+    # guards. Which variants a fleet bakes stays the fleet's (decision #43); the shape of the
+    # declaration is the contract's, because an under-bake is silent and an omitted axis must
+    # therefore default to BAKED. See lib.nix.
+    inherit (contractLib) mkBakeMatrix;
     # The identity.json loader (ADR-0007): lossless over identity.nix, used by a user's home
     # module and by the producer coin below.
     inherit (identityJson) loadIdentity;
@@ -230,6 +237,11 @@ in
     # because no consumer needs the raw list once both derived forms ship; exposed here so the
     # conformance suite can prove the taxonomy itself (which features ride the bind) in isolation.
     inherit (contractLib) variantAxes;
+    # The bake-matrix kernel behind the public `mkBakeMatrix` (issue #58), taking the upper bound to
+    # narrow instead of closing over `variants`. Internal for the same reason `variantAxes` is: no
+    # consumer needs it, and the suite cannot otherwise prove that a contract which GAINS an axis
+    # extends every system's bake — the registry has one axis, so the second is synthetic.
+    inherit (contractLib) bakeMatrixOver;
     inherit (contractLib)
       mkContractPackage
       mkContractPackageForHome
