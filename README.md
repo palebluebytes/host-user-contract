@@ -101,9 +101,28 @@ contract.lib.mkContractUsers {
 
 `inherit … packages contractUsers` those straight into your flake outputs and a host can bind them.
 
-For more than one system, fold the same block over your system list — and instantiate `pkgs` **once
-per system**, never once per user, or evaluation time multiplies. [`examples/users/`](examples/users/)
-is a worked multi-system version with checks.
+For more than one system, don't fold that block by hand — hand the whole join to `mkContractFleet`,
+which builds every member's every home on every system your matrix names, instantiates `pkgs` **once
+per system** (never once per user, or evaluation time multiplies), and gives back both flake outputs
+already nested by system:
+
+```nix
+fleet = contract.lib.mkContractFleet {
+  inherit members;
+  homeMatrix = contract.lib.mkHomeMatrix { systems = { x86_64-linux = { }; aarch64-linux.gui = false; }; };
+  pkgsFor    = sys: nixpkgs.legacyPackages.${sys};
+  buildHome  = { member, grants, pkgs }: contract.lib.mkContractHome {
+    inherit member grants pkgs;
+    homeManagerConfiguration = home-manager.lib.homeManagerConfiguration;
+    stateVersion = "25.11";
+  };
+};
+# → inherit (fleet) packages contractUsers;   …and `fleet.homes.<sys>.<u>.<label>` for your checks
+```
+
+Your builder stays yours — the contract applies it and never imports home-manager. Reach for
+`mkContractUsers` above instead when your bake is *not* every member × every home.
+[`examples/users/`](examples/users/) is the worked multi-system version, with checks.
 
 ---
 
@@ -136,6 +155,7 @@ user needs more than one: `mkHomeMatrix` says which.
 | `mkContractHome` | `{ homeManagerConfiguration; pkgs; member; grants ? {}; stateVersion; extraModules ? []; }` | a built home |
 | `mkContractUser` | `{ pkgs; member; homes }` | `{ packages.<sys>; contractUsers.<sys>.<u>; }` |
 | `mkContractUsers` | `{ pkgs; members; homes }` | the same, for every member |
+| `mkContractFleet` | `{ members; homeMatrix; pkgsFor; buildHome }` | `{ homes; packages; contractUsers; systems; pkgsBySystem; }` — every member × home × system |
 | `bindContractUser` | `{ usersFlake; username }` | a NixOS module |
 | `traceUser` | `{ userModule; identity; grants ? {}; }` | a dry-run record — no home-manager, no build |
 | `loadIdentity` | a path | the identity |

@@ -262,7 +262,7 @@ Do this in order — a later step depending on an earlier one:
 
 ## What the contract already guarantees (do not re-implement)
 
-- `mkContractUser` / `mkContractUsers` / `bindContractUser` / `traceUser` — the public producer/consumer surface (`lib.nix`, ADR-0026).
+- `mkContractUser` / `mkContractUsers` / `mkContractFleet` / `bindContractUser` / `traceUser` — the public producer/consumer surface (`lib.nix`, ADR-0026). The three producers are one user / a member set you enumerate / one you derive across systems.
 - `mkFeatureRecipients` — the per-feature recipient map for re-key/rotate (`lib.nix`).
 - `custom.host.exposed` + `exposedHostOffenders` — the exposed-host secret ban (`modules.nix`).
 - `conformance/confinement.nix` — the structural-confinement proof (criterion 2).

@@ -478,8 +478,11 @@ the term is stable, the code is pending (see the cited issue).
   A row per system the fleet bakes, naming only the [[home]] axes that system's **seats cannot
   use** (`{ }` = can use everything the contract names; `{ gui = false; }` = a headless tier). A
   producer's per-system rows of homes and packages (`{ <system> = { <label> = home; }; }`) are
-  projections of the result, and *which members* bake is the same fleet fact one rung up
-  ([[mkContractUsers]]' `users`). The *fact* stays the consumer's (decision #43); the **shape** of
+  projections of the result. *Which members* bake used to be the same fleet fact one rung up
+  ([[mkContractUsers]]' `homes` keys), and still is for a producer that enumerates its own — but the
+  mainline no longer states it: [[mkContractFleet]] hard-wires the **cross-product**, so on that
+  path every member bakes every home in its system's row and the matrix is the only fleet fact left
+  in it. The *fact* stays the consumer's (decision #43); the **shape** of
   the declaration is the contract's, because an under-bake is **silent** — [[bindContractUser]]
   binds the maximal bake that *does* exist, so a missing one costs a home its content with
   nothing objecting. Hence an **omitted axis is usable**: a registry that gains one bakes it
@@ -537,11 +540,36 @@ the term is stable, the code is pending (see the cited issue).
 - **`mkContractUsers`** — the **members public producer**: [[mkContractUser]] mapped over a whole
   `users` flake and merged, so a multi-user repo (ADR-0020) bakes its entire members in **one** call.
   The turnkey producer for the multi-user shape exactly as [[bindContractUser]] is the turnkey
-  consumer. Takes the [[members]] plus a `users` attrset of `{ bakes }`: *who* the members are is
-  the members' answer, *which* of them build and with which homes is the producer's [[home
-  matrix]] — the same fleet fact the per-system bake narrowing is. A `users` key the members does not
-  hold is a hard bake error (a hand-listed name that has drifted from the directory).
+  consumer. Takes the [[members]] plus a `homes` attrset of `{ <user> = [ { grants; label; home } ]; }`:
+  *who* the members are is the members' answer, while *which* of them build and with which homes is
+  what a producer enumerating its own bake still states here — the same fleet fact the per-system
+  bake narrowing is, and no longer the mainline answer now that [[mkContractFleet]] hard-wires the
+  cross-product one rung up. A `homes` key the members does not
+  hold is a hard bake error (a hand-listed name that has drifted from the directory). Since
+  [[mkContractFleet]] it is also the **escape hatch**: a producer whose bake is not a full
+  cross-product calls this rung directly, which is why it stays public although both reference
+  producers stopped calling it.
   **(built — issue #25; singularised ADR-0026; members-fed issue #57)** (ADR-0025)
+- **`mkContractFleet`** — the **fleet public producer**, one rung above [[mkContractUsers]]
+  (ADR-0029's second amendment, issue #62). Takes the two derived facts plus the consumer's own
+  material — `{ members; homeMatrix; pkgsFor; buildHome }` — and returns the whole published
+  surface: `{ homes; packages; contractUsers; systems; pkgsBySystem; }`, the last two derived rather
+  than restated. It owns the residual **join** a multi-user, multi-system producer was otherwise
+  left holding: the per-home eval loop, the members × system × home fold, the grants↔home pairing,
+  the two output merges, and the once-per-system `pkgs`. Mechanics, not choices — which is the whole
+  case for it, since the *safety* half was already taken by the [[bake pairing]]. The arity reads
+  one user / a members set you **enumerate** / one you **derive**. Four shape rules make it what it
+  is: `buildHome` is an **injected closure** `{ member, grants, pkgs } → home`, so the contract
+  never names [[mkContractHome]], `stateVersion` or `extraModules`, never imports home-manager
+  (ADR-0004), and a home built *without* the builder still bakes; `pkgsFor` is a **function**, so
+  the producer derives `systems` from the matrix and applies it **once per system** rather than once
+  per user × home × system (the rule two producers carried as prose); the **cross-product is
+  hard-wired**, every member baking every home in its system's row, as [[mkMemberChecks]]' coverage
+  rule already assumed; and the outputs come **nested by system**, so `inherit (fleet) packages
+  contractUsers;` *is* the flake outputs. What stays the consumer's: `pkgsFor`, the matrix, the
+  builder's own facts, the `homeConfigurations` published names, the checks, and any **unbaked**
+  home — a greeter-login mapper calls [[mkContractHome]] directly and is exempt by design, not
+  served. **(built — issue #62)** (ADR-0029, ADR-0026)
 - **`mkContractHome`** — the **producer home builder** (ADR-0029, issue #40): the contract-owned
   composition every producer's `mkHome` glue previously hand-wrote — the home umbrella +
   [[home baseline]] + the user's `home.nix` + the inline identity/`home.*` module + the narrowed

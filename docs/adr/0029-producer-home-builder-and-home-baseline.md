@@ -10,7 +10,7 @@ the caller's; see the amendment at the end. **Amended again (2026-08-17)** — t
 this ADR rejected under Considered Options is **overturned**: the contract also ships
 `mkContractFleet`, the fleet-level producer that owns the residual join. See the second amendment.
 
-> **Terminology note (2026-08-17, [ADR-0030](0030-one-name-per-value-on-the-producer-surface.md)):** this record says **variant**; the code and `CONTEXT.md` now say **home**. The decision below is unchanged — only the vocabulary moved. This ADR is left as written.
+> **Terminology note (2026-08-17, [ADR-0030](0030-one-name-per-value-on-the-producer-surface.md)):** this record says **variant**, and its second amendment says `mkContractRoster` / `mkBakeMatrix` / `mkRosterChecks`; the code and `CONTEXT.md` now say **home**, `mkMembers`, `mkHomeMatrix` and `mkMemberChecks`. The decisions below are unchanged — only the vocabulary moved, and ADR-0030 carries the full table. This ADR is left as written **except where it states a signature**: a signature gets copied rather than read, so the two in the second amendment were moved to the shipped spelling in place.
 
 
 The glue that turns a user's directory into a `homeManagerConfiguration` call was hand-written three
@@ -240,13 +240,21 @@ derivation. Absorbing them costs ~9 lines back at the new call site — **a net 
 
 ```nix
 contract.lib.mkContractFleet {
-  roster;                                     # from mkContractRoster (#57)
-  bakedVariants;                              # from mkBakeMatrix (#58) — the consumer's fleet fact
+  members;                                    # from mkMembers (#57)
+  homeMatrix;                                 # from mkHomeMatrix (#58) — the consumer's fleet fact
   pkgsFor = sys: …;                           # a FUNCTION, not an attrset — see below
-  buildHome = { member, granted, pkgs }: …;   # injected closure (ADR-0004)
+  buildHome = { member, grants, pkgs }: …;    # injected closure (ADR-0004)
 }
 # → { homes; packages; contractUsers; systems; pkgsBySystem; }
 ```
+
+> **Written in the shipped vocabulary, unlike the rest of this record.** This block was first
+> sketched here as `roster` / `bakedVariants` / `granted`, hours before
+> [ADR-0030](0030-one-name-per-value-on-the-producer-surface.md) moved every one of those nouns —
+> and a sketch is the one thing in an ADR that gets *copied* rather than read, so leaving it as
+> written would have shipped the surface with the exact spellings ADR-0030 was written to remove.
+> `granted` in particular is now reserved for option paths and is never a parameter. The decision
+> below is unchanged; only these four words are. Built as #62.
 
 - **The home arrives by injected closure, not by the contract calling its own builder.** `buildHome`
   is the consumer's, so the fleet producer never names `mkContractHome`, `stateVersion`,
@@ -308,8 +316,8 @@ packages nothing, which makes the rule a choice however mechanical it looks.
   roster you *derive*, across systems).
 - **A third `buildHome` spelling, accepted deliberately.** The kit already has two —
   `mkConfinementCheck` takes `extraModules: home`, `mkRosterChecks` takes `member: extraModules:
-  home` curried. This one takes an **attrset**, `{ member, granted, pkgs }`, because three
-  positional arguments in a fixed order is the worse failure mode: silently transposing `granted`
+  home` curried. This one takes an **attrset**, `{ member, grants, pkgs }`, because three
+  positional arguments in a fixed order is the worse failure mode: silently transposing `grants`
   and `pkgs` is a type error nowhere. The inconsistency is named here rather than hidden.
 - **The symmetry framing is retired.** The candidate was raised on an asymmetry — a host binds with
   one call while the producer spends hundreds of lines. That framing does not survive the

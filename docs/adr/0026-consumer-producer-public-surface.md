@@ -164,3 +164,35 @@ That is the shape of everything the adapter adds: it introduces no `tryEval` and
 The coverage guard is the one demand the adapter makes that the helpers do not, and it is worth naming as such: **every member bakes on every system in `homes`**. That is not an opinion about the [bake matrix](../../CONTEXT.md) — it says nothing about which *variants* a system bakes — but it is the shape `mkBakeMatrix` already implies, whose rows are per **system**, not per user. It is also what makes "who is unchecked" answerable at all: without it there is no set to compare the roster against. A fleet that genuinely bakes different members on different systems is outside this fold, and calls the three helpers per user — one more reason they stay public, and the error message says so.
 
 The `force` and `positiveControl` hooks are forwarded rather than fixed, defaulting to the same home-manager attrpaths the helpers default to. That keeps a hand-rolled home checkable through the adapter — and it is what lets the contract's own suite drive the adapter at all, since the contract has no home-manager (ADR-0004) and must point both hooks at the umbrella's own declared options.
+
+## Amendment (2026-08-17) — the fleet-level producer joins the `lib`, and `mkContractUsers` stays
+
+**`mkContractFleet`** (issue #62, executing [ADR-0029](0029-producer-home-builder-and-home-baseline.md)'s second amendment) takes the public `lib` to fifteen: `{ members; homeMatrix; pkgsFor; buildHome } → { homes; packages; contractUsers; systems; pkgsBySystem; }` — every member's every home, on every system, plus the two published attributes already nested the way a flake output is.
+
+*(Two counts are in circulation and both are right about different sets: this ADR has been counting the whole `lib`, which the check kit took to fourteen and this takes to fifteen; ADR-0029's amendments count the produce/consume functions alone, which this takes from ten to eleven.)*
+
+It is the third and last rung of one arity, and the three read honestly together: **`mkContractUser`** bakes one user, **`mkContractUsers`** bakes a member set you *enumerate*, **`mkContractFleet`** bakes one you *derive* — across systems. The reasoning, the conceded costs, and the options rejected inside it all live in ADR-0029's second amendment; what belongs here is only what this ADR is the register of: what joined the surface, what it cost, and what was kept.
+
+### Against this ADR's own test
+
+- **Real call sites that cannot get it any other way without re-typing it.** What it absorbs is the residual *join* — the per-home eval loop, the members × system × home fold, the grants↔home re-pairing, the two output merges, and the `systems`/`pkgs` derivation. Measured after the four blockers landed, that was 37 lines of `examples/users/flake.nix`, present character-for-character in a second, independently evolved producer. The adoption removed 25 code lines (37 total) and moved nothing downstream: all 21 published packages, the whole binding index, and all 21 `homeConfigurations` names are byte-identical across it.
+- **Not a second spelling of anything kept.** `mkContractUsers` bakes homes it is handed; this builds them and hands them over. The one function it *contains* is that one, called once per system — the same relationship `mkContractUsers` already has to `mkContractUser`.
+- **Every input is the consumer's,** so it cannot be a flake output the contract writes: its members, its matrix, its nixpkgs, its builder.
+
+### `mkContractUsers` is kept although both reference producers stopped calling it
+
+This is the caller-less condition that internalized four functions in the original decision, and it is **not** applied here. One reason, and it is about distribution rather than about taste: the contract is consumed at a **URL**. `mkContractFleet` hard-wires the full cross-product — every member bakes every home in its system's row — so a third-party producer whose bake is *not* a cross-product needs the rung below, and this ADR's "one-line move back from `kit.internal`" is no escape hatch for someone who does not own this repo. An escape hatch has to be reachable by the person escaping.
+
+The demotion was considered and rejected on exactly that ground, as was extending `mkContractUsers` in place with a members-plus-matrix mode: a function with three modes is the accretion this ADR was written to stop, and one more name is cheaper to read than one more mode.
+
+### What it does not take
+
+- **It does not build a home.** `buildHome` is an injected closure, `{ member, grants, pkgs } → home`, so the producer never names `mkContractHome`, `stateVersion`, `extraModules` or `extraSpecialArgs`, and never imports home-manager (ADR-0004, the same posture `mkConfinementCheck`'s `buildHome` takes). That is also what keeps ADR-0029's first-amendment guarantee alive one rung up: a home built *without* the builder still bakes, because the fold cannot tell.
+- **It does not opine on the bake matrix, or on who is a member.** Both arrive as values — `mkHomeMatrix`'s and `mkMembers`'. What it adds is the cross-product between them, which is the same call `mkMemberChecks` already made.
+- **It does not name a published home.** The `homeConfigurations` naming rule stays the producer's: those names owe the published packages nothing, which makes the rule a choice however mechanical the loop around it looks.
+- **It does not serve every home.** A greeter-login mapper builds a home that is never baked, and keeps calling `mkContractHome` directly. Exempt by design, conceded on the record in ADR-0029, and not something a future proposal may quietly reclassify.
+- **It does not fold the check kit.** `mkMemberChecks` shipped for that, and re-wrapping it is the second spelling this ADR's test forbids.
+
+### `pkgsFor` is a function, and that is the load-bearing argument for the name
+
+An attrset would not work: `systems` is derived from the matrix, so a consumer handing over a pre-built `pkgsBySystem` must derive `systems` itself first and the absorption never completes. With a function the producer derives `systems`, applies `pkgsFor` **once per system**, and returns the memo — which is how a rule both producers carried as *prose* ("`import nixpkgs` is not memoized across applications; instantiate once per system, never once per user × home × system") becomes a value a caller holds. The conformance suite pins it as identity rather than as resemblance: the `pkgs` each home receives *is* the memo entry, and a second application of the same `pkgsFor` is *not* — the negative control without which the claim could pass by coincidence.
