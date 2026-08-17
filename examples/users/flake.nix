@@ -27,19 +27,10 @@
       # The system this flake publishes its `home-manager switch` surface on. NOT a per-user fact:
       # every user bakes for every system in the home matrix below.
       system = "x86_64-linux";
-      # DERIVED from the home matrix, never typed twice: the matrix is keyed by system, so its rows
-      # already say which systems this fleet bakes. Everything that iterates systems for a reason
-      # OTHER than bakes — the per-system nixpkgs, the published rows, `mkHomeEvalCheck` —
-      # reads this, so a system added to the matrix is covered by all of them and none can drift.
-      systems = lib.attrNames homeMatrix;
-      # PLAIN nixpkgs — the producer contributes NO overlay and NO config. A user's own pkgs
-      # (ADR-0007) is declared by its OWN home: home-manager re-imports nixpkgs inside every home
-      # eval and CONCATENATES the home's `nixpkgs.overlays` onto the ones the producer passed, so
-      # the duo pair's `shared/overlay.nix` merges rather than replaces (spelled out there). Held
-      # per system and looked up, so nixpkgs is instantiated once per system rather than once per
-      # user × bake.
-      pkgsBySystem = lib.genAttrs systems (sys: nixpkgs.legacyPackages.${sys});
-      pkgs = pkgsBySystem.${system};
+      # This system's nixpkgs, taken from the FLEET's own per-system memo (below) rather than
+      # instantiated a second time here — so the published homes, the greeter homes and the checks
+      # all share the one evaluation the producer already made.
+      pkgs = fleet.pkgsBySystem.${system};
 
       # ── The members, DERIVED from the directory by the CONTRACT ───────────────────────────────
       # `mkMembers` reads the ADR-0020 layout and answers, once, who is in this repo:
@@ -158,8 +149,10 @@
       #
       # What is fixed here is exactly what is this repo's own: home-manager's builder passed
       # verbatim (the ADR-0004 injection that keeps the CONTRACT package-free — it applies a
-      # function it never imports), the `stateVersion` (a required argument precisely because real
-      # repos differ, so the contract carries no default), and the per-system pkgs.
+      # function it never imports) and the `stateVersion` (a required argument precisely because
+      # real repos differ, so the contract carries no default). Everything else — which member,
+      # which grants, which system's pkgs — is the caller's, because the two callers differ: the
+      # fleet below builds every baked home, and the greeter block builds the one that is never baked.
       #
       # `extraSpecialArgs` is deliberately NOT threaded: no user here consumes an external flake, so
       # the ADR-0020 `inputs` passthrough is a real users repo's story, not this example's. Named
@@ -171,10 +164,13 @@
           # A MEMBER, not a directory and an identity: it carries both, already resolved, so
           # this file hands the builder one value and no identity.json is read twice (issue #57).
           member,
+          # Which system's nixpkgs to build against — always passed, never defaulted. A default
+          # reading this file's own `pkgs` would make the builder depend on the fleet that is
+          # built FROM it; laziness would resolve that, but "reads circular, terminates anyway" is
+          # a thing a reader has to work out, and there is nothing to gain by making them.
+          pkgs,
           grants ? { },
           extraModules ? [ ],
-          # Override to build for another system; the home layers its own overlays on whatever it gets.
-          pkgs ? pkgsBySystem.${system},
         }:
         contract.lib.mkContractHome {
           inherit
@@ -187,32 +183,48 @@
           stateVersion = "25.11";
         };
 
-      # One user's whole baked set for one system, keyed by bake label — the system's row of the
-      # matrix, so aarch64 yields `{ base }` where x86_64 yields `{ base, gui }`.
-      homesForSystem =
-        args: sys:
-        lib.listToAttrs (
-          map (
-            v:
-            lib.nameValuePair v.label (
-              mkHome (
-                args
-                // {
-                  # One name the whole way: the matrix hands out `{ grants; label; }`, the builder
-                  # bakes under `grants`, and the coin below is handed the same `grants` back.
-                  inherit (v) grants;
-                  pkgs = pkgsBySystem.${sys};
-                }
-              )
-            )
-          ) homeMatrix.${sys}
-        );
-
-      # The whole fleet: `homes.<system>.<user>.<label>`. Computed ONCE rather than per consumer, so
-      # the published names, the binding artifacts and the checks share one evaluation of each home.
-      homes = lib.genAttrs systems (
-        sys: lib.mapAttrs (_: member: homesForSystem { inherit member; } sys) members
-      );
+      # ── The fleet: every member × every home in its system's row ─────────────────────────────
+      # `mkContractFleet` (ADR-0029's second amendment, issue #62) is the whole join between the
+      # two derived facts above and this repo's builder. It takes WHO is here (`members`), WHAT
+      # each system bakes (`homeMatrix`), a nixpkgs FUNCTION, and the builder — and returns the
+      # published surface entire: `{ homes; packages; contractUsers; systems; pkgsBySystem; }`.
+      #
+      # What it replaces here was mechanics rather than choices, and re-typed character-for-
+      # character in every other producer: the per-home eval loop, the members × system × home
+      # fold, the re-pairing of each home with the grants it was built under, the two output
+      # merges, and the derivation of `systems` and the per-system `pkgs`. None of that is a
+      # fleet's FACT — the facts are stated above and below, and this call is only their join.
+      #
+      # `buildHome` is injected, so the contract applies a builder it never imports and never
+      # learns what `stateVersion` or `extraModules` are (ADR-0004). That is also why the greeter
+      # block below still goes through `mkHome` on its own, OUTSIDE this call: an unbaked home is
+      # exempt from the bake by design, and a producer that fused builder to bake could not have one.
+      fleet = contract.lib.mkContractFleet {
+        inherit members homeMatrix;
+        # PLAIN nixpkgs — the producer contributes NO overlay and NO config. A user's own pkgs
+        # (ADR-0007) is declared by its OWN home: home-manager re-imports nixpkgs inside every home
+        # eval and CONCATENATES the home's `nixpkgs.overlays` onto the ones the producer passed, so
+        # the duo pair's `shared/overlay.nix` merges rather than replaces (spelled out there). A
+        # FUNCTION, not an attrset: the producer applies it once per system and hands back the memo
+        # as `pkgsBySystem`, so nixpkgs is instantiated once per system rather than once per
+        # user × home × system.
+        pkgsFor = sys: nixpkgs.legacyPackages.${sys};
+        buildHome =
+          {
+            member,
+            grants,
+            pkgs,
+          }:
+          mkHome { inherit member grants pkgs; };
+      };
+      # DERIVED from the home matrix, never typed twice: the matrix is keyed by system, so its rows
+      # already say which systems this fleet bakes. Everything that iterates systems for a reason
+      # OTHER than bakes — the published rows and the check fold — reads this, so a system added to
+      # the matrix is covered by both and neither can drift.
+      #
+      # `homes.<system>.<user>.<label>`, evaluated ONCE, so the published names, the binding
+      # artifacts and the checks share one evaluation of each home.
+      inherit (fleet) systems homes;
 
       # ── The greeter-login home, for EVERY member ──────────────────────────────────────
       # `<u>-greeter`: the same user through the same builder, granted the contract's safe set
@@ -233,7 +245,7 @@
       greeterHomes = lib.mapAttrs (
         _: member:
         mkHome {
-          inherit member;
+          inherit member pkgs;
           grants = contract.greeterGrants;
           extraModules = [
             contract.homeModules.greeterDesktop
@@ -242,53 +254,6 @@
         }
       ) members;
 
-      # ── Turnkey producer bindings (ADR-0025/0026/0028, issue #25) ────────────────────────────
-      # `mkContractUsers` maps the DERIVED members ONCE per system into BOTH the named per-bake
-      # packages (`<user>-contractPackage-<label>`) AND the pure `contractUsers.<sys>.<user>` binding
-      # INDEX a host selects from with `contract.lib.bindContractUser` (deriving the grant as its
-      # `contract.affordances` ∩ the user's offer, then binding the maximal covered bake). It
-      # bakes through the internal package kernels, which only READ an already-evaluated home, and
-      # takes each user's identity off its MEMBER — so this call passes only the members and
-      # its home matrix, never a user's name, offer or identity path.
-      #
-      # `users` keys the matrix by member, so which members bake (and with which bakes) stays this
-      # fleet's own fact while WHO the members are stays the members'. Here they coincide — every
-      # member bakes every bake its system allows — which is what makes `lib.mapAttrs` over the
-      # members the whole call.
-      #
-      # This is the one place the matrix is RE-PAIRED: each home is looked up by `v.label` and handed
-      # back alongside `v.grants`. Both sides come from the same `homeMatrix` row, so the pairing
-      # is right by construction here — and since issue #56 it is also CHECKED, because right-by-
-      # construction is a property of this file rather than of the shape being taught. `mkContractHome`
-      # gives every home the grant-key it was baked under, so a producer that pairs `homes.….base`
-      # with the `gui` grants fails the bake by name instead of publishing a base home as the gui
-      # bake — which no downstream guard could have seen (they all read this `grants`, not the home).
-      bindings = lib.genAttrs systems (
-        sys:
-        contract.lib.mkContractUsers {
-          # The system the outputs are keyed by is read off this `pkgs`, so there is no second
-          # argument to disagree with it.
-          pkgs = pkgsBySystem.${sys};
-          inherit members;
-          # ONE shape, filled in progressively: the matrix hands out `{ grants; label; }` and the
-          # producer adds the `home` it built under those grants. Nothing is re-keyed or re-derived
-          # here, so the grants a home was built under and the grants it is published with are the
-          # same value — which is what `mkContractHome`'s pairing guard checks.
-          #
-          # Two different shapes wear the name `homes`, deliberately, because each is the argument
-          # name its consumer takes: this one is `{ <user> = [ { grants; label; home } ]; }` (the
-          # producer needs each home's grants beside it), while the `homes` in the `let` above is
-          # `{ <system>.<user>.<label> = home; }` (what `mkMemberChecks` takes). Same things,
-          # keyed for two different questions.
-          homes = lib.mapAttrs (
-            n: _: map (v: v // { home = homes.${sys}.${n}.${v.label}; }) homeMatrix.${sys}
-          ) members;
-        }
-      );
-
-      # The published package set per system — every user's homes, so aarch64's is the base
-      # bakes alone. Named here because `checks` is literally this set plus the repo's own.
-      packages = lib.genAttrs systems (sys: bindings.${sys}.packages.${sys});
     in
     {
       # The `home-manager switch` surface, on the default system only (other systems' homes are
@@ -311,20 +276,24 @@
         )
         // lib.mapAttrs' (n: home: lib.nameValuePair "${n}-greeter" home) greeterHomes;
 
-      # The pre-built binding artifacts (ADR-0016), for every user × bake × system. Each is
-      # content-addressed and carries `activate` + `contract-requests.json` (with the baked `granted`
-      # field the ADR-0025 coupling guard asserts the host actually grants):
+      # Both of the fleet's published attributes, straight out of the producer — it emits them
+      # already nested by system, which is the shape a flake output is, so there is nothing here to
+      # merge or re-key.
+      #
+      # `packages` — the pre-built binding artifacts (ADR-0016), for every user × bake × system.
+      # Each is content-addressed and carries `activate` + `contract-requests.json` (with the baked
+      # `granted` field the ADR-0025 coupling guard asserts the host actually grants):
       #   - x86_64-linux: <user>-contractPackage-{base,gui}
       #   - aarch64-linux: <user>-contractPackage-base alone — the matrix bakes no gui there.
-      inherit packages;
-
-      # The turnkey binding INDEX (ADR-0025): `contractUsers.<sys>.<user> = { identity; offer;
-      # contractPackages = [{ grantKey; package }] }` — plain data (no IFD), so a host's `bindContractUser`
-      # picks a bake by reading it, never by building every bake to inspect a baked manifest.
-      contractUsers = lib.foldl' (acc: sys: acc // bindings.${sys}.contractUsers) { } systems;
+      #
+      # `contractUsers` — the turnkey binding INDEX (ADR-0025): `contractUsers.<sys>.<user> =
+      # { identity; offer; contractPackages = [{ grantKey; package }] }`, plain data (no IFD), so a
+      # host's `bindContractUser` picks a bake by reading it rather than by building every bake to
+      # inspect a baked manifest.
+      inherit (fleet) packages contractUsers;
 
       # ── Checks ──────────────────────────────────────────────────────────────────────────────
-      # `checks = packages`, plus the contract's consumer check kit mapped over the derived members.
+      # `checks = fleet.packages`, plus the contract's consumer check kit mapped over the derived members.
       # There are no per-user checks — not "none yet": a user here ships `identity.json` + `home.nix`
       # and nothing else, and this mapper carries no hook to pick a check file up with. Everything
       # below is generic over the members, so a new user is covered the moment its directory exists.
@@ -338,7 +307,7 @@
       # and the greeter path end-to-end lives in `examples/fleet`, which needs a booted host.
       checks = lib.genAttrs systems (
         sys:
-        packages.${sys}
+        fleet.packages.${sys}
         // lib.optionalAttrs (sys == system) (
           # The whole check kit, folded over the members in ONE call (issue #60) — yielding
           # `home-confinement-<user>` and `home-eval-<user>` per member plus one
@@ -374,7 +343,7 @@
           # which the contract's own suite structurally cannot reach (ADR-0004).
           contract.lib.mkMemberChecks {
             inherit pkgs members homes;
-            buildHome = member: extraModules: mkHome { inherit member extraModules; };
+            buildHome = member: extraModules: mkHome { inherit member extraModules pkgs; };
             require = "yescrypt";
           }
           // {
