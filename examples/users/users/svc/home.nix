@@ -21,5 +21,9 @@
   # OPT-OUT. Every safe-set feature is wanted by default, so an account that must never get a
   # desktop has to say so; this is the one line that keeps "never gui" true even on a seat that
   # affords it, and the only worked example of that escape hatch in the repo.
+  #
+  # It is also why this home carries NO `contract.requests.gui.*`: gui parameters beside a gui veto
+  # could never bridge on any host, so they are dead data and the bake rejects them (issue #59). The
+  # ADR-0002 case is the other one — a request the HOST does not grant stays silently inert.
   contract.wants.gui.enable = false;
 }

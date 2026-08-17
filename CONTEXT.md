@@ -87,9 +87,11 @@ the term is stable, the code is pending (see the cited issue).
   declared in the user's own `home.nix`. [[mkContractUser]] **harvests** it off the evaluated home
   and publishes it as the index's `offer`. It defaults to the **[[safe set]]** — non-privileged
   features are wanted by default, privileged ones must be asked for — per FEATURE, so asking for
-  one keeps the rest; a user wanting no desktop writes `contract.wants.gui.enable = false`. It must
-  be **variant-invariant**: a want that reads [[hostFacts]]`.granted` is circular (the grant is
-  derived *from* the offer) and fails the bake with a named error. (ADR-0028; `homeModules.default`)
+  one keeps the rest; a user wanting no desktop writes `contract.wants.gui.enable = false` — and
+  must then carry no [[request]] data for it, the one place the two halves of the voice are held to
+  each other (issue #59). It must be **variant-invariant**: a want that reads [[hostFacts]]`.granted`
+  is circular (the grant is derived *from* the offer) and fails the bake with a named error.
+  (ADR-0028; `homeModules.default`)
 - **deny** — the **absence of a grant**. Not a veto, not a default-open block — a host runs
   only what it grants (derived within its [[affordance]]s).
 - **feature configuration** *(a feature's **parameters**)* — the **host-owned** parameters the
@@ -107,6 +109,11 @@ the term is stable, the code is pending (see the cited issue).
   the pre-built bind reads it from the baked manifest (and `traceUser` harvests it in a dry-run) and
   bridges only the **granted** ones into the system-side feature configuration the realization
   reads. A request *names* a host effect but never performs it; the user never writes system-side.
+  Whose **veto** left it unbridged is the whole distinction: a request for a feature the *host* does
+  not grant is **inert**, never an error (ADR-0002's deliberate silent degradation — a roaming home
+  must bind everywhere), but a request for a feature the *user itself* vetoed in its own
+  [[wants]] can never be rescued by any host and so is dead data — [[mkContractUser]] fails the
+  bake, naming the user, the feature and both halves. **(built — issue #59)**
   (ADR-0002, ADR-0007; `homeModules.default`)
 - **realization** — the host-invariant module mapping each `custom.users.<u>` to a
   `users.users` account. Powers route through *grants*, not raw identity. Since issue #30 it owns
