@@ -25,12 +25,13 @@
     let
       inherit (nixpkgs) lib;
       # The system this flake publishes its `home-manager switch` surface on. NOT a per-user fact:
-      # every user bakes for every entry of `systems` below.
+      # every user bakes for every system in the bake matrix below.
       system = "x86_64-linux";
-      systems = [
-        "x86_64-linux"
-        "aarch64-linux"
-      ];
+      # DERIVED from the bake matrix, never typed twice: the matrix is keyed by system, so its rows
+      # already say which systems this fleet bakes. Everything that iterates systems for a reason
+      # OTHER than variants — the per-system nixpkgs, the published rows, `mkVariantEvalCheck` —
+      # reads this, so a system added to the matrix is covered by all of them and none can drift.
+      systems = lib.attrNames bakedVariants;
       # PLAIN nixpkgs — the producer contributes NO overlay and NO config. A user's own pkgs
       # (ADR-0007) is declared by its OWN home: home-manager re-imports nixpkgs inside every home
       # eval and CONCATENATES the home's `nixpkgs.overlays` onto the ones the producer passed, so
@@ -98,19 +99,26 @@
       # second such feature fans out there, with no edit here.
       #
       # That set is an UPPER BOUND, never a per-system baking obligation. WHICH of it a system bakes
-      # is the consuming fleet's topology and nobody else's, so the rule below is a MODELLED one:
-      # this reference fleet declares its aarch64 tier headless (the shape a real fleet has — a
-      # headless arm builder beside the x86 desktop seats), and so bakes base alone there. An
-      # aarch64 host that granted gui would bind base — ∅ ⊆ anything, the ADR-0002 degradation
-      # posture, accepted deliberately. `examples/fleet` is x86-only and binds none of the aarch64
-      # bakes; they exist to teach the matrix, and to give `variant-eval` a real cross-arch fact to
-      # prove rather than a one-row one.
+      # is the consuming fleet's topology and nobody else's (decision #43), so what is stated below is
+      # a MODELLED fleet fact — and only the fact. The narrowing and its guards are the CONTRACT's
+      # (`mkBakeMatrix`, issue #58): this file used to hand-write the filter AND hand-write the assert
+      # catching its own filter's failure mode, which is not a fleet's business — the contract knows
+      # the axes, knows the upper bound, and knows that binding degrades quietly.
       #
-      # Written as the features a system's seats CANNOT use, rather than a per-system list of labels,
-      # so that a contract which gains an axis bakes it EVERYWHERE until this file says otherwise. A
-      # label list would drop the new variant from aarch64 in silence, which is the one failure mode
-      # this area keeps having: `bindContractUser` binds the maximal variant that DOES exist, so an
-      # under-baked set costs a home its content with nothing objecting.
+      # The fact itself: this reference fleet declares its aarch64 tier headless (the shape a real
+      # fleet has — a headless arm builder beside the x86 desktop seats), and so bakes base alone
+      # there. An aarch64 host that granted gui would bind base — ∅ ⊆ anything, the ADR-0002
+      # degradation posture, accepted deliberately. `examples/fleet` is x86-only and binds none of the
+      # aarch64 bakes; they exist to teach the matrix, and to give `variant-eval` a real cross-arch
+      # fact to prove rather than a one-row one.
+      #
+      # Each row states only what its system's seats CANNOT use, per FEATURE — never a list of labels
+      # and never a list of what they CAN use. An omitted axis is usable, so a contract which gains
+      # one bakes it EVERYWHERE — aarch64 included — with no edit to this file. Either enumeration
+      # would instead drop the new variant here in silence, which is the one failure mode this area
+      # keeps having: `bindContractUser` binds the maximal variant that DOES exist, so an under-baked
+      # set costs a home its content with nothing objecting. The x86_64 row is `{ }` for exactly that
+      # reason — those seats can use everything the contract names, today and after it grows.
       #
       # The matrix says what a HOST could grant; what each home DOES with it is that home's own
       # business, and this roster shows both answers. Most of these homes are thin and read no
@@ -123,22 +131,17 @@
       # content on that, so its two bakes differ in CONTENT — no bind-time grant could put a sway
       # config into an already-built base home, which is precisely what `needsOwnBuild` names. The
       # `home-affecting-grant-is-load-bearing` check below fails if the roster ever loses that.
-      unusableOn = sys: lib.optional (sys == "aarch64-linux") "gui";
-      variantsFor = sys: lib.filter (v: !lib.any (f: v.grants ? ${f}) (unusableOn sys)) contract.variants;
-
-      # The matrix itself, `bakedVariants.<system>`. Everything below bakes off THIS.
       #
-      # The assert pins where the upper bound must still HOLD: the x86_64 seats can use anything the
-      # contract names, so their bake must be the contract's whole set. An `unusableOn` rule that
-      # ever leaks into them is an under-bake, and silent for the reason just given.
-      bakedVariants =
-        assert lib.assertMsg (variantsFor "x86_64-linux" == contract.variants)
-          "the x86_64-linux bake must equal the contract's full variant set — its seats can use every feature the contract names — but the per-system filter cuts it to [${
-            lib.concatMapStringsSep ", " (v: v.label) (variantsFor "x86_64-linux")
-          }] of [${
-            lib.concatMapStringsSep ", " (v: v.label) contract.variants
-          }]. Filtering is for systems whose seats CANNOT use a feature (this fleet models its aarch64 tier headless); x86_64 bakes the upper bound.";
-        lib.genAttrs systems variantsFor;
+      # `bakedVariants.<system>` is the matrix; everything below bakes off THIS, and `systems` above
+      # is its key set — this is the one place either is stated.
+      bakedVariants = contract.lib.mkBakeMatrix {
+        systems = {
+          # The x86_64 desktop seats: everything the contract names, now and as it grows.
+          x86_64-linux = { };
+          # The arm tier is a headless builder — no seat there can use a desktop.
+          aarch64-linux.gui = false;
+        };
+      };
 
       # ── This repo's home builder ─────────────────────────────────────────────────────────────
       # A THIN partial application of the contract's own `mkContractHome` (ADR-0029): the builder
@@ -359,10 +362,9 @@
               # rather than on the aarch64 seat hours later.
               #
               # It reads the shared `homes` eval, so it costs nothing the packages have not already
-              # paid for natively, and the helper's own anti-vacuous assert makes a per-system filter
-              # that accidentally empties a bake fail here instead of reading green. WHICH variants
-              # belong in the matrix is deliberately not its business — that is the assert up at
-              # `bakedVariants`, each fact stated once.
+              # paid for natively, and its own anti-vacuous assert is a second net under an emptied
+              # bake (`mkBakeMatrix` refuses one at the source). WHICH variants belong in the matrix is
+              # deliberately not its business — that is `bakedVariants` above, each fact stated once.
               contract.lib.mkVariantEvalCheck {
                 inherit pkgs systems;
                 name = "variant-eval-${n}";
