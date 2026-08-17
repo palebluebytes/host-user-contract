@@ -24,7 +24,13 @@ user-flake shape that consume it).
   under** so the producer coin rejects a mispaired `{ grants; home }` at bake time — ADR-0029),
   `mkContractRoster` (the ADR-0020 users directory read once into `{ <name> = { name; dir;
   identity; }; }` — the members the coin and the builder take, so no producer re-writes the layout
-  rule or re-resolves an `identity.json`), `traceUser` (dry-run inspect), `loadIdentity`, and
+  rule or re-resolves an `identity.json`), `mkBakeMatrix` (the per-system **bake matrix** over
+  `variants` — `{ <system> = { <axis> = bool; }; }`, a row per system the fleet bakes naming only the
+  axes its *seats cannot use*; an omitted axis is **usable**, so a registry that gains one bakes it
+  everywhere with no consumer edit, where a list of usable features or of labels would drop it in
+  silence. *Which* variants a fleet bakes stays its fleet fact; the shape of the declaration does
+  not, because an under-bake is silent — a host binds the maximal variant that exists),
+  `traceUser` (dry-run inspect), `loadIdentity`, and
   `renderNixConfig`. It also ships the
   **check kit** — the proofs only a
   consumer can run, over material only it has: `mkConfinementCheck` (this repo's *real* module set

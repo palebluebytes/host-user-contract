@@ -96,3 +96,41 @@ Three things it deliberately does **not** do:
 - **It does not opine on the bake matrix.** `mkContractUsers` takes the roster *and* a `users` attrset of `{ variants }`: who the members are is the roster's answer, which of them bake and with which variants stays the consumer's fleet fact (the posture decision #43 fixed for the per-system variant filter). Only the incoherent direction is an error — a `users` key the roster does not hold is a hand-listed name that has drifted from the directory.
 
 What it *does* refuse is the vacuous case: a `usersDir` yielding no member at all is a named error, not `{ }`. Everything downstream maps over the roster, so an empty one would bake, publish and check nothing while every flake output stayed green — the same trap `mkIdentityPostureCheck`'s empty-roster error and `mkConfinementCheck`'s positive control close.
+
+## Amendment (2026-08-17) — the bake matrix's shape joins the `lib`
+
+**`mkBakeMatrix`** (issue #58) joins the public `lib`: `{ systems = { <system> = { <axis> = bool; }; }; } → { <system> = [ variant ]; }`, the per-system narrowing of `variants` plus the guards around it.
+
+It looks, at first, like the one thing this surface has repeatedly declined to take. Decision #43 fixed the posture that *which* variants a fleet bakes per system is the **consumer's fleet fact**, and the amendment above says outright that `mkContractUsers` "does not opine on the bake matrix". That posture is undisturbed. What moved is not the fact but the **shape of the declaration**, and the two are separable in exactly the way this ADR's test asks about:
+
+- The **fact** is a fleet's topology — "this tier is a headless arm builder, its seats cannot use `gui`". No other repo can know it, and the contract still does not.
+- The **shape** is contract mechanism. The contract knows the axes, knows the upper bound, and — decisively — knows that *binding degrades quietly*: `bindContractUser` selects the maximal baked variant whose grant-key is covered, so a set that has fallen behind the registry hands a host a home that simply lacks the new feature's content, and no coupling guard, manifest field or check reports it. The failure mode is the contract's, so the shape that forecloses it is too.
+
+The evidence is the same species the earlier amendments turned on, and sharper. The reference fleet hand-wrote the per-system filter **and** hand-wrote an `assert` catching its own filter's failure mode — with a comment naming that mode exactly. That is the tell: a producer holding a rule *and* the proof of the rule is holding the contract's work. It is not a second spelling of anything kept: `variants` answers "what could a host grant" (the upper bound); this answers "and which of it does *this* system bake", which nothing else says.
+
+### The direction of default is the whole design
+
+A row names only the axes a system's seats **cannot** use, and an axis it **omits is usable**. Both of the obvious alternatives fail the same way:
+
+- a list of **labels** (`[ "base" ]`) names combinations, so a new axis doubles the labels and every existing list silently omits half of them;
+- a list of what a system **can** use (`[ "gui" ]`) — the shape a reader schooled on `meta.platforms`, `nix.settings.allowed-users` or this repo's own `packagePolicy.allowedPrograms` will reach for first — silently drops each new axis from **every** system.
+
+Those inclusion lists are right where the enumerated thing is owned by the declarer and the risk of the unknown is **admitting** something. Here the enumerated thing is owned by the *contract* and the risk of the unknown is **omitting** it. Fail-closed is right for privilege; fail-open is right for **coverage** — under-baking is silent and costs a user their home content, while over-baking wastes build time and nothing else. This is [ADR-0002](0002-user-confinement-manifest-greeter.md)'s "one mechanism, opposite defaults" applied a second time, on the axis [ADR-0028](0028-user-voice-is-typed-and-lives-in-the-home.md) already applied it on when it defaulted `contract.wants` to the safe set so "*a future non-privileged feature inherits it with no new special case*". Here a future **axis** inherits its bake with no new special case, in every consumer repo, unedited.
+
+### What is guarded, and what is now unexpressible
+
+Keying the matrix by system — one input, not a system list plus a rule — makes three under-bakes impossible to *write* rather than caught by an assert: a rule that names a system the fleet does not bake, a system left unclassified, and a claim of unrestrictedness that contradicts the rule. An unrestricted system is simply a row that takes nothing away, so there is no second statement for a first one to disagree with.
+
+An earlier draft of this work did carry that second statement — a separate `unrestricted` claim joined against the rule, in the posture [ADR-0029](0029-producer-home-builder-and-home-baseline.md)'s bake pairing established one rung down. The analogy does not survive scrutiny: the bake pairing joins two statements made in **different places by different mechanisms** (a home records its grant-key during its own eval; a producer passes one in a flake output), whereas those two sat three lines apart in one call, written by the same hand in the same edit. A join between adjacent lines buys a guard against editing one of them — real, but far weaker than making the disagreement unwriteable. Where a design can foreclose a failure instead of asserting against it, this ADR prefers foreclosure.
+
+Four guards remain, for what the shape cannot say: a setting that is not a variant axis — checked on the **key** whatever the boolean says, since `sudo = true` reads as though someone had considered whether the bake fans out on `sudo` and it does not — a non-boolean setting, a malformed row, and an emptied bake. Each error names the offending **axes and systems**, not a count.
+
+### The testing seam stays internal
+
+Proving that a contract which *gains* an axis extends every system's bake needs a two-axis upper bound, and the registry has one axis. Rather than put a bound-override on the public signature — a parameter documented as being for the suite's benefit, which no producer would ever pass — the kernel `bakeMatrixOver { systems, upperBound }` lives in `kit.internal` and the public `mkBakeMatrix` is it closed over `variants`. That is the posture `variantAxes` is already exposed under, and it keeps the consumer-facing surface at exactly one argument.
+
+`mkVariantEvalCheck` is unchanged and still deliberately shape-agnostic: "whatever we bake, evaluates" is its fact, and its anti-vacuous assert is now a second net under an emptied bake that `mkBakeMatrix` refuses at the source.
+
+### Divergence from issue #58
+
+Two of the issue's acceptance criteria — "*A system with no exclusions is asserted to bake the contract's full variant set*" and "*Conformance covers the full-set assert firing*" — ask for an **assert** that this shape makes unnecessary. The property they name holds, structurally and unconditionally; there is no firing to cover because there is no way to write the violation. Recorded here rather than quietly satisfied, because "we deleted the assert you asked for" deserves to be legible.

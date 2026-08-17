@@ -62,7 +62,7 @@ the term is stable, the code is pending (see the cited issue).
   bound on what a home may even see: a producer NARROWS [[hostFacts]]`.granted` with it (so a home
   reading a bind-riding grant like `sudo` structurally gets `false` forever) and
   `powerset(homeAffecting)` bounds its baked set (the per-system subset it actually bakes is the
-  consumer's fleet fact — see [[variant]]). One surface, so no producer re-implements the rule in prose.
+  consumer's fleet fact — see [[bake matrix]]). One surface, so no producer re-implements the rule in prose.
   (ADR-0028; `lib.nix`)
 
 ## Grants and confinement
@@ -417,13 +417,34 @@ the term is stable, the code is pending (see the cited issue).
   baked set); whether *that* repo's home actually branches stays the producer's
   call, so a repo whose homes read no grant still bakes a single `base`. `powerset(homeAffecting)`
   is the upper bound on what a host could grant, **not** a per-system baking obligation: *which*
-  variants a fleet bakes per system — its **bake matrix**, `{ <system> = { <label> = home; }; }` —
-  is the **consumer's fleet fact**, set by its mapper's per-system filter (e.g. gui homes only
-  where a seat exists — decision #43). The contract keeps answering "what could a host grant"; the
+  variants a fleet bakes per system is its [[bake matrix]], the **consumer's fleet fact**
+  (decision #43). The contract keeps answering "what could a host grant"; the
   roster-generic `mkVariantEvalCheck` proves whatever IS baked evaluates, without opining on that
   matrix. A
   variant's name (`<user>-contractPackage-<key>`, key = sorted home-affecting grant names, empty
   ⇒ `base`) is a cosmetic label, not a parse target. **(built — issue #25)** (ADR-0025)
+- **bake matrix** — *which* [[variant]]s a fleet bakes per system, declared as ONE fact:
+  **`mkBakeMatrix { systems = { <system> = { <axis> = bool; }; }; }`** → `{ <system> = [ variant ]; }`.
+  A row per system the fleet bakes, naming only the [[variant]] axes that system's **seats cannot
+  use** (`{ }` = can use everything the contract names; `{ gui = false; }` = a headless tier). A
+  producer's per-system rows of homes and packages (`{ <system> = { <label> = home; }; }`) are
+  projections of the result, and *which members* bake is the same fleet fact one rung up
+  ([[mkContractUsers]]' `users`). The *fact* stays the consumer's (decision #43); the **shape** of
+  the declaration is the contract's, because an under-bake is **silent** — [[bindContractUser]]
+  binds the maximal variant that *does* exist, so a missing one costs a home its content with
+  nothing objecting. Hence an **omitted axis is usable**: a registry that gains one bakes it
+  *everywhere*, restricted systems included, with no edit in any consumer repo. That is
+  ADR-0002's "one mechanism, opposite defaults" read for **coverage** rather than privilege — the
+  same reasoning that defaults [[wants]] to the [[safe set]]: fail-*closed* where the risk of the
+  unknown is admitting something, fail-*open* where the risk is omitting it. A per-system list of
+  **usable** features, or of **labels**, would drop each new axis in silence; that is the bug this
+  exists to kill. Being keyed by system makes three under-bakes **unexpressible** rather than
+  asserted (rows cannot disagree with the system list, presence *is* classification, and an
+  unrestricted system is just a row that takes nothing away). What is still guarded is what the type
+  cannot say: a setting that is not an axis (checked on the **key**, whatever the boolean — a
+  bind-riding feature, a *label*, a typo), a non-boolean setting, a malformed row, an emptied bake,
+  and a matrix over no systems. Producers previously hand-wrote the filter *and* the assert catching
+  their own filter's failure. **(built — issue #58)** (ADR-0026, ADR-0028)
 - **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
   = { identity; offer; variants = [{ granted; package }] }`. Plain data (no IFD), so a host
   selects a [[variant]] without building any of them. Identity comes from the user's [[member]]
@@ -461,8 +482,8 @@ the term is stable, the code is pending (see the cited issue).
   `users` flake and merged, so a multi-user repo (ADR-0020) bakes its entire roster in **one** call.
   The turnkey producer for the multi-user shape exactly as [[bindContractUser]] is the turnkey
   consumer. Takes the [[roster]] plus a `users` attrset of `{ variants }`: *who* the members are is
-  the roster's answer, *which* of them bake and with which variants is the producer's **bake
-  matrix** — the same fleet fact the per-system variant filter is. A `users` key the roster does not
+  the roster's answer, *which* of them bake and with which variants is the producer's [[bake
+  matrix]] — the same fleet fact the per-system variant narrowing is. A `users` key the roster does not
   hold is a hard bake error (a hand-listed name that has drifted from the directory).
   **(built — issue #25; singularised ADR-0026; roster-fed issue #57)** (ADR-0025)
 - **`mkContractHome`** — the **producer home builder** (ADR-0029, issue #40): the contract-owned
@@ -568,8 +589,10 @@ the term is stable, the code is pending (see the cited issue).
   eval error a misspelled request key now is, and `traceUser`'s permissive skew report — ADR-0028),
   the `traceUser` dry-run kernel, `mkContractPackage` content,
   `mkContractPackageForHome`'s home-attribute projection (same content-addressed store path as the
-  direct call), `mkContractUser`/`mkContractUsers` parity, and `bindContractPackage` reproducing the
-  `traceUser` kernel's account + gui surface from a pre-built manifest. **VM
+  direct call), `mkContractUser`/`mkContractUsers` parity, `bindContractPackage` reproducing the
+  `traceUser` kernel's account + gui surface from a pre-built manifest, and the [[bake matrix]]'s own
+  guards (`bake-matrix.nix`: each under-bake the narrowing must refuse, and a synthetic second axis
+  propagating to restricted and unrestricted systems alike). **VM
   tests** (each a `runNixOSTest` boot): `vm.nix` (gui-union renders), `greeter-vm.nix`
   (provisioning crux — now proving the runtime **renderer** surfaces the `accountPlan` record the
   same plan evaluates, ADR-0027), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
@@ -620,9 +643,10 @@ the term is stable, the code is pending (see the cited issue).
   sovereign concern and always advisory when daemon access is present. Do not conflate
   "host controls feature grants" with "host controls what programs can run."
 - **roster vs bake matrix** — the [[roster]] answers *who is in this users repo* (contract-derived
-  from the ADR-0020 directory); the **bake matrix** answers *which of them this fleet bakes, for
-  which system, in which [[variant]]s* (the consumer's own fleet fact). Never call a producer's
-  per-system variant filter "the roster," and never let a hand-listed set of names stand in for one.
+  from the ADR-0020 directory); the [[bake matrix]] answers *which of them this fleet bakes, for
+  which system, in which [[variant]]s* (the consumer's own fleet fact, narrowed and guarded by the
+  contract's `mkBakeMatrix`). Never call the bake matrix "the roster," and never let a hand-listed
+  set of names stand in for one.
 - **`contractPackage` vs `activationPackage`** — `contractPackage` is the contract-level
   content-addressed flake output (activation + `contract-requests.json` sidecar);
   `activationPackage` is home-manager's internal term for the derivation that activates the
