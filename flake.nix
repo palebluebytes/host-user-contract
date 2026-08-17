@@ -45,14 +45,14 @@
       inherit (kit) lib;
 
       # Data surface the host reads where it wires grants and the safe set, the home-affecting
-      # feature set a PRODUCER narrows hostFacts.granted with (and derives its variant set from,
+      # feature set a PRODUCER narrows hostFacts.granted with (and derives its home set from,
       # ADR-0028), plus the identity.json convention (filename + schema) a greeter authenticates on.
       inherit (kit)
         features
         featureGroups
         privilegedGroups
         safeSet
-        variants
+        homes
         greeterGrants
         tier1EvalConfig
         identityFile
@@ -76,7 +76,7 @@
           homeBaselineModule = self.homeModules.baseline;
           inherit (self)
             safeSet
-            variants
+            homes
             greeterGrants
             tier1EvalConfig
             featureGroups
@@ -84,13 +84,13 @@
             ;
           inherit (self.lib)
             loadIdentity
-            mkBakeMatrix
-            mkContractRoster
+            mkHomeMatrix
+            mkMembers
             traceUser
             mkConfinementCheck
             mkIdentityPostureCheck
-            mkVariantEvalCheck
-            mkRosterChecks
+            mkHomeEvalCheck
+            mkMemberChecks
             mkContractUser
             mkContractUsers
             mkContractHome
@@ -101,8 +101,8 @@
           # Internal derivation logic (ADR-0026): not flake outputs, but the in-repo
           # conformance suite proves them in isolation.
           inherit (kit.internal)
-            variantAxes
-            bakeMatrixOver
+            homeAxes
+            homeMatrixOver
             mkContractPackage
             mkContractPackageForHome
             bindContractPackage

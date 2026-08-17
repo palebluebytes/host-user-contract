@@ -15,7 +15,7 @@
 # contract umbrella when the conformance tracer harvests requests (no home-manager). The identity
 # is injected by the binding (ADR-0009); this home never loads identity.json itself.
 #
-# ada's `identity.json` is also the roster's ONE documented FULL FORM — every field the contract's
+# ada's `identity.json` is also the members' ONE documented FULL FORM — every field the contract's
 # identity schema knows, spelled out, because the schema is worth seeing written down once. Only
 # `name`, `email` and `username` are REQUIRED; `gmail`, `sshKey`, `hashedPassword`, `extraGroups`
 # and `trustedKeys` all carry defaults, so the other six users omit whatever nothing reads for them

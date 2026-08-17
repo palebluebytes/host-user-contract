@@ -88,9 +88,9 @@
     # feature is only ever offered deliberately, and a user wanting no desktop writes
     # `contract.wants.gui.enable = false`.
     #
-    # It must be VARIANT-INVARIANT: `contract.wants` may not depend on `hostFacts.granted`, because
+    # It must be HOME-INVARIANT: `contract.wants` may not depend on `hostFacts.granted`, because
     # the grant is derived FROM the offer — mkContractUser fails the bake if the harvest differs
-    # across a user's baked variants.
+    # across a user's bakes.
     options.contract.wants = lib.mkOption {
       type = lib.types.submodule { options = wantedOptions; };
       default = { };

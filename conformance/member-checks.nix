@@ -1,22 +1,22 @@
-# Conformance domain: the ROSTER ADAPTER over the check kit (issue #60).
+# Conformance domain: the MEMBER-SET ADAPTER over the check kit (issue #60).
 #
-# `mkRosterChecks` applies the three shipped helpers — confinement, variant-eval, credential
-# posture — across a whole roster in one call. The helpers' own logic is proven next door
-# (./confinement.nix, ./variant-eval.nix, ./identity-posture.nix); what this domain proves is
+# `mkMemberChecks` applies the three shipped helpers — confinement, home-eval, credential
+# posture — across a whole members in one call. The helpers' own logic is proven next door
+# (./confinement.nix, ./home-eval.nix, ./identity-posture.nix); what this domain proves is
 # everything the ADAPTER is responsible for:
 #
-#   - the SHAPE it yields: a confinement and a variant-eval check per member, one posture check
-#     over the roster, each under the single-sourced name;
-#   - that the roster is what it maps over, so a member added to the roster is covered with no
-#     other edit — the whole reason the helpers are roster-generic;
+#   - the SHAPE it yields: a confinement and a home-eval check per member, one posture check
+#     over the members, each under the single-sourced name;
+#   - that the members is what it maps over, so a member added to the members is covered with no
+#     other edit — the whole reason the helpers are members-generic;
 #   - that every guard SURVIVES the fold. An adapter is where anti-vacuity quietly dies: it could
 #     `tryEval` a helper's verdict, filter a member out of the map, or hand a helper an empty
 #     argument, and each of those reads as a green check set. So each helper's own failure mode is
 #     re-driven THROUGH the adapter here, plus the two traps that exist only at this level (a
-#     roster with no members, homes that do not cover the roster) — because a MISSING check and a
+#     members with no members, homes that do not cover the members) — because a MISSING check and a
 #     passing one look identical in `nix flake check` output.
 #
-# COVERAGE NOTE — as in ./confinement.nix and ./variant-eval.nix, the homes here are synthetic: the
+# COVERAGE NOTE — as in ./confinement.nix and ./home-eval.nix, the homes here are synthetic: the
 # contract has no home-manager (ADR-0004), so the adapter is driven with the `force` /
 # `positiveControl` hooks pointed at the umbrella's own declared options. That the adapter FORWARDS
 # those hooks is itself part of the surface, and is what makes this domain possible at all.
@@ -24,32 +24,32 @@
   lib,
   pkgs,
   toolkit,
-  mkContractRoster,
-  mkRosterChecks,
+  mkMembers,
+  mkMemberChecks,
 }:
 let
   inherit (toolkit) evalHome referenceIdentity;
 
-  # A synthetic roster: plain `{ name; dir; identity; }` members, which is all the adapter consumes
-  # (the DERIVATION of a roster from a directory is ./roster.nix's subject, and the real derived one
+  # A synthetic members: plain `{ name; dir; identity; }` members, which is all the adapter consumes
+  # (the DERIVATION of a member set from a directory is ./members.nix's subject, and the real derived one
   # is claimed against below). Built over the suite's REAL reference identity (ADR-0022), so the
   # posture claims run against a credential a consumer actually ships — `ada` carries `$y$`, the
   # public-repo posture `examples/users` chose.
   memberFor = n: {
     name = n;
-    dir = ./fixtures/roster/pip;
+    dir = ./fixtures/members/pip;
     identity = referenceIdentity // {
       username = n;
     };
   };
-  rosterOf = names: lib.genAttrs names memberFor;
-  roster = rosterOf [
+  membersOf = names: lib.genAttrs names memberFor;
+  members = membersOf [
     "ana"
     "bo"
   ];
 
   # A member whose credential is a `$6$` sha512crypt hash — legal under ADR-0019's private-repo
-  # posture, and therefore the offender a `require = "yescrypt"` roster must reject.
+  # posture, and therefore the offender a `require = "yescrypt"` members must reject.
   offender = memberFor "sixto" // {
     identity = referenceIdentity // {
       username = "sixto";
@@ -58,14 +58,14 @@ let
   };
 
   # A synthetic baked home, carrying the attrpath the `force` hook below dereferences — the stand-in
-  # for a real `home.activationPackage.drvPath`, whose `.drv` suffix is what proves a variant was
+  # for a real `home.activationPackage.drvPath`, whose `.drv` suffix is what proves a bake was
   # forced all the way to its derivation.
   bakedHome = label: {
     contract.requests.gui.desktop = "/nix/store/00000000000000000000000000000000-${label}.drv";
   };
-  # The consumer's per-system homes, DERIVED from the roster exactly as a real mapper derives them:
-  # two systems, one bake each. Built as a function of the roster so the growth claim below changes
-  # the roster and nothing else — the property under test.
+  # The consumer's per-system homes, DERIVED from the members exactly as a real mapper derives them:
+  # two systems, one bake each. Built as a function of the members so the growth claim below changes
+  # the members and nothing else — the property under test.
   homesOver =
     r:
     lib.genAttrs [
@@ -82,10 +82,10 @@ let
 
   checksOver =
     args:
-    mkRosterChecks (
+    mkMemberChecks (
       {
-        inherit pkgs roster;
-        homes = homesOver roster;
+        inherit pkgs members;
+        homes = homesOver members;
         # The consumer's builder, per member. This one ignores the member (the synthetic umbrella
         # eval is the same for all of them); a real one resolves the member's own `home.nix`.
         buildHome = _member: evalHome;
@@ -107,130 +107,132 @@ let
   verdictsOf = set: lib.foldl' (acc: v: builtins.seq v acc) (lib.attrNames set) (lib.attrValues set);
   passes = args: (builtins.tryEval (verdictsOf (checksOver args))).success;
 
-  # The REAL derived roster (ADR-0022: the synthetic suite borrows real atoms from the positive-
+  # The REAL derived members (ADR-0022: the synthetic suite borrows real atoms from the positive-
   # space example, never the reverse) — the adapter must cover the fleet a consumer actually ships,
-  # not only a roster shaped for it here.
-  realRoster = mkContractRoster { usersDir = ../examples/users/users; };
+  # not only a member set shaped for it here.
+  realMembers = mkMembers { usersDir = ../examples/users/users; };
   realChecks = checksOver {
-    roster = realRoster;
-    homes = homesOver realRoster;
+    members = realMembers;
+    homes = homesOver realMembers;
   };
 in
 {
   assertions = [
     {
-      name = "roster adapter: one call yields a confinement + a variant-eval check per member, and one posture check";
+      name = "members adapter: one call yields a confinement + a home-eval check per member, and one posture check";
       ok =
         lib.attrNames (checksOver { }) == [
+          # `attrNames` is sorted, so this list is in NAME order, not emission order. Both
+          # per-member checks now share the `home-` prefix, so they group in check output.
           "home-confinement-ana"
           "home-confinement-bo"
+          "home-eval-ana"
+          "home-eval-bo"
           "identity-posture"
-          "variant-eval-ana"
-          "variant-eval-bo"
         ];
     }
     {
-      name = "roster adapter: every check it yields passes over a confined roster whose whole bake evaluates";
+      name = "members adapter: every check it yields passes over a confined members whose whole bake evaluates";
       ok = passes { };
     }
     {
-      # The property the helpers are roster-generic FOR, now at the call site: the check set follows
-      # the roster, so a user added to the users directory is covered without a consumer edit.
-      name = "roster adapter: a member added to the roster gains its checks with no other change";
+      # The property the helpers are members-generic FOR, now at the call site: the check set follows
+      # the members, so a user added to the users directory is covered without a consumer edit.
+      name = "members adapter: a member added to the members gains its checks with no other change";
       ok =
         let
           grown = checksOver {
-            roster = roster // rosterOf [ "cy" ];
-            homes = homesOver (roster // rosterOf [ "cy" ]);
+            members = members // membersOf [ "cy" ];
+            homes = homesOver (members // membersOf [ "cy" ]);
           };
         in
         (grown ? "home-confinement-cy")
-        && (grown ? "variant-eval-cy")
+        && (grown ? "home-eval-cy")
         && lib.length (lib.attrNames grown) == 7;
     }
     {
-      # Over the REAL reference fleet's derived roster: every member, whoever they are today.
-      name = "roster adapter: covers every member of the reference fleet's derived roster (ADR-0022)";
+      # Over the REAL reference fleet's derived members: every member, whoever they are today.
+      name = "members adapter: covers every member of the reference fleet's derived members (ADR-0022)";
       ok =
         let
-          names = lib.attrNames realRoster;
+          names = lib.attrNames realMembers;
         in
-        lib.all (n: (realChecks ? "home-confinement-${n}") && (realChecks ? "variant-eval-${n}")) names
+        lib.all (n: (realChecks ? "home-confinement-${n}") && (realChecks ? "home-eval-${n}")) names
         && lib.length names > 1
         && lib.length (lib.attrNames realChecks) == 2 * lib.length names + 1;
     }
     {
       # The trap that exists only at THIS level: a fold over nobody yields an (almost) empty check
       # set, and a missing check reads exactly like a passing one.
-      name = "roster adapter: an empty roster is a hard error, not a small check set";
+      name = "members adapter: an empty members is a hard error, not a small check set";
       ok =
         !(passes {
-          roster = { };
+          members = { };
           homes = homesOver { };
         });
     }
     {
-      # The other adapter-level trap: homes that do not cover the roster. The member is in the
-      # roster, so it must be checked — a mapper that skipped it loses that user's whole bake proof.
-      name = "roster adapter: a member with no baked homes on a system is a named error, not a skipped check";
+      # The other adapter-level trap: homes that do not cover the members. The member is in the
+      # members, so it must be checked — a mapper that skipped it loses that user's whole bake proof.
+      name = "members adapter: a member with no baked homes on a system is a named error, not a skipped check";
       ok =
         !(passes {
           homes = lib.mapAttrs (
             sys: rows: if sys == "aarch64-linux" then removeAttrs rows [ "bo" ] else rows
-          ) (homesOver roster);
+          ) (homesOver members);
         });
     }
     {
-      name = "roster adapter: homes naming no system at all is a hard error (nothing to check a bake against)";
+      name = "members adapter: homes naming no system at all is a hard error (nothing to check a bake against)";
       ok = !(passes { homes = { }; });
     }
     {
-      name = "roster adapter: a homes row that is not an attrset is a broken harness, not a pass";
+      name = "members adapter: a homes row that is not an attrset is a broken harness, not a pass";
       ok = !(passes { homes.x86_64-linux = [ "not-an-attrset" ]; });
     }
     {
-      # The two SHAPE guards under the diagnoses above: a roster handed as a list (the
+      # The two SHAPE guards under the diagnoses above: a member set handed as a list (the
       # `lib.attrValues` the posture helper wants, one call too early) and homes handed as
       # something other than a per-system attrset. Both must be told what they are, rather than
       # reported as EMPTY — which is a different mistake with a different fix.
-      name = "roster adapter: a roster or a homes that is not an attrset is named as a shape error";
-      ok = !(passes { roster = lib.attrValues roster; }) && !(passes { homes = [ ]; });
+      name = "members adapter: a member set or a homes that is not an attrset is named as a shape error";
+      ok = !(passes { members = lib.attrValues members; }) && !(passes { homes = [ ]; });
     }
     {
       # --- the helpers' own guards, re-driven THROUGH the adapter ---
       # Confinement: a module set that reopens a system channel fails, even though its positive
       # control still evaluates.
-      name = "roster adapter: confinement still fails when a member's module set smuggles a system channel back in";
+      name = "members adapter: confinement still fails when a member's module set smuggles a system channel back in";
       ok = !(passes { buildHome = _member: mods: evalHome (mods ++ [ smuggledSystemChannel ]); });
     }
     {
       # Confinement's positive control: a builder that rejects EVERYTHING satisfies every negative
       # claim, and must not read as confinement through the adapter either.
-      name = "roster adapter: confinement still fails when the positive control does not evaluate";
+      name = "members adapter: confinement still fails when the positive control does not evaluate";
       ok = !(passes { buildHome = _member: _mods: throw "this builder rejects everything"; });
     }
     {
-      # Variant-eval: an accidentally-emptied bake. The member IS in `homes` (so the coverage guard
-      # above is satisfied), but with no variants — the helper's own anti-vacuous assert must fire.
-      name = "roster adapter: variant-eval still fails when a member's bake is emptied";
-      ok = !(passes { homes = lib.mapAttrs (_: lib.mapAttrs (_: _: { })) (homesOver roster); });
+      # Bake-eval: an accidentally-emptied bake. The member IS in `homes` (so the coverage guard
+      # above is satisfied), but with no bakes — the helper's own anti-vacuous assert must fire.
+      name = "members adapter: home-eval still fails when a member's homes are emptied";
+      ok = !(passes { homes = lib.mapAttrs (_: lib.mapAttrs (_: _: { })) (homesOver members); });
     }
     {
-      # The under-forcing hook: a `force` that never reaches a derivation makes every variant
+      # The under-forcing hook: a `force` that never reaches a derivation makes every bake
       # "evaluate" and every probe "expressible". The adapter forwards it, so it breaks LOUDLY.
-      name = "roster adapter: a force that stops short of the derivation still fails (no vacuous pass)";
+      name = "members adapter: a force that stops short of the derivation still fails (no vacuous pass)";
       ok = !(passes { force = _: "never forced"; });
     }
     {
-      # Posture: the offender must be caught through the adapter, over the roster's own identities.
-      name = "roster adapter: the posture still fails on a member carrying the wrong hash algorithm";
+      # Posture: the offender must be caught through the adapter, over the members' own identities.
+      name = "members adapter: the posture still fails on a member carrying the wrong hash algorithm";
       ok =
         !(passes {
-          roster = roster // {
+          members = members // {
             sixto = offender;
           };
           homes = homesOver (
-            roster
+            members
             // {
               sixto = offender;
             }
@@ -244,10 +246,10 @@ in
       # thought about it). Read off the SIGNATURE rather than by calling without it: a missing
       # required argument is one of the few eval errors `tryEval` does not catch, so the "it throws"
       # spelling would take this whole suite down instead of reporting a claim.
-      name = "roster adapter: `require` has no default — the posture stays the consumer's choice (ADR-0019)";
+      name = "members adapter: `require` has no default — the posture stays the consumer's choice (ADR-0019)";
       ok =
         let
-          formals = builtins.functionArgs mkRosterChecks;
+          formals = builtins.functionArgs mkMemberChecks;
         in
         # …while the two home-shape hooks DO default, which is what lets a home-manager consumer
         # pass neither and a hand-rolled (or synthetic) home override both.
@@ -256,13 +258,13 @@ in
     {
       # The same posture is still a PARAMETER through the adapter: the `$6$` member a public repo
       # rejects is legal in a private one, which is the whole reason `require` is asked for.
-      name = "roster adapter: the same roster passes under require = \"libc\" (the posture is a parameter, ADR-0019)";
+      name = "members adapter: the same members passes under require = \"libc\" (the posture is a parameter, ADR-0019)";
       ok = passes {
-        roster = roster // {
+        members = members // {
           sixto = offender;
         };
         homes = homesOver (
-          roster
+          members
           // {
             sixto = offender;
           }
@@ -275,7 +277,7 @@ in
   # Execution proof: the checks a consumer actually wires into `checks.<system>` are real
   # derivations that BUILD (the assertions above only observe their eval verdicts). Built through
   # one node so the suite's own drv keys stay plain names.
-  drvs.mkRosterChecks = pkgs.runCommand "conformance-roster-checks" {
-    rosterChecks = lib.attrValues (checksOver { });
+  drvs.mkMemberChecks = pkgs.runCommand "conformance-members-checks" {
+    memberChecks = lib.attrValues (checksOver { });
   } "touch $out";
 }

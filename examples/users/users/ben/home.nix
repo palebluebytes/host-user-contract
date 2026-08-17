@@ -4,7 +4,7 @@
 # that also binds a privileged user, and as a second borrowable atom for the conformance suite.
 #
 # Contract-pure (ADR-0008): no home-manager options at all, so it harvests headlessly in the
-# conformance tracer. And nothing else either — ben is the roster's MINIMAL home, which is a real
+# conformance tracer. And nothing else either — ben is the members' MINIMAL home, which is a real
 # shape a users repo has and worth one fixture.
 { ... }:
 {

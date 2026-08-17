@@ -1,10 +1,10 @@
-# Conformance domain: the BAKE MATRIX and its guards (issue #58).
+# Conformance domain: the HOME MATRIX and its guards (issue #58).
 #
-# `variants` gives a producer the UPPER BOUND — one entry per combination of the variant axes.
+# `bakes` gives a producer the UPPER BOUND — one entry per combination of the bake axes.
 # WHICH of that set a system actually bakes stays the consuming fleet's topology (decision #43),
 # and the matrix does not touch that: it takes the fleet's declaration and applies it. What the
 # contract owns is the SHAPE of that declaration, because the failure mode is silent —
-# `bindContractUser` binds the maximal variant that DOES exist, so an under-baked set costs a home
+# `bindContractUser` binds the maximal bake that DOES exist, so an under-baked set costs a home
 # its content with nothing objecting.
 #
 # So the subject here is the DIRECTION OF DEFAULT and what is left to guard once the shape carries
@@ -15,29 +15,29 @@
 # system list, an unclassified system, a claim of unrestrictedness contradicting the rule), so what
 # remains to prove is the narrowing itself plus the four guards the type cannot make for us.
 #
-# The public `mkBakeMatrix` closes over the contract's own `variants`; `bakeMatrixOver` is the
-# kernel taking the bound explicitly (kit.internal, the posture `variantAxes` is exposed under).
+# The public `mkHomeMatrix` closes over the contract's own `bakes`; `homeMatrixOver` is the
+# kernel taking the bound explicitly (kit.internal, the posture `homeAxes` is exposed under).
 # Both are driven here: the kernel for everything about the narrowing, the public entry point for
 # the one claim only it can make — that the bound it narrows is the contract's own.
 #
-# Package-free and build-free: the matrix is plain eval-time data over `variants`, so every claim
+# Package-free and build-free: the matrix is plain eval-time data over `bakes`, so every claim
 # below is a `tryEval` over a value.
 {
   lib,
-  variants,
-  bakeMatrixOver,
-  mkBakeMatrix,
+  homes,
+  homeMatrixOver,
+  mkHomeMatrix,
 }:
 let
-  # A synthetic variant entry, shaped exactly like a `variants` one (`{ grants; label; }`). Written
+  # A synthetic bake entry, shaped exactly like a `bakes` one (`{ grants; label; }`). Written
   # out here rather than borrowed so this domain can hand the kernel an upper bound the REGISTRY
   # does not have — a second axis — and prove the propagation the fleet cannot demonstrate until
-  # some future feature sets `needsOwnBuild`.
+  # some future feature sets `needsOwnHome`.
   #
   # The label mirrors the contract's own rule — the SORTED grant names, empty ⇒ `base` — so a
-  # multi-axis fixture entry is labelled the way a real `variants` entry would be. The matrix itself
+  # multi-axis fixture entry is labelled the way a real `bakes` entry would be. The matrix itself
   # never reads `label`; the fidelity is so these claims quote the labels a producer would publish.
-  variantOf = names: {
+  homeOf = names: {
     grants = lib.genAttrs names (_: {
       enable = true;
     });
@@ -54,10 +54,10 @@ let
   };
   over =
     args:
-    bakeMatrixOver (
+    homeMatrixOver (
       {
         systems = referenceSystems;
-        upperBound = variants;
+        upperBound = homes;
       }
       // args
     );
@@ -67,8 +67,8 @@ let
   matrix = over { };
 
   # A TWO-axis upper bound — the contract as it would be the day a second feature sets
-  # `needsOwnBuild`. The fleet's rows above are handed over UNEDITED.
-  twoAxes = map variantOf [
+  # `needsOwnHome`. The fleet's rows above are handed over UNEDITED.
+  twoAxes = map homeOf [
     [ ]
     [ "gui" ]
     [ "ai" ]
@@ -82,22 +82,22 @@ let
   # An upper bound whose EVERY entry carries the excluded axis, so the aarch64 row cuts all of it.
   # Not reachable from a powerset (the grant-less entry always survives), which is exactly why the
   # empty-bake guard is stated rather than assumed.
-  guiOnly = [ (variantOf [ "gui" ]) ];
+  guiOnly = [ (homeOf [ "gui" ]) ];
 in
 {
   assertions = [
     {
-      name = "bake-matrix: a system whose row takes nothing away bakes the full variant set";
-      ok = matrix."x86_64-linux" == variants;
+      name = "home-matrix: a system whose row takes nothing away bakes the full home set";
+      ok = matrix."x86_64-linux" == homes;
     }
     {
-      name = "bake-matrix: an axis set false cuts exactly the variants carrying it";
+      name = "home-matrix: an axis set false cuts exactly the bakes carrying it";
       ok = labelsOf matrix."aarch64-linux" == [ "base" ];
     }
     {
-      # Drop-in for `contract.variants`: a producer maps over the row the same way, so `label`
+      # Drop-in for `contract.homes`: a producer maps over the row the same way, so `label`
       # still travels with `grants` and cannot be paired up wrongly.
-      name = "bake-matrix: each row carries the same { grants; label; } entries a producer maps over";
+      name = "home-matrix: each row carries the same { grants; label; } entries a producer maps over";
       ok =
         let
           row = matrix."aarch64-linux";
@@ -105,7 +105,7 @@ in
         lib.length row == 1 && (lib.head row).grants == { } && (lib.head row).label == "base";
     }
     {
-      name = "bake-matrix: the matrix is keyed by exactly the systems declared";
+      name = "home-matrix: the matrix is keyed by exactly the systems declared";
       ok =
         lib.attrNames matrix == [
           "aarch64-linux"
@@ -116,8 +116,8 @@ in
       # THE direction of default (issue #58): an OMITTED axis is usable. So `{ }` and an explicit
       # `gui = true` are the same declaration, and a fleet may write either — what it must NOT have
       # to do is enumerate what it permits, because the day the contract gains an axis, that
-      # enumeration drops the new variant in silence.
-      name = "bake-matrix: an omitted axis is usable — an explicit true is the same declaration";
+      # enumeration drops the new bake in silence.
+      name = "home-matrix: an omitted axis is usable — an explicit true is the same declaration";
       ok =
         over {
           systems = {
@@ -129,7 +129,7 @@ in
     {
       # A row is a BOOL per axis. A list (the shape an exclusion-list design would take) is a
       # broken declaration, reported as such rather than iterated over.
-      name = "bake-matrix: fails when a system's row is not an attrset of axis settings";
+      name = "home-matrix: fails when a system's row is not an attrset of axis settings";
       ok =
         !(passes {
           systems = referenceSystems // {
@@ -138,7 +138,7 @@ in
         });
     }
     {
-      name = "bake-matrix: fails when an axis setting is not a boolean";
+      name = "home-matrix: fails when an axis setting is not a boolean";
       ok =
         !(passes {
           systems = referenceSystems // {
@@ -148,9 +148,9 @@ in
     }
     {
       # An axis name is a FEATURE name. A bind-riding feature names nothing the bake fans out on
-      # (no variant is baked per `sudo`), so the system would silently bake the full set while
+      # (no bake is baked per `sudo`), so the system would silently bake the full set while
       # reading as restricted.
-      name = "bake-matrix: fails when a setting names a feature that is not a variant axis";
+      name = "home-matrix: fails when a setting names a feature that is not a bake axis";
       ok =
         !(passes {
           systems = referenceSystems // {
@@ -161,7 +161,7 @@ in
     {
       # The failure mode the issue names outright: a declaration written against LABELS rather
       # than features. `base` is a real label of this contract and no feature at all.
-      name = "bake-matrix: fails when a setting names a variant LABEL rather than a feature";
+      name = "home-matrix: fails when a setting names a bake LABEL rather than a feature";
       ok =
         !(passes {
           systems = referenceSystems // {
@@ -170,7 +170,7 @@ in
         });
     }
     {
-      name = "bake-matrix: fails when a feature name is not in the contract at all (a typo)";
+      name = "home-matrix: fails when a feature name is not in the contract at all (a typo)";
       ok =
         !(passes {
           systems = referenceSystems // {
@@ -181,7 +181,7 @@ in
     {
       # Checked on the KEY whatever the boolean says: `sudo = true` reads as though someone had
       # considered whether the bake fans out on sudo, and it does not.
-      name = "bake-matrix: fails on a non-axis setting even when set true (the key is the mistake)";
+      name = "home-matrix: fails on a non-axis setting even when set true (the key is the mistake)";
       ok =
         !(passes {
           systems = referenceSystems // {
@@ -191,18 +191,18 @@ in
     }
     {
       # An emptied bake would publish, bind and check nothing for that system while every output
-      # stayed green — the same vacuity the roster and the eval check refuse.
-      name = "bake-matrix: fails when a system's bake is emptied outright";
+      # stayed green — the same vacuity the members and the eval check refuse.
+      name = "home-matrix: fails when a system's bake is emptied outright";
       ok = !(passes { upperBound = guiOnly; });
     }
     {
-      name = "bake-matrix: fails over zero systems (a matrix that bakes nothing is not a matrix)";
+      name = "home-matrix: fails over zero systems (a matrix that bakes nothing is not a matrix)";
       ok = !(passes { systems = { }; });
     }
     {
       # The direction of default the design exists for, in the only form the registry cannot yet
       # show: the fleet's rows are unchanged, and the new axis lands on the unrestricted system.
-      name = "bake-matrix: a contract that gains an axis extends an unrestricted system's bake with no edit";
+      name = "home-matrix: a contract that gains an axis extends an unrestricted system's bake with no edit";
       ok =
         labelsOf grown."x86_64-linux" == [
           "base"
@@ -215,7 +215,7 @@ in
       # And on the RESTRICTED system too — it keeps only what its own row takes away. This is what
       # a per-system list of USABLE features would have got wrong: `ai` would have been dropped
       # from aarch64 in silence, the same bug as a label list one rung up.
-      name = "bake-matrix: a new axis reaches a RESTRICTED system too — only its false axis is cut";
+      name = "home-matrix: a new axis reaches a RESTRICTED system too — only its false axis is cut";
       ok =
         labelsOf grown."aarch64-linux" == [
           "base"
@@ -225,15 +225,15 @@ in
     {
       # Non-vacuity for the two claims above: the grown bound really is bigger than the contract's
       # own, so "the new axis propagated" is not a restatement of today's registry.
-      name = "bake-matrix: the two-axis fixture really exceeds the contract's own variant set";
-      ok = lib.length twoAxes > lib.length variants;
+      name = "home-matrix: the two-axis fixture really exceeds the contract's own home set";
+      ok = lib.length twoAxes > lib.length homes;
     }
     {
-      # The one claim only the PUBLIC entry point can make: it narrows the contract's own variant
+      # The one claim only the PUBLIC entry point can make: it narrows the contract's own bake
       # set, with no bound for a consumer to pass. That is what makes a registry change reach every
       # consumer's bake, and it is why the seam lives in kit.internal rather than on this surface.
-      name = "bake-matrix: the public entry point narrows the contract's OWN variants, no bound to pass";
-      ok = mkBakeMatrix { systems = referenceSystems; } == matrix;
+      name = "home-matrix: the public entry point narrows the contract's OWN homes, no bound to pass";
+      ok = mkHomeMatrix { systems = referenceSystems; } == matrix;
     }
   ];
 }

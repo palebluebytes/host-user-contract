@@ -79,7 +79,7 @@ let
   manifest = import ./manifest.nix { inherit lib; };
 
   # The check kit (issues #35, #49): the proofs a CONSUMER runs over its own repo — its real
-  # module set stays confined, its own roster carries the credential posture it has chosen, and
+  # module set stays confined, its own members carry the credential posture it has chosen, and
   # everything it bakes evaluates. Lib-only and package-free like everything else here (each check
   # takes the caller's `pkgs`, and the confinement one takes the caller's home BUILDER, so the
   # contract never needs home-manager).
@@ -132,7 +132,7 @@ in
     ;
   inherit (contractLib)
     safeSet
-    variants
+    homes
     greeterGrants
     tier1EvalConfig
     ;
@@ -146,16 +146,17 @@ in
   # predicate (runtimeEligibleFeature) stay INTERNAL — see `internal` below.
   lib = {
     inherit (contractLib) renderNixConfig;
-    # The producer-side hostFacts projection (ADR-0028): narrows `granted` to the variant axes,
-    # the one rule every producer previously hand-wrote as a `filterAttrs`. See lib.nix.
+    # The producer-side hostFacts projection (ADR-0028): narrows the `grants` it is handed to the
+    # bake axes and returns them as `granted` (the option path a home reads them back on), the one
+    # rule every producer previously hand-wrote as a `filterAttrs`. See lib.nix.
     inherit (contractLib) hostFactsFor;
-    # mkBakeMatrix (issue #58): the per-system BAKE MATRIX over `variants`. The caller declares its
+    # mkHomeMatrix (issue #58): the per-system HOME MATRIX over `contract.homes`. The caller declares its
     # whole matrix as one fact — `{ <system> = { <axis> = bool; }; }`, a row per system it bakes,
     # each row naming only the axes that system's seats CANNOT use — and gets the narrowing plus its
-    # guards. Which variants a fleet bakes stays the fleet's (decision #43); the shape of the
+    # guards. Which bakes a fleet bakes stays the fleet's (decision #43); the shape of the
     # declaration is the contract's, because an under-bake is silent and an omitted axis must
     # therefore default to BAKED. See lib.nix.
-    inherit (contractLib) mkBakeMatrix;
+    inherit (contractLib) mkHomeMatrix;
     # The identity.json loader (ADR-0007): lossless over identity.nix, used by a user's home
     # module and by the producer coin below.
     inherit (identityJson) loadIdentity;
@@ -166,23 +167,22 @@ in
     # (`unknown`) instead of throwing — the one tolerant reader of the otherwise fully-typed user
     # voice. Sits OUTSIDE the produce/consume coin (it inspects a home, it never touches the index).
     traceUser = args: contractLib.traceUser (args // { homeModule = modules.homeModule; });
-    # mkContractRoster (ADR-0020, issue #57): the ROSTER derivation over a users directory —
+    # mkMembers (ADR-0020, issue #57): the MEMBER-SET derivation over a users directory —
     # `{ <name> = { name; dir; identity; }; }`, the contract's one answer to "who is in this users
     # repo". The layout rule and the identity resolution live here rather than in each producer's own
     # `readDir` + identity map, and its MEMBERS are what the coin and the home builder take, so no
     # identity path is re-derived downstream. `loadIdentity` is injected here exactly as it is for
     # the producer coin.
-    mkContractRoster =
-      args: contractLib.mkContractRoster (args // { inherit (identityJson) loadIdentity; });
+    mkMembers = args: contractLib.mkMembers (args // { inherit (identityJson) loadIdentity; });
     # The turnkey producer/consumer COIN over the contractUsers binding index (ADR-0025/0026):
-    #   - mkContractUser (producer, singular): bake ONE user's variants into contractPackages +
+    #   - mkContractUser (producer, singular): bake ONE user's bakes into contractPackages +
     #     its `contractUsers.<sys>.<user>` index entry. The per-user partner of bindContractUser.
-    #   - mkContractUsers (producer, roster): mkContractUser mapped over a whole users flake — one
+    #   - mkContractUsers (producer, members): mkContractUser mapped over a whole users flake — one
     #     call bakes the multi-user repo (ADR-0020). loadIdentity is injected here (as homeModule
     #     is for traceUser) so the users flake needn't wire the loader.
     #   - bindContractUser (consumer): a host declares `contract.affordances` once and binds a user
     #     with `{ usersFlake; username }`; the grant is DERIVED as `affordances ∩ offer` (always
-    #     negotiated, ADR-0026) and the maximal covering variant selected — no per-user grants, no
+    #     negotiated, ADR-0026) and the maximal covering bake selected — no per-user grants, no
     #     users-repo internals.
     mkContractUser =
       args: contractLib.mkContractUser (args // { inherit (identityJson) loadIdentity; });
@@ -195,7 +195,9 @@ in
     # `home-manager.lib.homeManagerConfiguration` verbatim (ADR-0004, the buildHome trick). The
     # umbrella, the baseline hygiene module, and the identity loader are injected here (exactly as
     # homeModule is for traceUser and loadIdentity for the producer coin), so a caller passes only
-    # its own side: { homeManagerConfiguration; pkgs; userDir; stateVersion; … }.
+    # its own side: { homeManagerConfiguration; pkgs; member (or memberDir); grants; stateVersion; … }.
+    # `grants` is the same word the producer coin and the home matrix use for a grant attrset, so one
+    # value keeps one name from the matrix through the builder to the pairing guard.
     mkContractHome =
       args:
       contractLib.mkContractHome (
@@ -213,23 +215,23 @@ in
     #     (`conformance/confinement.nix` can only prove the umbrella; a consumer's own imports are
     #     where a channel gets smuggled back in.) Takes the consumer's home BUILDER, so the
     #     contract proves a home-manager module set without depending on home-manager (ADR-0004).
-    #   - mkIdentityPostureCheck: does this repo's own roster carry the credential posture THIS
+    #   - mkIdentityPostureCheck: does this repo's own members carry the credential posture THIS
     #     repo has chosen? Opt-in and parameterized (`require`) because ADR-0019 makes the posture
     #     conditional and consumer-owned — which is also why `loadIdentity` imposes no hash policy.
-    #   - mkVariantEvalCheck: does everything this repo BAKES for one user actually evaluate, on
-    #     every system it bakes for? The roster-generic cross-arch eval check a consumer's mapper
-    #     applies per user (decision #43) — which variants a fleet bakes per system stays the
+    #   - mkHomeEvalCheck: does everything this repo BAKES for one user actually evaluate, on
+    #     every system it bakes for? The members-generic cross-arch eval check a consumer's mapper
+    #     applies per user (decision #43) — which bakes a fleet bakes per system stays the
     #     mapper's own fact.
-    # …and the ROSTER ADAPTER over the three (issue #60): `mkRosterChecks` applies all of them
-    # across a whole roster in ONE call, with the check names single-sourced, so a consumer folds
+    # …and the MEMBER-SET ADAPTER over the three (issue #60): `mkMemberChecks` applies all of them
+    # across a whole members in ONE call, with the check names single-sourced, so a consumer folds
     # the kit over its members instead of hand-writing the fold that the helpers being
-    # roster-generic was supposed to spare it. The three stay public and separately callable — a
-    # single-user repo has no roster to adapt, and a repo wanting one proof calls for one proof.
+    # members-generic was supposed to spare it. The three stay public and separately callable — a
+    # single-user repo has no members to adapt, and a repo wanting one proof calls for one proof.
     inherit (checkKit)
       mkConfinementCheck
       mkIdentityPostureCheck
-      mkVariantEvalCheck
-      mkRosterChecks
+      mkHomeEvalCheck
+      mkMemberChecks
       ;
   };
 
@@ -239,15 +241,15 @@ in
   #     THROUGH — a consumer never calls them directly (the grant model is negotiation-only; a bare
   #     contractPackage has no public consumer).
   internal = {
-    # The variant-axis projection behind the public `variants`/`hostFactsFor` (ADR-0028). Internal
+    # The bake-axis projection behind the public `bakes`/`hostFactsFor` (ADR-0028). Internal
     # because no consumer needs the raw list once both derived forms ship; exposed here so the
     # conformance suite can prove the taxonomy itself (which features ride the bind) in isolation.
-    inherit (contractLib) variantAxes;
-    # The bake-matrix kernel behind the public `mkBakeMatrix` (issue #58), taking the upper bound to
-    # narrow instead of closing over `variants`. Internal for the same reason `variantAxes` is: no
+    inherit (contractLib) homeAxes;
+    # The bake-matrix kernel behind the public `mkHomeMatrix` (issue #58), taking the upper bound to
+    # narrow instead of closing over `bakes`. Internal for the same reason `homeAxes` is: no
     # consumer needs it, and the suite cannot otherwise prove that a contract which GAINS an axis
     # extends every system's bake — the registry has one axis, so the second is synthetic.
-    inherit (contractLib) bakeMatrixOver;
+    inherit (contractLib) homeMatrixOver;
     inherit (contractLib)
       mkContractPackage
       mkContractPackageForHome

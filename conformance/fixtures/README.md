@@ -1,6 +1,6 @@
 # Conformance fixtures
 
-`roster/` is a synthetic ADR-0020 users directory for the roster derivation — a member, a
+`members/` is a synthetic ADR-0020 users directory for the member-set derivation — a member, a
 half-added directory, and a non-directory entry. It has its own README.
 
 `reference-contract-package/` and `reference-contract-package-gui/` are `contractPackage`-shaped

@@ -21,9 +21,9 @@
   homeGreeterDesktopModule,
   homeBaselineModule,
   safeSet,
-  variantAxes,
-  variants,
-  bakeMatrixOver,
+  homeAxes,
+  homes,
+  homeMatrixOver,
   hostFactsFor,
   greeterGrants,
   tier1EvalConfig,
@@ -31,13 +31,13 @@
   featureGroups,
   privilegedGroups,
   loadIdentity,
-  mkBakeMatrix,
-  mkContractRoster,
+  mkHomeMatrix,
+  mkMembers,
   traceUser,
   mkConfinementCheck,
   mkIdentityPostureCheck,
-  mkVariantEvalCheck,
-  mkRosterChecks,
+  mkHomeEvalCheck,
+  mkMemberChecks,
   outOfUniverseProbes,
   mkContractUser,
   mkContractUsers,
@@ -72,8 +72,8 @@ let
         toolkit
         loadIdentity
         safeSet
-        variantAxes
-        variants
+        homeAxes
+        homes
         hostFactsFor
         featureGroups
         privilegedGroups
@@ -97,35 +97,35 @@ let
         outOfUniverseProbes
         ;
     })
-    (import ./variant-eval.nix {
+    (import ./home-eval.nix {
       inherit
         lib
         pkgs
-        mkVariantEvalCheck
+        mkHomeEvalCheck
         ;
     })
-    (import ./bake-matrix.nix {
+    (import ./home-matrix.nix {
       inherit
         lib
-        variants
-        bakeMatrixOver
-        mkBakeMatrix
+        homes
+        homeMatrixOver
+        mkHomeMatrix
         ;
     })
-    (import ./roster.nix {
+    (import ./members.nix {
       inherit
         lib
         loadIdentity
-        mkContractRoster
+        mkMembers
         ;
     })
-    (import ./roster-checks.nix {
+    (import ./member-checks.nix {
       inherit
         lib
         pkgs
         toolkit
-        mkContractRoster
-        mkRosterChecks
+        mkMembers
+        mkMemberChecks
         ;
     })
     (import ./identity-posture.nix {

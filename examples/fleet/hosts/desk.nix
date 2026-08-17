@@ -1,7 +1,7 @@
 # desk — a SEAT host (non-exposed) with the reference greeter enabled.
 #
 # It declares its `contract.affordances` ONCE and binds three users turnkey via `bindContractUser`
-# (ADR-0025) — no per-user grants, no variant names, no identity paths. Each user's grant is
+# (ADR-0025) — no per-user grants, no bake names, no identity paths. Each user's grant is
 # derived as `affordances ∩ offer`, where the offer is each user's own `contract.wants` harvested
 # from its home (ADR-0028):
 #   - ada wants gui (the safe-set default); desk affords gui ⇒ she gets it — her gui.desktop request

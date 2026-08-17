@@ -60,7 +60,7 @@ in
 {
   assertions = [
     {
-      name = "identity posture: a yescrypt roster satisfies require = \"yescrypt\" (ADR-0019 public/shared)";
+      name = "identity posture: a yescrypt members satisfies require = \"yescrypt\" (ADR-0019 public/shared)";
       ok = passes {
         identities = [ yescryptIdentity ];
         require = "yescrypt";
@@ -75,9 +75,9 @@ in
         });
     }
     {
-      # One offender in an otherwise-yescrypt roster fails it — the check is over EVERY identity,
-      # which is why a repo derives its roster rather than hardcoding a list.
-      name = "identity posture: one non-yescrypt identity fails the whole roster";
+      # One offender in an otherwise-yescrypt members fails it — the check is over EVERY identity,
+      # which is why a repo derives its members rather than hardcoding a list.
+      name = "identity posture: one non-yescrypt identity fails the whole members";
       ok =
         !(passes {
           identities = [
@@ -118,7 +118,7 @@ in
     {
       # A check over nothing would report "ok" forever — the same vacuity trap the confinement
       # check's positive control closes.
-      name = "identity posture: an empty roster is a hard error, never a vacuous pass";
+      name = "identity posture: an empty members is a hard error, never a vacuous pass";
       ok =
         !(passes {
           identities = [ ];

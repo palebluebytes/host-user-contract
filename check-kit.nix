@@ -2,7 +2,7 @@
 # every user/host repo calls one function instead of re-deriving a technique it can get subtly
 # wrong. Distinct from `conformance/`, which proves the contract's own promises in isolation:
 # these checks can only be run where the consumer's real material lives (its actual module
-# imports, its actual roster of identities, its actual per-system bake matrix), which is exactly
+# imports, its actual members of identities, its actual per-system home matrix), which is exactly
 # why the contract cannot make them for anyone and must hand them over as functions.
 #
 # Lib-only and package-free (ADR-0004): this file is a pure function of `lib`. Each check takes
@@ -13,6 +13,12 @@
 # WHICH claim broke rather than a build log to read.
 { lib }:
 let
+  # How this file phrases every refusal (./diagnostics.nix) — the same owner `lib.nix` uses, so a
+  # consumer meets one voice whether the contract refuses a bake or a check refuses its material.
+  # NOTE the `who` here is the check's own `name`, which is the CONSUMER's label for a check it
+  # owns — a different thing from a contract function naming itself, and deliberately kept.
+  diag = import ./diagnostics.nix { inherit lib; };
+  inherit (diag) showList showName;
   # The negative space itself (ADR-0002): system options a confined user home must be unable to
   # NAME. Each is a real NixOS/sops option a user might reach for to escalate; the home umbrella
   # declares none of them, so each throws "option does not exist" at eval. Single-sourced here and
@@ -79,22 +85,22 @@ let
   # The two HOOK DEFAULTS the checks below share, stated once. `defaultForce` is home-manager's
   # activation derivation path — the home shape ~every consumer has — and `defaultPositiveControl`
   # a legitimate home-manager option (a session variable: no packages, no closure). Single-sourced
-  # because three functions now name them (`mkConfinementCheck`, `mkVariantEvalCheck`, and the
-  # roster adapter that forwards both): a second copy would drift the day home-manager renames an
+  # because three functions now name them (`mkConfinementCheck`, `mkHomeEvalCheck`, and the
+  # members adapter that forwards both): a second copy would drift the day home-manager renames an
   # attribute, leaving one check forcing a home the others do not.
   defaultForce = home: home.activationPackage.drvPath;
   defaultPositiveControl = {
     home.sessionVariables.CONTRACT_CONFINEMENT_CONTROL = "ok";
   };
 
-  # The per-user check NAMES the roster adapter publishes under (issue #60), stated once. Each was
+  # The per-user check NAMES the members adapter publishes under (issue #60), stated once. Each was
   # previously spelled TWICE per call site — as the `checks.<system>` attribute AND as the check's
   # own `name`, which is what its failure message reports — so a renamed check could report itself
   # under a name no `nix flake check -L` output would show. One definition, both uses.
   checkNames = {
     confinement = user: "home-confinement-${user}";
-    variantEval = user: "variant-eval-${user}";
-    # Not per-member: one posture claim over the whole roster (see mkIdentityPostureCheck).
+    homeEval = user: "home-eval-${user}";
+    # Not per-member: one posture claim over the whole members (see mkIdentityPostureCheck).
     identityPosture = "identity-posture";
   };
 
@@ -112,7 +118,7 @@ let
   #
   #     contract.lib.mkConfinementCheck {
   #       inherit pkgs;
-  #       buildHome = extraModules: mkHome { userDir = ./users/ada; identity = adaId; extra = extraModules; };
+  #       buildHome = extraModules: mkHome { memberDir = ./users/ada; identity = adaId; extra = extraModules; };
   #     }
   #
   # `buildHome` takes a LIST of extra modules (the check appends exactly one probe at a time) and
@@ -161,22 +167,33 @@ let
     in
     # Ordered deliberately: report a broken harness BEFORE reporting confinement, or a builder
     # that rejects everything would be read as a passing check with a strange name.
-    assert lib.assertMsg controlOk (
-      "${name}: the POSITIVE CONTROL did not evaluate — this module set rejects even a legitimate "
-      + "home option, so its rejection of system options proves nothing about confinement. Fix the "
-      + "builder (or pass a `positiveControl` this home actually declares) before reading this check."
-    );
-    assert lib.assertMsg (expressible == [ ]) (
-      "${name}: this module set has a SYSTEM CHANNEL — the out-of-universe option(s) "
-      + "[${lib.concatStringsSep ", " expressible}] are expressible in the home, so a user could "
-      + "reach host state directly (ADR-0002). Something in the imports declares them (a freeform "
-      + "type, or a NixOS module pulled into the home); remove it. If instead the home is never "
-      + "FORCED by `force`, every probe looks expressible — check that `force` reaches the module "
-      + "merge (the default is `home.activationPackage.drvPath`)."
-    );
+    assert diag.must {
+      ok = controlOk;
+      who = name;
+      problem = "the POSITIVE CONTROL did not evaluate";
+      why =
+        "This module set rejects even a legitimate home option, so its rejection of system options "
+        + "proves nothing about confinement.";
+      fix =
+        "Fix the builder (or pass a `positiveControl` this home actually declares) before reading "
+        + "this check.";
+    };
+    assert diag.must {
+      ok = expressible == [ ];
+      who = name;
+      problem =
+        "this module set has a SYSTEM CHANNEL — the out-of-universe option(s) "
+        + "${showList expressible} are expressible in the home";
+      why = "A user could reach host state directly (ADR-0002).";
+      fix =
+        "Something in the imports declares them (a freeform type, or a NixOS module pulled into "
+        + "the home); remove it. If instead the home is never FORCED by `force`, every probe looks "
+        + "expressible — check that `force` reaches the module merge (the default is "
+        + "`home.activationPackage.drvPath`).";
+    };
     okWitness pkgs name;
 
-  # mkIdentityPostureCheck (issue #35): assert every identity in a repo's OWN roster carries the
+  # mkIdentityPostureCheck (issue #35): assert every identity in a repo's OWN members carry the
   # login-credential posture that repo has chosen (ADR-0019).
   #
   # OPT-IN BY CONSTRUCTION, and that is the whole design. ADR-0019 makes the posture conditional
@@ -188,7 +205,7 @@ let
   #
   #     contract.lib.mkIdentityPostureCheck {
   #       inherit pkgs;
-  #       identities = map contract.lib.loadIdentity rosterPaths;  # derived, never hardcoded
+  #       identities = map contract.lib.loadIdentity memberPaths;  # derived, never hardcoded
   #       require = "yescrypt";
   #     }
   #
@@ -196,7 +213,7 @@ let
   # which one it is asserting. Known postures are `credentialPostures` above (ADR-0019's two:
   # `yescrypt`, `libc`); an unknown name is a loud error naming them, since a posture typo must
   # never read as "checked". `identities` is a LIST of loaded identities (`lib.attrValues` an
-  # attrset roster) — derive it from the users directory rather than hardcoding it, so a newly
+  # attrset members) — derive it from the users directory rather than hardcoding it, so a newly
   # added user is covered instead of silently skipped; an empty list is a hard error rather than a
   # vacuous pass.
   mkIdentityPostureCheck =
@@ -208,13 +225,14 @@ let
     }:
     let
       posture =
-        credentialPostures.${require} or (throw (
-          "${name}: unknown credential posture '${require}' — known postures are: "
-          + "${lib.concatStringsSep ", " (lib.attrNames credentialPostures)} (ADR-0019)."
-        ));
+        credentialPostures.${require} or (diag.stop {
+          who = name;
+          problem = "unknown credential posture ${showName require}";
+          fix = "Known postures are ${showList (lib.attrNames credentialPostures)} (ADR-0019).";
+        });
       # `loadIdentity` returns the identity.json RAW (the option submodule fills defaults only
       # once the value is assigned to an option), and `hashedPassword` is an OPTIONAL field — so a
-      # roster entry may legitimately have no such attribute. Default it to "" here, or the
+      # member may legitimately have no such attribute. Default it to "" here, or the
       # documented call above dies with `attribute 'hashedPassword' missing` instead of this
       # check's named verdict: an absent credential is a posture FAILURE, not a crash.
       hashOf = id: id.hashedPassword or "";
@@ -239,37 +257,51 @@ let
         in
         "${id.username or "<identity with no username>"} (${algorithm})";
     in
-    assert lib.assertMsg (lib.isList identities) (
-      "${name}: `identities` must be a LIST of loaded identities; an attrset roster is passed as "
-      + "`lib.attrValues roster`."
-    );
-    assert lib.assertMsg (identities != [ ]) (
-      "${name}: no identities to check — a posture check over an empty roster passes vacuously "
-      + "forever. Derive the roster from the users directory (every subdir with an identity.json) "
-      + "so a newly added user is covered rather than silently skipped."
-    );
-    assert lib.assertMsg (offenders == [ ]) (
-      "${name}: identity.json credential(s) do not carry the required posture "
-      + "${posture.description}: ${lib.concatMapStringsSep ", " describe offenders}. "
-      + "Re-hash with `${posture.remedy}` (ADR-0019: the credential travels with the user as "
-      + "public data, and repo visibility picks the hash strength)."
-    );
+    assert diag.must {
+      ok = lib.isList identities;
+      who = name;
+      problem = "`identities` must be a LIST of loaded identities";
+      fix = "An attrset member set is passed as `lib.attrValues members`.";
+    };
+    assert diag.must {
+      ok = identities != [ ];
+      who = name;
+      problem = "no identities to check";
+      why = diag.vacuity {
+        subject = "identity list";
+        verbs = "check";
+      };
+      fix =
+        "Derive the members from the users directory (every subdir with an identity.json) so a "
+        + "newly added user is covered rather than silently skipped.";
+    };
+    assert diag.must {
+      ok = offenders == [ ];
+      who = name;
+      problem =
+        "identity.json credential(s) do not carry the required posture ${posture.description}: "
+        + "${lib.concatMapStringsSep ", " describe offenders}";
+      why =
+        "ADR-0019: the credential travels with the user as public data, and repo visibility picks "
+        + "the hash strength.";
+      fix = "Re-hash with `${posture.remedy}`.";
+    };
     okWitness pkgs name;
 
-  # mkVariantEvalCheck (issue #49, decision #43): prove ONE user's every baked variant EVALUATES
-  # on every system the repo bakes it for — the roster-generic replacement for the hand-written
+  # mkHomeEvalCheck (issue #49, decision #43): prove ONE user's every bake EVALUATES
+  # on every system the repo bakes it for — the members-generic replacement for the hand-written
   # cross-arch eval checks each user's `checks.nix` used to carry. A consumer's mapper applies it
-  # per user over the derived roster (failure attribution rides the check name), so a typical
+  # per user over the derived members (failure attribution rides the check name), so a typical
   # user ships no check file at all:
   #
-  #     contract.lib.mkVariantEvalCheck {
+  #     contract.lib.mkHomeEvalCheck {
   #       inherit pkgs;
-  #       homesFor = sys: rosterHomes.${sys}.${user};   # sys → { <label> = home; }, ONE user's bake
+  #       homesFor = sys: memberHomes.${sys}.${user};   # sys → { <label> = home; }, ONE user's bake
   #       systems = repoSystems;                        # every system this repo bakes (a fleet fact)
   #     }
   #
   # Deliberately SHAPE-AGNOSTIC: "everything we bake, evaluates" is this helper's fact; WHICH
-  # variants a fleet bakes per system is the consumer mapper's fact, guarded where its per-system
+  # bakes a fleet bakes per system is the consumer mapper's fact, guarded where its per-system
   # filter lives (the contract's `powerset(homeAffecting)` is only the upper bound a host could
   # grant, never a per-system baking obligation). And it forces ALL handed systems, the native one
   # included — redundant with `checks = packages` build-depending on the native homes, but "the
@@ -281,28 +313,28 @@ let
   # collapse into one boolean — and the underlying error message is exactly the diagnostic the
   # check exists to surface (the reasoning the old hand-written checks documented).
   #
-  # COVERAGE NOTE — like `mkConfinementCheck`, `conformance/variant-eval.nix` drives this logic
+  # COVERAGE NOTE — like `mkConfinementCheck`, `conformance/home-eval.nix` drives this logic
   # through synthetic homes (it has to: ADR-0004). The `activationPackage.drvPath` default over a
   # REAL home-manager home is therefore only exercised in a consumer repo's own `checks` — keep it
   # in step with home-manager's attribute names.
-  mkVariantEvalCheck =
+  mkHomeEvalCheck =
     {
       homesFor,
       systems,
       pkgs,
-      name ? "variant-eval",
-      # The same override hook as mkConfinementCheck: force a variant hard enough to prove it
+      name ? "home-eval",
+      # The same override hook as mkConfinementCheck: force a bake hard enough to prove it
       # evaluates — by default its derivation path, the home-manager shape ~every consumer has.
       force ? defaultForce,
     }:
     let
       homesBySystem = lib.genAttrs systems homesFor;
-      # A bake that is not a non-empty attrset — an emptied variant set, or a mapper handing
-      # something that is not a variant attrset at all.
+      # A bake that is not a non-empty attrset — an emptied home set, or a mapper handing
+      # something that is not a bake attrset at all.
       vacuousSystems = lib.filter (
         sys: !(lib.isAttrs homesBySystem.${sys}) || homesBySystem.${sys} == { }
       ) systems;
-      # Every system × variant whose forced value is NOT a `.drv` path. A variant that does not
+      # Every system × bake whose forced value is NOT a `.drv` path. A bake that does not
       # evaluate never lands here — its error propagates raw out of `force` (no tryEval, above) —
       # so an entry in this list means `force` stopped short of the derivation.
       unforced = lib.concatMap (
@@ -315,59 +347,75 @@ let
       ) systems;
     in
     # Ordered deliberately, anti-vacuous BEFORE evaluability: a check that forced nothing must
-    # report the emptied bake, not read as "every variant evaluates".
+    # report the emptied bake, not read as "every bake evaluates".
     #
     # This first assert EXTENDS issue #49's anti-vacuous clause ("for every system in `systems`,
     # `homesFor sys` is a non-empty attrset") to the list itself, which that wording passes over:
     # `systems = [ ]` satisfies it for-all-vacuously, so the same emptied-bake hazard one level up
     # would read as green forever. Same species, same verdict — a derived system list that filters
     # down to nothing is a mapper bug, not a passing check.
-    assert lib.assertMsg (systems != [ ]) (
-      "${name}: the systems list is empty — a variant-eval check over zero systems passes "
-      + "vacuously forever. Hand it every system this repo bakes (the fleet's system list, "
-      + "derived, never hardcoded)."
-    );
-    assert lib.assertMsg (vacuousSystems == [ ]) (
-      "${name}: no baked variants for [${lib.concatStringsSep ", " vacuousSystems}] — `homesFor` "
-      + "must return a NON-EMPTY attrset of this user's baked homes for every handed system. An "
-      + "accidentally-emptied bake (a per-system filter gone wrong in the mapper) must fail here, "
-      + "never read as a passing eval check."
-    );
-    assert lib.assertMsg (unforced == [ ]) (
-      "${name}: forcing [${lib.concatStringsSep ", " unforced}] did not yield a `.drv` path, so "
-      + "\"this variant evaluates\" was never actually proven. `force` must reach the variant's "
-      + "derivation (the default is `home.activationPackage.drvPath`); a hook that stops short "
-      + "would make every evaluability claim vacuous."
-    );
+    assert diag.must {
+      ok = systems != [ ];
+      who = name;
+      problem = "the systems list is empty";
+      why = diag.vacuity {
+        subject = "systems list";
+        verbs = "check";
+      };
+      fix =
+        "Hand it every system this repo builds for (the fleet's system list, derived, never "
+        + "hardcoded).";
+    };
+    assert diag.must {
+      ok = vacuousSystems == [ ];
+      who = name;
+      problem = "no homes for ${showList vacuousSystems}";
+      why =
+        "An accidentally-emptied row (a per-system filter gone wrong in the mapper) must fail "
+        + "here, never read as a passing eval check.";
+      fix =
+        "`homesFor` must return a NON-EMPTY attrset of this user's built homes for every handed "
+        + "system.";
+    };
+    assert diag.must {
+      ok = unforced == [ ];
+      who = name;
+      problem = "forcing ${showList unforced} did not yield a `.drv` path";
+      why = "So \"this home evaluates\" was never actually proven.";
+      fix =
+        "`force` must reach the home's derivation (the default is "
+        + "`home.activationPackage.drvPath`); a hook that stops short would make every "
+        + "evaluability claim vacuous.";
+    };
     okWitness pkgs name;
 
-  # mkRosterChecks (issue #60): the ROSTER ADAPTER over the three helpers above — ONE call takes a
-  # consumer's roster plus its own material (its home builder, its per-system homes, the credential
+  # mkMemberChecks (issue #60): the MEMBER-SET ADAPTER over the three helpers above — ONE call takes a
+  # consumer's members plus its own material (its home builder, its per-system homes, the credential
   # posture it has chosen) and yields the whole per-user check set, named.
   #
-  # The helpers are roster-generic for a reason: a hand-listed set always misses the entry someone
+  # The helpers are members-generic for a reason: a hand-listed set always misses the entry someone
   # forgot to add. Applying them by hand re-introduced exactly that at the call site — two
-  # `mapAttrs'` folds over the roster, each check's name spelled twice, and two closures threaded
+  # `mapAttrs'` folds over the members, each check's name spelled twice, and two closures threaded
   # per user, re-typed in every consumer. The mapping is not a fleet's fact; it is the same fold
   # every consumer of the kit performs, so the contract performs it:
   #
-  #     checks.<system> = packages.<system> // contract.lib.mkRosterChecks {
-  #       inherit pkgs roster homes;
+  #     checks.<system> = packages.<system> // contract.lib.mkMemberChecks {
+  #       inherit pkgs members homes;
   #       buildHome = member: extraModules: mkHome { inherit member extraModules; };
   #       require = "yescrypt";
   #     };
   #
-  # yielding `home-confinement-<user>` and `variant-eval-<user>` per roster member, plus one
-  # `identity-posture` over the whole roster — every name from `checkNames` above, so a call site
+  # yielding `home-confinement-<user>` and `home-eval-<user>` per member, plus one
+  # `identity-posture` over the whole members — every name from `checkNames` above, so a call site
   # spells none of them.
   #
   # It REPLACES nothing. The three helpers stay public and separately callable: a single-user repo
-  # has no roster to adapt, and a repo that wants confinement alone should call for confinement
-  # alone. This is the roster fold over them, and it is written in terms of exactly the same
+  # has no members to adapt, and a repo that wants confinement alone should call for confinement
+  # alone. This is the members fold over them, and it is written in terms of exactly the same
   # public arguments those calls take.
   #
   # SIGNATURE — what stays the consumer's, stays the consumer's:
-  #   `roster`    the ADR-0020 roster (`mkContractRoster`, issue #57), the authority on WHO is
+  #   `members`    the ADR-0020 members (`mkMembers`, issue #57), the authority on WHO is
   #               checked. Derived, so a user added to the directory is covered the moment it
   #               exists; an EMPTY one is a hard error, since a check set over nobody is green
   #               forever.
@@ -387,21 +435,21 @@ let
   #
   # Every anti-vacuity guard the helpers carry survives, because the adapter adds no `tryEval` and
   # no filtering: it passes the material through. What it adds is the traps that only exist ONE
-  # LEVEL UP, where the fold is — a roster with no members, homes naming no system, and homes that
-  # do not cover the roster. Each of those yields a check set that is merely SMALLER, and a missing
+  # LEVEL UP, where the fold is — a member set with no members, homes naming no system, and homes that
+  # do not cover the members. Each of those yields a check set that is merely SMALLER, and a missing
   # check is indistinguishable from a passing one in `nix flake check` output. (Plus the two SHAPE
-  # guards those diagnoses need to stay honest: a roster or a homes row that is not an attrset gets
+  # guards those diagnoses need to stay honest: a member set or a homes row that is not an attrset gets
   # told so, rather than being reported as empty or iterated over.)
   #
   # The coverage rule is worth stating outright, because it is the one thing the adapter asks of a
   # consumer that the helpers do not: every member bakes on every system in `homes`. That is the
-  # shape `mkBakeMatrix` already implies — its rows are per SYSTEM, not per user — and it is what
+  # shape `mkHomeMatrix` already implies — its rows are per SYSTEM, not per user — and it is what
   # makes "who is unchecked" answerable at all. A fleet that genuinely bakes different members on
   # different systems is outside this fold and calls the three helpers per user, which is one more
   # reason they stay public.
-  mkRosterChecks =
+  mkMemberChecks =
     {
-      roster,
+      members,
       homes,
       buildHome,
       require,
@@ -412,14 +460,14 @@ let
     let
       shapelyHomes = lib.isAttrs homes;
       systems = lib.optionals shapelyHomes (lib.attrNames homes);
-      memberNames = lib.optionals (lib.isAttrs roster) (lib.attrNames roster);
+      memberNames = lib.optionals (lib.isAttrs members) (lib.attrNames members);
       # The system rows that ARE `{ <user> = …; }` attrsets, and the ones that are not. Split once:
       # the coverage fold below can only ask a well-formed row who it holds, and reporting a
       # malformed row as "holds nobody" would name the wrong mistake.
       wellFormedRows = lib.filter (sys: lib.isAttrs homes.${sys}) systems;
       malformedRows = lib.filter (sys: !(lib.isAttrs homes.${sys})) systems;
       # Every system × member the handed homes do NOT hold. Checked here rather than left to the
-      # raw `attribute missing` a lookup would throw, because the diagnosis is specific: the roster
+      # raw `attribute missing` a lookup would throw, because the diagnosis is specific: the members
       # is the authority on who exists, so a member with no homes is a gap in the mapper that built
       # them, not a member that should be skipped.
       uncovered = lib.concatMap (
@@ -428,37 +476,65 @@ let
     in
     # Ordered deliberately, as in the helpers: report a SHAPE that cannot be read before reading it,
     # and a set that would check NOBODY before reporting anything about what it checked.
-    assert lib.assertMsg (lib.isAttrs roster) (
-      "mkRosterChecks: the roster is not an attrset — it is `mkContractRoster`'s own value "
-      + "(`{ <name> = { name; dir; identity; }; }`), keyed by member name, not a list of members."
-    );
-    assert lib.assertMsg (roster != { }) (
-      "mkRosterChecks: the roster is empty — a check set over zero members is green forever, and "
-      + "every proof the kit ships would silently apply to nothing. Derive it from the users "
-      + "directory (`mkContractRoster { usersDir = ./users; }`), which refuses an empty one at the "
-      + "source."
-    );
-    assert lib.assertMsg shapelyHomes (
-      "mkRosterChecks: `homes` is not an attrset — it is the consumer's per-system homes, keyed by "
-      + "system: `{ <system> = { <user> = { <label> = home; }; }; }`."
-    );
-    assert lib.assertMsg (homes != { }) (
-      "mkRosterChecks: `homes` names no system — its key set is what the variant-eval checks run "
-      + "over, so an empty one checks no bake at all."
-    );
-    assert lib.assertMsg (malformedRows == [ ]) (
-      "mkRosterChecks: the `homes` row(s) for [${lib.concatStringsSep ", " malformedRows}] are not "
-      + "attrsets — each system's row must be `{ <user> = { <label> = home; }; }`, this repo's own "
-      + "baked homes for that system."
-    );
-    assert lib.assertMsg (uncovered == [ ]) (
-      "mkRosterChecks: no baked homes for [${lib.concatStringsSep ", " uncovered}] — the ROSTER "
-      + "says who exists, so every member needs a bake on every system in `homes`. A member the "
-      + "mapper skipped would otherwise lose its variant-eval check entirely, which reads exactly "
-      + "like a passing one. Build `homes` from the roster itself — or, if this fleet deliberately "
-      + "bakes different members on different systems, call the three helpers per user instead of "
-      + "folding over the roster."
-    );
+    assert diag.must {
+      ok = lib.isAttrs members;
+      who = "mkMemberChecks";
+      problem = "the member set is not an attrset";
+      fix =
+        "It is `mkMembers`'s own value (`{ <name> = { name; dir; identity; }; }`), keyed by member "
+        + "name, not a list of members.";
+    };
+    assert diag.must {
+      ok = members != { };
+      who = "mkMemberChecks";
+      problem = "the member set is empty";
+      why = diag.vacuity {
+        subject = "member set";
+        verbs = "check";
+      };
+      fix =
+        "Derive it from the users directory (`mkMembers { usersDir = ./users; }`), which refuses "
+        + "an empty one at the source.";
+    };
+    assert diag.must {
+      ok = shapelyHomes;
+      who = "mkMemberChecks";
+      problem = "`homes` is not an attrset";
+      fix =
+        "It is the consumer's per-system homes, keyed by system: "
+        + "`{ <system> = { <user> = { <label> = home; }; }; }`.";
+    };
+    assert diag.must {
+      ok = homes != { };
+      who = "mkMemberChecks";
+      problem = "`homes` names no system";
+      why = diag.vacuity {
+        subject = "`homes`";
+        verbs = "check";
+      };
+      fix = "Its key set is what the home-eval checks run over.";
+    };
+    assert diag.must {
+      ok = malformedRows == [ ];
+      who = "mkMemberChecks";
+      problem = "the `homes` row(s) for ${showList malformedRows} are not attrsets";
+      fix =
+        "Each system's row must be `{ <user> = { <label> = home; }; }`, this repo's own built "
+        + "homes for that system.";
+    };
+    assert diag.must {
+      ok = uncovered == [ ];
+      who = "mkMemberChecks";
+      problem = "no built homes for ${showList uncovered}";
+      why =
+        "The MEMBER SET says who exists, so every member needs a home on every system in `homes`. "
+        + "A member the mapper skipped would otherwise lose its home-eval check entirely, which "
+        + "reads exactly like a passing one.";
+      fix =
+        "Build `homes` from the member set itself — or, if this fleet deliberately builds "
+        + "different members on different systems, call the three helpers per user instead of "
+        + "folding over the member set.";
+    };
     lib.mapAttrs' (
       n: member:
       lib.nameValuePair (checkNames.confinement n) (mkConfinementCheck {
@@ -468,24 +544,24 @@ let
         # `extraModules` list, exactly as it does for a hand-written per-user call.
         buildHome = buildHome member;
       })
-    ) roster
+    ) members
     // lib.mapAttrs' (
       n: _:
-      lib.nameValuePair (checkNames.variantEval n) (mkVariantEvalCheck {
+      lib.nameValuePair (checkNames.homeEval n) (mkHomeEvalCheck {
         inherit pkgs systems force;
-        name = checkNames.variantEval n;
+        name = checkNames.homeEval n;
         homesFor = sys: homes.${sys}.${n};
       })
-    ) roster
+    ) members
     // {
-      # ONE posture claim over the whole roster, not one per member: `require` is a fact about the
+      # ONE posture claim over the whole members, not one per member: `require` is a fact about the
       # repo (ADR-0019 — its visibility picks the hash strength), and the helper's own message names
       # every offender it found, so a per-member split would only make the same failure noisier.
       ${checkNames.identityPosture} = mkIdentityPostureCheck {
         inherit pkgs require;
         name = checkNames.identityPosture;
-        # The members' identities — already resolved by the roster (issue #57), never re-read here.
-        identities = map (m: m.identity) (lib.attrValues roster);
+        # The members' identities — already resolved by the members (issue #57), never re-read here.
+        identities = map (m: m.identity) (lib.attrValues members);
       };
     };
 in
@@ -494,7 +570,7 @@ in
     outOfUniverseProbes
     mkConfinementCheck
     mkIdentityPostureCheck
-    mkVariantEvalCheck
-    mkRosterChecks
+    mkHomeEvalCheck
+    mkMemberChecks
     ;
 }

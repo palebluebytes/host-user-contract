@@ -7,7 +7,7 @@
 # and neither can override the other's refusal.
 #
 # It signs in like any other user (it carries a login credential — ADR-0019, cleartext
-# "correct-horse-battery-staple", the roster's shared reference password). That is deliberate: this
+# "correct-horse-battery-staple", the members' shared reference password). That is deliberate: this
 # contract delivers "login, dotfiles, the features they need" (ADR-0001), so a reference user is one
 # that logs in. What makes svc distinct is not that it never takes a seat — it is that it never
 # takes a DESKTOP, on any host, by its own choice.

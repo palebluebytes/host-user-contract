@@ -30,10 +30,10 @@ let
   recorded = mkContractHome {
     homeManagerConfiguration = recordingHMC;
     pkgs = stubPkgs;
-    userDir = ../examples/users/users/ada;
-    # sudo is a bind-riding grant (not a variant axis): the narrowing must drop it before a home
+    memberDir = ../examples/users/users/ada;
+    # sudo is a bind-riding grant (not a bake axis): the narrowing must drop it before a home
     # can ever see it (ADR-0028).
-    granted = {
+    grants = {
       gui.enable = true;
       sudo.enable = true;
     };
@@ -76,11 +76,11 @@ let
       ".contract-desktop"
     ] (m desktopProbeArg);
 
-  # An explicit identity must override the userDir loader, and the fixed home.* rules follow it.
+  # An explicit identity must override the memberDir loader, and the fixed home.* rules follow it.
   overridden = mkContractHome {
     homeManagerConfiguration = recordingHMC;
     pkgs = stubPkgs;
-    userDir = ../examples/users/users/ada;
+    memberDir = ../examples/users/users/ada;
     identity = {
       username = "sol";
     };
@@ -88,11 +88,11 @@ let
   };
   overriddenInline = inlineOf overridden;
 
-  # --- the roster member as the builder's input (issue #57) ---
-  # A `mkContractRoster` entry, stood in for by hand so this stays a claim about the BUILDER: its
+  # --- the member as the builder's input (issue #57) ---
+  # A `mkMembers` entry, stood in for by hand so this stays a claim about the BUILDER: its
   # `dir` is ada's real directory while its `identity` is somebody else's. Both must be taken from
   # the member — which is only possible if the builder no longer re-resolves `<dir>/identity.json`
-  # for itself. The roster resolved it once; a third resolution site is what this removes.
+  # for itself. The members resolved it once; a third resolution site is what this removes.
   memberBuilt = mkContractHome {
     homeManagerConfiguration = recordingHMC;
     pkgs = stubPkgs;
@@ -107,7 +107,7 @@ let
   };
   memberInline = inlineOf memberBuilt;
 
-  # Neither a member nor a userDir: there is no user directory to compose from, so this is a named
+  # Neither a member nor a memberDir: there is no user directory to compose from, so this is a named
   # error rather than a home assembled from a missing path.
   sourcelessEval = builtins.tryEval (
     lib.elemAt
@@ -190,7 +190,7 @@ in
         && !(lib.any surfacesDesktopChoice recorded.modules);
     }
     {
-      name = "mkContractHome: an explicit identity overrides the userDir loader; home.* follow it";
+      name = "mkContractHome: an explicit identity overrides the memberDir loader; home.* follow it";
       ok =
         overriddenInline.identity.username == "sol"
         && overriddenInline.home.username == "sol"
@@ -198,9 +198,9 @@ in
         && overriddenInline.home.stateVersion == "26.05";
     }
 
-    # --- the roster member (issue #57) ---
+    # --- the member (issue #57) ---
     {
-      name = "mkContractHome: a roster member supplies the userDir AND the already-resolved identity";
+      name = "mkContractHome: a member supplies the memberDir AND the already-resolved identity";
       ok =
         lib.elemAt memberBuilt.modules 2 == ../examples/users/users/ada/home.nix
         && memberInline.identity.username == "rosa"
@@ -208,7 +208,7 @@ in
         && memberInline.home.homeDirectory == "/home/rosa";
     }
     {
-      name = "mkContractHome: with neither a member nor a userDir there is no home to compose ⇒ hard error";
+      name = "mkContractHome: with neither a member nor a memberDir there is no home to compose ⇒ hard error";
       ok = !sourcelessEval.success;
     }
 

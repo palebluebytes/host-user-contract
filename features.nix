@@ -23,7 +23,7 @@
 #                      path. Features with only these may be runtime-eligible (safe set).
 #   config           : user-owned option fragment merged into `custom.users.<u>` — the
 #                      feature's *parameters* (host-affecting ones aggregate, ADR-0003).
-#   needsOwnBuild    : this grant CANNOT be applied to a home that is already built, because it
+#   needsOwnHome    : this grant CANNOT be applied to a home that is already built, because it
 #                      changes what gets built. The test is mechanical: build the home with the
 #                      grant and without it, and see whether the two differ. Absent/false (the
 #                      default) means the grant confers host-side powers ONLY (a privileged
@@ -31,7 +31,7 @@
 #                      RIDES THE BIND, and one build serves every answer.
 #                      Two consequences follow from this one flag (ADR-0028):
 #                        - a producer bakes one home per COMBINATION of these, because it cannot
-#                          know the answer when it builds. Each one therefore DOUBLES the variant
+#                          know the answer when it builds. Each one therefore DOUBLES the bake
 #                          count of every user, on every architecture. Say true sparingly.
 #                        - `hostFacts.granted` is narrowed to these, because they are the only
 #                          grants whose value is true information inside a given build. A home
@@ -40,7 +40,7 @@
 #                      Declared, not derived: "does this change the build?" is a property of the
 #                      feature, not of its group list — a privileged feature could one day ship
 #                      home content, and a group-conferring one need not. lib.nix projects these
-#                      into `variantAxes`, and `variants` from that.
+#                      into `homeAxes`, and `bakes` from that.
 { lib }:
 {
   # gui: desktop environment. Its host effects are two contract-neutral things only —
@@ -54,8 +54,8 @@
     # The one feature that cannot be applied to an already-built home (ADR-0028): it carries
     # user-emitted request params and a desktop's home content, so a granted gui home differs in
     # CONTENT from an ungranted one. Hence a home may branch on it and SEE it in
-    # hostFacts.granted, and every producer bakes a gui variant beside its base one.
-    needsOwnBuild = true;
+    # hostFacts.granted, and every producer bakes a gui bake beside its base one.
+    needsOwnHome = true;
     groups = [
       "input"
       "uinput"

@@ -9,7 +9,7 @@
 # one without reading it has said a word with no listener; a home with no home-manager content to
 # gate (a contract-pure home, ADR-0008) writes none at all. The worked example is
 # `examples/users/users/duo-a`, which wires `gui` off `hostFacts.granted.gui.enable` — the grant
-# reaching home CONTENT is exactly what makes gui `needsOwnBuild`, and so a baked variant.
+# reaching home CONTENT is exactly what makes gui `needsOwnHome`, and so a bake.
 { lib }:
 {
   cli.enable = lib.mkEnableOption "CLI meta-profile (base tools)";

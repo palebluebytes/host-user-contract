@@ -5,7 +5,7 @@
 # baked into the shared code. Since issue #36 that is PERMITTED, not required — which is exactly why
 # it needs a worked example: an optional shape with no exercise rots. duo-a and duo-b import this
 # module (and `shared/overlay.nix`); the other five reference users deliberately do not, so the
-# roster shows both supported arrangements side by side. See ADR-0022's exception note.
+# members shows both supported arrangements side by side. See ADR-0022's exception note.
 #
 # Unlike the other five reference homes this module is NOT contract-pure (ADR-0008): it sets
 # home-manager's own `home.packages`/`home.file` and reads `pkgs`, so it needs home-manager to
