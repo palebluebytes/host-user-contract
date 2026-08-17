@@ -280,7 +280,7 @@
       # already nested by system, which is the shape a flake output is, so there is nothing here to
       # merge or re-key.
       #
-      # `packages` — the pre-built binding artifacts (ADR-0016), for every user × bake × system.
+      # `packages` — the pre-built binding artifacts (ADR-0016), for every user × home × system.
       # Each is content-addressed and carries `activate` + `contract-requests.json` (with the baked
       # `granted` field the ADR-0025 coupling guard asserts the host actually grants):
       #   - x86_64-linux: <user>-contractPackage-{base,gui}
@@ -288,8 +288,8 @@
       #
       # `contractUsers` — the turnkey binding INDEX (ADR-0025): `contractUsers.<sys>.<user> =
       # { identity; offer; contractPackages = [{ grantKey; package }] }`, plain data (no IFD), so a
-      # host's `bindContractUser` picks a bake by reading it rather than by building every bake to
-      # inspect a baked manifest.
+      # host's `bindContractUser` picks a contractPackage by reading it rather than by building
+      # every one of them to inspect a baked manifest.
       inherit (fleet) packages contractUsers;
 
       # ── Checks ──────────────────────────────────────────────────────────────────────────────

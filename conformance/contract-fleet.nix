@@ -424,6 +424,19 @@ in
       name = "mkContractFleet: a pkgsFor answering about another system is a named error";
       ok = !crossedPkgs.success;
     }
+    {
+      # The members/matrix DISAGREEMENT, which at this rung is unexpressible rather than guarded —
+      # and that is a claim worth pinning rather than asserting in prose. One rung down,
+      # `mkContractUsers` must refuse a `homes` key its member set does not hold: a hand-listed
+      # name that has drifted from the directory. Here there is no hand-listed name to drift,
+      # because the fleet derives BOTH sides — the keys it hands over are the member set's own, on
+      # every system. So the guard below it can never fire through this path, which is only true
+      # while the fold keeps deriving them; if it ever took a member list of its own, this goes red.
+      name = "mkContractFleet: the members and the matrix cannot disagree — every row's keys ARE the member set's";
+      ok = lib.all (
+        sys: lib.attrNames probeFleet.homes.${sys} == lib.attrNames members
+      ) probeFleet.systems;
+    }
 
     # --- the published outputs, on the real bake path ---
     {

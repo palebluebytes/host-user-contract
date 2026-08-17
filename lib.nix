@@ -916,9 +916,14 @@ let
     let
       systems = lib.attrNames homeMatrix;
       rowOf = sys: homeMatrix.${sys};
-      malformedRows = lib.filter (sys: !lib.isList (rowOf sys)) systems;
-      wellFormedRows = lib.filter (sys: lib.isList (rowOf sys)) systems;
-      emptyRows = lib.filter (sys: rowOf sys == [ ]) wellFormedRows;
+      # Split by PARTITION rather than by two negated filters, for the reason `mkMemberChecks`
+      # states one file over: the emptiness verdict below may only be asked of a row it can read,
+      # and reporting a MALFORMED row as "names no home" would name the wrong mistake — so the two
+      # sets have to stay exact complements, which a partition makes structural instead of a rule
+      # two hand-written predicates have to keep agreeing on.
+      byRowShape = lib.partition (sys: lib.isList (rowOf sys)) systems;
+      malformedRows = byRowShape.wrong;
+      emptyRows = lib.filter (sys: rowOf sys == [ ]) byRowShape.right;
 
       # THE MEMO. One application of `pkgsFor` per system, and the guard that the answer is about
       # the system it was asked for rides each entry — so it fires when that system's homes are
@@ -954,7 +959,7 @@ let
       # published WITH are the same value by construction — which is the pairing `mkContractUser`'s
       # guard then checks anyway (issue #56), because right-by-construction is a property of this
       # file rather than of the shape being taught.
-      rows = lib.genAttrs systems (
+      filledRows = lib.genAttrs systems (
         sys:
         lib.mapAttrs (
           _: member:
@@ -982,11 +987,13 @@ let
           pkgs = pkgsBySystem.${sys};
           homes = byMember;
         }
-      ) rows;
+      ) filledRows;
     in
-    # Ordered as everywhere else here, most specific first: a shape that cannot be read before
-    # anything is read off it, and a fold that would build NOBODY before any verdict about what it
-    # built.
+    # Grouped by SUBJECT — the member set, then the matrix, then its rows — and within each the same
+    # order the rest of this file uses: a shape that cannot be read before anything is read off it,
+    # and a fold that would build NOBODY before any verdict about what it built. Grouped rather than
+    # strictly most-specific-first because the two subjects are independent: a reader handed both
+    # wrong should be told about the one they are looking at, not about whichever is more specific.
     assert diag.must {
       ok = lib.isAttrs members;
       who = "mkContractFleet";
@@ -1045,7 +1052,7 @@ let
         lib.mapAttrs (
           _: memberRows: lib.listToAttrs (map (row: lib.nameValuePair row.label row.home) memberRows)
         ) byMember
-      ) rows;
+      ) filledRows;
       # Nested by system, so `inherit (fleet) packages contractUsers;` is the flake outputs. Each
       # system's bake already keys its own outputs by that system, so this only unwraps the key it
       # was going to be looked up under anyway — never a re-keying.
