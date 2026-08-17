@@ -220,10 +220,16 @@ in
     #     every system it bakes for? The roster-generic cross-arch eval check a consumer's mapper
     #     applies per user (decision #43) — which variants a fleet bakes per system stays the
     #     mapper's own fact.
+    # …and the ROSTER ADAPTER over the three (issue #60): `mkRosterChecks` applies all of them
+    # across a whole roster in ONE call, with the check names single-sourced, so a consumer folds
+    # the kit over its members instead of hand-writing the fold that the helpers being
+    # roster-generic was supposed to spare it. The three stay public and separately callable — a
+    # single-user repo has no roster to adapt, and a repo wanting one proof calls for one proof.
     inherit (checkKit)
       mkConfinementCheck
       mkIdentityPostureCheck
       mkVariantEvalCheck
+      mkRosterChecks
       ;
   };
 

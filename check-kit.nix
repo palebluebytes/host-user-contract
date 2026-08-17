@@ -75,9 +75,28 @@ let
   # named `assert`), so the derivation exists only to be something `checks.<system>.<name>` can
   # point at — single-sourced so the two cannot drift into different shapes.
   okWitness = pkgs: name: pkgs.runCommand "${name}-ok" { } "touch $out";
-in
-{
-  inherit outOfUniverseProbes;
+
+  # The two HOOK DEFAULTS the checks below share, stated once. `defaultForce` is home-manager's
+  # activation derivation path — the home shape ~every consumer has — and `defaultPositiveControl`
+  # a legitimate home-manager option (a session variable: no packages, no closure). Single-sourced
+  # because three functions now name them (`mkConfinementCheck`, `mkVariantEvalCheck`, and the
+  # roster adapter that forwards both): a second copy would drift the day home-manager renames an
+  # attribute, leaving one check forcing a home the others do not.
+  defaultForce = home: home.activationPackage.drvPath;
+  defaultPositiveControl = {
+    home.sessionVariables.CONTRACT_CONFINEMENT_CONTROL = "ok";
+  };
+
+  # The per-user check NAMES the roster adapter publishes under (issue #60), stated once. Each was
+  # previously spelled TWICE per call site — as the `checks.<system>` attribute AND as the check's
+  # own `name`, which is what its failure message reports — so a renamed check could report itself
+  # under a name no `nix flake check -L` output would show. One definition, both uses.
+  checkNames = {
+    confinement = user: "home-confinement-${user}";
+    variantEval = user: "variant-eval-${user}";
+    # Not per-member: one posture claim over the whole roster (see mkIdentityPostureCheck).
+    identityPosture = "identity-posture";
+  };
 
   # mkConfinementCheck (issue #35): prove a consumer's REAL module set has no system channel.
   #
@@ -125,13 +144,11 @@ in
       buildHome,
       pkgs,
       name ? "home-confinement",
-      force ? (home: home.activationPackage.drvPath),
+      force ? defaultForce,
       # A legitimate home option — the control that proves the builder still says yes to something.
       # Defaults to a home-manager option (a session variable: no packages, no closure), since the
       # builder is a home-manager one by default.
-      positiveControl ? {
-        home.sessionVariables.CONTRACT_CONFINEMENT_CONTROL = "ok";
-      },
+      positiveControl ? defaultPositiveControl,
     }:
     let
       # Does the home still evaluate with this one extra module merged in? An UNDECLARED option
@@ -276,7 +293,7 @@ in
       name ? "variant-eval",
       # The same override hook as mkConfinementCheck: force a variant hard enough to prove it
       # evaluates — by default its derivation path, the home-manager shape ~every consumer has.
-      force ? (home: home.activationPackage.drvPath),
+      force ? defaultForce,
     }:
     let
       homesBySystem = lib.genAttrs systems homesFor;
@@ -323,4 +340,138 @@ in
       + "would make every evaluability claim vacuous."
     );
     okWitness pkgs name;
+
+  # mkRosterChecks (issue #60): the ROSTER ADAPTER over the three helpers above — ONE call takes a
+  # consumer's roster plus its own material (its home builder, its per-system homes, the credential
+  # posture it has chosen) and yields the whole per-user check set, named.
+  #
+  # The helpers are roster-generic for a reason: a hand-listed set always misses the entry someone
+  # forgot to add. Applying them by hand re-introduced exactly that at the call site — two
+  # `mapAttrs'` folds over the roster, each check's name spelled twice, and two closures threaded
+  # per user, re-typed in every consumer. The mapping is not a fleet's fact; it is the same fold
+  # every consumer of the kit performs, so the contract performs it:
+  #
+  #     checks.<system> = packages.<system> // contract.lib.mkRosterChecks {
+  #       inherit pkgs roster homes;
+  #       buildHome = member: extraModules: mkHome { inherit member extraModules; };
+  #       require = "yescrypt";
+  #     };
+  #
+  # yielding `home-confinement-<user>` and `variant-eval-<user>` per roster member, plus one
+  # `identity-posture` over the whole roster — every name from `checkNames` above, so a call site
+  # spells none of them.
+  #
+  # It REPLACES nothing. The three helpers stay public and separately callable: a single-user repo
+  # has no roster to adapt, and a repo that wants confinement alone should call for confinement
+  # alone. This is the roster fold over them, and it is written in terms of exactly the same
+  # public arguments those calls take.
+  #
+  # SIGNATURE — what stays the consumer's, stays the consumer's:
+  #   `roster`    the ADR-0020 roster (`mkContractRoster`, issue #57), the authority on WHO is
+  #               checked. Derived, so a user added to the directory is covered the moment it
+  #               exists; an EMPTY one is a hard error, since a check set over nobody is green
+  #               forever.
+  #   `homes`     the consumer's per-system homes AS IT ALREADY HOLDS THEM —
+  #               `{ <system>.<user>.<label> = home; }`. The systems checked are its own key set, so
+  #               "which systems this fleet bakes" is read off the material rather than handed a
+  #               second time and trusted to agree.
+  #   `buildHome` `member: extraModules: home` — the consumer's own builder, curried per member.
+  #               Same package-free injection `mkConfinementCheck` takes (ADR-0004): the contract
+  #               applies a function it never imports.
+  #   `require`   the credential posture, with NO DEFAULT here either. ADR-0019 makes it
+  #               consumer-owned, and an adapter that picked one would impose a posture on every
+  #               repo that adopted the adapter — precisely what the helper refuses to do.
+  #   `force` / `positiveControl` — forwarded to the helpers unchanged, defaulting to the same
+  #               home-manager hooks, so a hand-rolled (or synthetic) home is still checkable
+  #               through the adapter rather than only through the helpers.
+  #
+  # Every anti-vacuity guard the helpers carry survives, because the adapter adds no `tryEval` and
+  # no filtering: it passes the material through. What it adds is the two vacuity traps that only
+  # exist ONE LEVEL UP, where the fold is — a roster with no members, and homes that do not cover
+  # the roster. Both would otherwise yield a check set that is merely SMALLER, and a missing check
+  # is indistinguishable from a passing one in `nix flake check` output.
+  mkRosterChecks =
+    {
+      roster,
+      homes,
+      buildHome,
+      require,
+      pkgs,
+      force ? defaultForce,
+      positiveControl ? defaultPositiveControl,
+    }:
+    let
+      systems = lib.attrNames homes;
+      memberNames = lib.attrNames roster;
+      malformedRows = lib.filter (sys: !(lib.isAttrs homes.${sys})) systems;
+      # Every system × member the handed homes do NOT hold. Checked here rather than left to the
+      # raw `attribute missing` a lookup would throw, because the diagnosis is specific: the roster
+      # is the authority on who exists, so a member with no homes is a gap in the mapper that built
+      # them, not a member that should be skipped.
+      uncovered = lib.concatMap (
+        sys: map (n: "${sys}/${n}") (lib.filter (n: !(homes.${sys} ? ${n})) memberNames)
+      ) (lib.filter (sys: lib.isAttrs homes.${sys}) systems);
+    in
+    # Ordered deliberately, as in the helpers: report a set that would check NOBODY before
+    # reporting anything about what it checked.
+    assert lib.assertMsg (lib.isAttrs roster && roster != { }) (
+      "mkRosterChecks: the roster is empty — a check set over zero members is green forever, and "
+      + "every proof the kit ships would silently apply to nothing. Derive it from the users "
+      + "directory (`mkContractRoster { usersDir = ./users; }`), which refuses an empty one at the "
+      + "source."
+    );
+    assert lib.assertMsg (lib.isAttrs homes && homes != { }) (
+      "mkRosterChecks: `homes` names no system — it is the consumer's per-system homes "
+      + "(`{ <system>.<user>.<label> = home; }`) and its key set is what the variant-eval checks "
+      + "run over, so an empty one checks no bake at all."
+    );
+    assert lib.assertMsg (malformedRows == [ ]) (
+      "mkRosterChecks: the `homes` row(s) for [${lib.concatStringsSep ", " malformedRows}] are not "
+      + "attrsets — each system's row must be `{ <user> = { <label> = home; }; }`, this repo's own "
+      + "baked homes for that system."
+    );
+    assert lib.assertMsg (uncovered == [ ]) (
+      "mkRosterChecks: no baked homes for [${lib.concatStringsSep ", " uncovered}] — the ROSTER "
+      + "says who exists, so every member needs a bake on every system in `homes`. A member the "
+      + "mapper skipped would otherwise lose its variant-eval check entirely, which reads exactly "
+      + "like a passing one. Build `homes` from the roster itself."
+    );
+    lib.mapAttrs' (
+      n: member:
+      lib.nameValuePair (checkNames.confinement n) (mkConfinementCheck {
+        inherit pkgs force positiveControl;
+        name = checkNames.confinement n;
+        # The consumer's builder, closed over THIS member: the check appends its probes to the
+        # `extraModules` list, exactly as it does for a hand-written per-user call.
+        buildHome = buildHome member;
+      })
+    ) roster
+    // lib.mapAttrs' (
+      n: _:
+      lib.nameValuePair (checkNames.variantEval n) (mkVariantEvalCheck {
+        inherit pkgs systems force;
+        name = checkNames.variantEval n;
+        homesFor = sys: homes.${sys}.${n};
+      })
+    ) roster
+    // {
+      # ONE posture claim over the whole roster, not one per member: `require` is a fact about the
+      # repo (ADR-0019 — its visibility picks the hash strength), and the helper's own message names
+      # every offender it found, so a per-member split would only make the same failure noisier.
+      ${checkNames.identityPosture} = mkIdentityPostureCheck {
+        inherit pkgs require;
+        name = checkNames.identityPosture;
+        # The members' identities — already resolved by the roster (issue #57), never re-read here.
+        identities = map (m: m.identity) (lib.attrValues roster);
+      };
+    };
+in
+{
+  inherit
+    outOfUniverseProbes
+    mkConfinementCheck
+    mkIdentityPostureCheck
+    mkVariantEvalCheck
+    mkRosterChecks
+    ;
 }
