@@ -40,12 +40,19 @@
       pkgsBySystem = lib.genAttrs systems (sys: nixpkgs.legacyPackages.${sys});
       pkgs = pkgsBySystem.${system};
 
-      # ── The roster, DERIVED from the directory ───────────────────────────────────────────────
-      # The reference fleet is every subdir of ./users/ holding an identity.json. Derived, never
-      # listed: adding `users/<new>/{identity.json,home.nix}` needs no edit to this file — the
-      # homes, the greeter homes, both arches' binding artifacts, the checks and the posture guard
-      # all follow. Each user's own story lives in the header of its own `home.nix`, because it
-      # travels with the user: lifting one out into a standalone repo is a directory move.
+      # ── The roster, DERIVED from the directory by the CONTRACT ───────────────────────────────
+      # `mkContractRoster` reads the ADR-0020 layout and answers, once, who is in this repo:
+      # `{ <name> = { name; dir; identity; }; }`, one member per subdir of ./users/ holding an
+      # identity.json. Derived, never listed: adding `users/<new>/{identity.json,home.nix}` needs no
+      # edit to this file — the homes, the greeter homes, both arches' binding artifacts, the checks
+      # and the posture guard all follow. Each user's own story lives in the header of its own
+      # `home.nix`, because it travels with the user: lifting one out into a standalone repo is a
+      # directory move.
+      #
+      # The scan and the identity map used to live HERE, and the layout rule was then spelled four
+      # times across this file and the contract (issue #57). Now the members flow into the home
+      # builder and the producer coin whole, so each identity.json is read exactly once per
+      # evaluation and this file never writes a user path at all.
       #
       # What is FLEET-level, and so lives here rather than in any user:
       #
@@ -76,18 +83,13 @@
       #     split between its home and the producer's flake. The negotiation is unchanged: a host
       #     declares `contract.affordances` once and each grant is derived as `affordances ∩ offer`,
       #     so ada is gui on a seat that affords gui and cli-only on a headless host.
-      usersDir = ./users;
-      userNames = lib.filter (
-        n:
-        (builtins.readDir usersDir).${n} == "directory"
-        && builtins.pathExists (usersDir + "/${n}/identity.json")
-      ) (lib.attrNames (builtins.readDir usersDir));
-      userDirOf = n: usersDir + "/${n}";
-      # ADR-0009: the contract is the one identity loader. Resolved once per user here and handed to
-      # the homes and the posture check, rather than each re-reading the file. (`mkContractUsers`
-      # loads its own from the `usersDir` it is given — that is the point of handing it the roster
-      # and nothing else, so this file never passes an identity path.)
-      identities = lib.genAttrs userNames (n: contract.lib.loadIdentity (userDirOf n + "/identity.json"));
+      roster = contract.lib.mkContractRoster { usersDir = ./users; };
+      # Two projections OF the roster, for the sites that want a list rather than the attrset: the
+      # member names (the `concatMap`s below) and the members' identities (the posture check, which
+      # takes identities and knows nothing of members). Projections, never a second derivation of
+      # "who is here" or a second read of an identity.json.
+      userNames = lib.attrNames roster;
+      rosterIdentities = map (m: m.identity) (lib.attrValues roster);
 
       # ── The bake matrix: which variants, on which system ─────────────────────────────────────
       # `contract.variants` is the contract's own answer to "what could a host grant?": one entry per
@@ -163,8 +165,9 @@
       # what ships.
       mkHome =
         {
-          userDir,
-          identity,
+          # A roster MEMBER, not a directory and an identity: it carries both, already resolved, so
+          # this file hands the builder one value and no identity.json is read twice (issue #57).
+          member,
           granted ? { },
           extraModules ? [ ],
           # Override to build for another system; the home layers its own overlays on whatever it gets.
@@ -172,8 +175,7 @@
         }:
         contract.lib.mkContractHome {
           inherit
-            userDir
-            identity
+            member
             granted
             extraModules
             pkgs
@@ -204,14 +206,7 @@
       # The whole fleet: `homes.<system>.<user>.<label>`. Computed ONCE rather than per consumer, so
       # the published names, the binding artifacts and the checks share one evaluation of each home.
       homes = lib.genAttrs systems (
-        sys:
-        lib.genAttrs userNames (
-          n:
-          variantHomesFor {
-            userDir = userDirOf n;
-            identity = identities.${n};
-          } sys
-        )
+        sys: lib.mapAttrs (_: member: variantHomesFor { inherit member; } sys) roster
       );
 
       # ── The greeter-login home, for EVERY roster member ──────────────────────────────────────
@@ -230,18 +225,17 @@
         {
           home.file.".contract-home-active".text = "greeter-activated for ${config.identity.name}";
         };
-      greeterHomes = lib.genAttrs userNames (
-        n:
+      greeterHomes = lib.mapAttrs (
+        _: member:
         mkHome {
-          userDir = userDirOf n;
-          identity = identities.${n};
+          inherit member;
           granted = contract.greeterGrants;
           extraModules = [
             contract.homeModules.greeterDesktop
             greeterMarker
           ];
         }
-      );
+      ) roster;
 
       # ── Turnkey producer bindings (ADR-0025/0026/0028, issue #25) ────────────────────────────
       # `mkContractUsers` maps the DERIVED roster ONCE per system into BOTH the named per-variant
@@ -249,8 +243,13 @@
       # INDEX a host selects from with `contract.lib.bindContractUser` (deriving the grant as its
       # `contract.affordances` ∩ the user's offer, then binding the maximal covered variant). It
       # bakes through the internal package kernels, which only READ an already-evaluated home, and
-      # resolves each identity from `users/<u>/identity.json` — so this call passes only the roster
-      # and never a user's name, offer or identity path.
+      # takes each user's identity off its ROSTER MEMBER — so this call passes only the roster and
+      # its bake matrix, never a user's name, offer or identity path.
+      #
+      # `users` keys the matrix by member, so which members bake (and with which variants) stays this
+      # fleet's own fact while WHO the members are stays the roster's. Here they coincide — every
+      # member bakes every variant its system allows — which is what makes `lib.mapAttrs` over the
+      # roster the whole call.
       #
       # This is the one place the matrix is RE-PAIRED: each home is looked up by `v.label` and handed
       # back alongside `v.grants`. Both sides come from the same `bakedVariants` row, so the pairing
@@ -264,13 +263,13 @@
         contract.lib.mkContractUsers {
           pkgs = pkgsBySystem.${sys};
           system = sys;
-          inherit usersDir;
-          users = lib.genAttrs userNames (n: {
+          inherit roster;
+          users = lib.mapAttrs (n: _: {
             variants = map (v: {
               inherit (v) grants;
               home = homes.${sys}.${n}.${v.label};
             }) bakedVariants.${sys};
-          });
+          }) roster;
         }
       );
 
@@ -340,20 +339,15 @@
           # `activationPackage.drvPath` force and the `home.sessionVariables` positive control),
           # which the contract's own suite structurally cannot reach.
           lib.mapAttrs' (
-            n: identity:
+            n: member:
             lib.nameValuePair "home-confinement-${n}" (
               contract.lib.mkConfinementCheck {
                 inherit pkgs;
                 name = "home-confinement-${n}";
-                buildHome =
-                  extraModules:
-                  mkHome {
-                    userDir = userDirOf n;
-                    inherit identity extraModules;
-                  };
+                buildHome = extraModules: mkHome { inherit member extraModules; };
               }
             )
-          ) identities
+          ) roster
           // lib.mapAttrs' (
             n: _:
             lib.nameValuePair "variant-eval-${n}" (
@@ -375,7 +369,7 @@
                 homesFor = sys: homes.${sys}.${n};
               }
             )
-          ) identities
+          ) roster
           // {
             # ADR-0019's credential posture, ENFORCED rather than merely documented (issue #35).
             # This repo is PUBLIC, so a world-readable hash must be memory-hard: every roster
@@ -386,7 +380,7 @@
             # to add to the list.
             identity-posture = contract.lib.mkIdentityPostureCheck {
               inherit pkgs;
-              identities = lib.attrValues identities;
+              identities = rosterIdentities;
               require = "yescrypt";
             };
 
@@ -406,7 +400,7 @@
                 # Any real roster identity will do as the base — the offender differs from it only
                 # in the two fields the posture looks at — so it is taken from the derivation rather
                 # than by naming a user this check has no other business knowing.
-                someRealIdentity = lib.head (lib.attrValues identities);
+                someRealIdentity = lib.head rosterIdentities;
                 offender = someRealIdentity // {
                   username = "sixto";
                   hashedPassword = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
@@ -415,7 +409,7 @@
                   !(builtins.tryEval (
                     contract.lib.mkIdentityPostureCheck {
                       inherit pkgs;
-                      identities = lib.attrValues identities ++ [ offender ];
+                      identities = rosterIdentities ++ [ offender ];
                       require = "yescrypt";
                       name = "identity-posture-offender-probe";
                     }
