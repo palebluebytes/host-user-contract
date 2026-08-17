@@ -90,6 +90,7 @@
             mkConfinementCheck
             mkIdentityPostureCheck
             mkVariantEvalCheck
+            mkRosterChecks
             mkContractUser
             mkContractUsers
             mkContractHome

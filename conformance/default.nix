@@ -37,6 +37,7 @@
   mkConfinementCheck,
   mkIdentityPostureCheck,
   mkVariantEvalCheck,
+  mkRosterChecks,
   outOfUniverseProbes,
   mkContractUser,
   mkContractUsers,
@@ -116,6 +117,15 @@ let
         lib
         loadIdentity
         mkContractRoster
+        ;
+    })
+    (import ./roster-checks.nix {
+      inherit
+        lib
+        pkgs
+        toolkit
+        mkContractRoster
+        mkRosterChecks
         ;
     })
     (import ./identity-posture.nix {
