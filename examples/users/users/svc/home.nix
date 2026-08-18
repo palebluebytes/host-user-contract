@@ -26,4 +26,9 @@
   # could never bridge on any host, so they are dead data and the bake rejects them (issue #59). The
   # ADR-0002 case is the other one — a request the HOST does not grant stays silently inert.
   contract.wants.gui = false;
+
+  # …and the mode goes with the want (ADR-0032): a home that vetoes the gui GRANT and still claimed
+  # the gui MODE is a contradiction no host can rescue, and the bake refuses it by name. svc runs
+  # in a terminal, and says only that.
+  contract.supports.cli = true;
 }

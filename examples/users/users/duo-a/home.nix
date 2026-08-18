@@ -1,5 +1,5 @@
 # duo-a — the first half of the SHARED-SETUP pair (ADR-0020's "shared code, per-user data"), and
-# the members' one worked example of a HOME-AFFECTING GRANT (issue #55).
+# the members' one worked example of MODE-SPECIFIC HOME CONTENT (issue #55, reshaped by ADR-0032).
 #
 # duo-a and duo-b exist to prove one thing the other five reference users deliberately do not: that
 # an operator CAN enforce a common setup across a set of their own accounts, by importing one shared
@@ -7,24 +7,24 @@
 # shape rather than an obligation of it — so it gets a live fixture instead of only prose.
 #
 # What makes duo-a duo-a is its identity.json and its own voice — the desktop it asks for, and the
-# content it gates on the grant. The SHARED module it imports is byte-identical to duo-b's, and
+# content it gates on the mode. The SHARED module it imports is byte-identical to duo-b's, and
 # every difference the PAIR is about falls out of `config.identity.username` (see
 # `shared/module.nix` and the `shared-code-per-user-data` check); nothing below reaches into it.
 #
-# duo-a additionally carries the property the whole bake system exists for: its `gui` bake and
-# its `base` bake differ in REALIZED HOME CONTENT, not merely in the `granted` field frozen into the
-# manifest. That is what `needsOwnHome` means — a grant that cannot be applied to an already-built
-# home — and without one live example the fleet would bake a bake whose content equals base's.
-# The `home-affecting-grant-is-load-bearing` check fails if the two bakes ever converge again.
+# duo-a additionally carries the property the whole per-mode home system exists for: its `gui`
+# home and its `cli` home differ in REALIZED CONTENT, not merely in a field frozen into the
+# manifest. It teaches SUBSTITUTION rather than the same rule spelled twice — graphical content
+# beside its terminal counterpart, each present in exactly one mode — which is also what gives
+# `custom.home.profiles.cli` its first consumer in this repo. The
+# `mode-substitution-is-load-bearing` check fails if the two homes ever converge again.
 #
-# NOT contract-pure (ADR-0008), by design: the shared module and the leaf below set home-manager
+# NOT contract-pure (ADR-0008), by design: the shared module and the leaves below set home-manager
 # options, so this home needs home-manager to evaluate — the pair is the members' only
 # non-contract-pure member, which is why the gated content lives here rather than being grafted onto
 # ada. The conformance tracer borrows ada, never this pair.
 {
   config,
   lib,
-  hostFacts,
   ...
 }:
 let
@@ -44,30 +44,44 @@ in
   # module costs a user none of its own voice.
   contract.requests.gui.desktop = "sway";
 
-  # ── The WIRE: the host's grant, in the home's own vocabulary ─────────────────────────────────
-  # `custom.home.profiles.gui` is the contract's meta-profile vocabulary (`home-profiles.nix`) — a
-  # switch this home gates its own content on, and the ONLY thing that makes writing it worth
-  # anything. It is wired off `hostFacts.granted`: the producer's per-bake grant, narrowed by
-  # `hostFactsFor` to the bake axes, so it reads `false` in the `base` bake and `true` in the
-  # `gui` one. `or false` because that narrowing DROPS an ungranted axis rather than setting it
-  # false. Same shape the operator's real users repo uses — one wire here, leaf modules gating on
-  # the contract's own `cli`/`gui` and on nothing else.
-  #
-  # Gating CONTENT on a grant is the point; gating the OFFER on it is the circularity
-  # `mkContractUser` rejects (the grant is derived FROM the offer), so `contract.wants` stays
-  # bake-invariant — this home has no `wants` line at all.
-  custom.home.profiles.gui.enable = hostFacts.granted.gui.enable or false;
+  # WHICH SESSIONS THIS HOME CAN RUN IN (ADR-0032) — both, because the substitution below only
+  # means anything if the producer builds both and they differ.
+  contract.supports.cli = true;
+  contract.supports.gui = true;
 
-  # ── The LEAF: real home content, gated on the vocabulary and nothing else ────────────────────
-  # A config for the very desktop this home asks for above, materialized ONLY where a host granted
-  # gui. This is the difference the `gui` bake exists to carry — a seat that binds duo-a's base
-  # bake gets a home with no sway config in it, and no bind-time grant can put one there, which
-  # is exactly why gui is `needsOwnHome` in the feature registry.
+  # ── UNCONDITIONAL content: works in every mode, so it is written with no gate ────────────────
+  # This is the idiom, and the common case: a shell alias file, a git config, an editor rc — none
+  # of them care what session they are in, so none of them is gated. `custom.home.profiles.*` is
+  # for content that would be WRONG in another mode, not for everything a home ships.
+  home.file.".config/duo/common.conf".text = ''
+    # duo-a's mode-independent settings — present in the cli home and the gui home alike.
+    editor = nvim
+  '';
+
+  # ── SUBSTITUTION: the graphical thing, and its terminal counterpart ──────────────────────────
+  # `custom.home.profiles.<mode>.enable` is the contract's own switch, DERIVED from `hostFacts.mode`
+  # by the home umbrella — exactly one true (ADR-0032 §7). This home writes no wire of its own; it
+  # only gates on the vocabulary, which is what the vocabulary is for.
+  #
+  # The two leaves are counterparts, not an addition and its absence: the same concern (how this
+  # user drives windows) answered the way each session can answer it. That is the difference the
+  # per-mode build exists to carry — no bind-time grant could put a sway config into a home built
+  # for a terminal, which is precisely what makes a MODE a mode and not a grant.
   home.file.".config/sway/config" = lib.mkIf profiles.gui.enable {
     text = ''
-      # duo-a's sway config — the GUI leaf (custom.home.profiles.gui), present only in the gui bake.
+      # duo-a's sway config — the GUI leaf, present only in the home built for the gui mode.
       set $mod Mod4
       bindsym $mod+Shift+q kill
+    '';
+  };
+  home.file.".config/tmux/tmux.conf" = lib.mkIf profiles.cli.enable {
+    text = ''
+      # duo-a's tmux config — the CLI counterpart of the sway config above: the same concern
+      # (window management) as a terminal session can answer it. This is `custom.home.profiles.cli`'s
+      # first consumer in this repo; commit 267a545 had stripped the write precisely because
+      # nothing read it.
+      set -g prefix C-a
+      bind | split-window -h
     '';
   };
 }

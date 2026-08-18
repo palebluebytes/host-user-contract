@@ -49,17 +49,22 @@ the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
 
 - `identity.json` — pure data (`name`, `email`, `username`). Loaded by the *binding*, never
   by the home (ADR-0009); the home reads `config.identity.{name,email}` for its dotfiles.
-- `home.nix` — a **contract-parameterized home-manager module**: it declares what it asks for
-  (`contract.wants.*`, defaulting to the safe set) and EMITS `contract.requests.*`, imports NO
-  contract, writes NO system config. It branches read-only on `hostFacts` (`exposed`, `platform`,
-  and `granted` — narrowed to the home axes by `hostFactsFor`), never on `osConfig`/`hostName`. Its
-  `wants` must NOT depend on `hostFacts.granted` (ADR-0028: the grant is derived from the offer).
+- `home.nix` — a **contract-parameterized home-manager module**: it declares which SESSION SHAPES
+  it can run in (`contract.supports.*` — no default, at least one required, ADR-0032), what it asks
+  for (`contract.wants.*`, defaulting to the safe set) and EMITS `contract.requests.*`, imports NO
+  contract, writes NO system config. It gates session-specific content on
+  `custom.home.profiles.<mode>.enable`, which the contract writes from the mode it built the home
+  for; content that works in every session is written with no gate at all. It branches read-only on
+  `hostFacts` (`exposed`, `platform`, `mode`), never on `osConfig`/`hostName`, and sees NO grant —
+  a grant rides the bind and cannot change a home. Its `wants` and `supports` must NOT depend on
+  `hostFacts` (ADR-0028: the grant is derived from the offer).
 - `flake.nix` — inputs `contract` + `home-manager` (with `nixpkgs.follows` so there is ONE
   nixpkgs, ADR-0004); a `checks.home-build` that builds the real home (this is the home-manager
   build the contract's own package-free suite cannot host); and its contractPackages + binding
   index via `contract.lib.mkContractUser { name; homes; pkgs; usersDir }` (the singular producer;
   `mkContractUsers` for a multi-user repo) — the pre-built path (ADR-0016/0026). The offer is
-  harvested from the home, not passed; the set of homes to build is bounded by `contract.homes`
+  harvested from the home, not passed; the set of homes to build is each user's own
+  `contract.supports` ∩ the modes `contract.modes`
   and narrowed per system by `contract.lib.mkHomeMatrix` (ADR-0030 renamed these from `variants`;
   `system` is no longer an argument — it is read off `pkgs`).
 
@@ -100,7 +105,7 @@ workstation host builds with the user present and login-capable.
 **🔑 trusted-machine.** This is the import + re-key two-step (acceptance criterion 3, second
 half), driven by the contract's slice-06 tooling, `contract.lib.mkFeatureRecipients`:
 
-1. **Edit (fleet):** set `grants.<secretFeature>.enable = true` for the user on the granting
+1. **Edit (fleet):** set `grants.<secretFeature> = true` for the user on the granting
    host.
 2. **Re-key (🔑):** `mkFeatureRecipients` reads the fleet's `nixosConfigurations` and returns,
    for each secret feature's **encrypted secret file** (its `featureMeta.<f>.secretFiles`
@@ -133,7 +138,7 @@ runtime.
 **🔑 trusted-machine.** Acceptance criterion 4. Revoking must both drop the recipient **and
 rotate the secret value** — a revoked host has already seen the plaintext:
 
-1. **Edit (fleet):** set `grants.<secretFeature>.enable = false` (or remove the user's grant).
+1. **Edit (fleet):** set `grants.<secretFeature> = false` (or remove the user's grant).
 2. **Re-key (🔑):** re-run `mkFeatureRecipients`; the revoked host is no longer in the recipient
    set. Update the `.sops.yaml` rules to match, then `sops updatekeys secrets/<feature>.yaml`
    re-encrypts the secret file, dropping the revoked host's key.

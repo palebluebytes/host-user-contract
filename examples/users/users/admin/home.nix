@@ -15,4 +15,9 @@
   # explicitly. It stays an ask — wheel arrives solely where a host also affords sudo
   # (grant = affordances ∩ offer), and the producer harvests this as admin's published offer.
   contract.wants.sudo = true;
+
+  # WHICH SESSIONS THIS HOME CAN RUN IN (ADR-0032). A break-glass account has to be reachable from
+  # a terminal above all, and it takes a desktop where one is offered.
+  contract.supports.cli = true;
+  contract.supports.gui = true;
 }

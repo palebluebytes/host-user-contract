@@ -38,14 +38,18 @@ inputs.users.inputs.contract.follows = "contract";
 
   # what this host is willing to grant to users who ask for it
   contract.affordances = {
-    gui.enable = true;
-    sudo.enable = false;
+    gui = true;
+    sudo = false;
   };
 }
 ```
 
 A user gets a feature only if **the host affords it and the user asked for it**. There is no way to
 grant a user something they did not ask for.
+
+That one declaration also decides which **modes** — session shapes — this host runs: the floor
+(`cli`, which every host runs) plus every mode whose grant it affords. Affording `gui` means running
+`{ cli, gui }`; affording nothing means running `{ cli }`. Nothing declares a mode.
 
 ### I have a users repo
 
@@ -61,13 +65,19 @@ users/
 `home.nix` says what this user asks a host for:
 
 ```nix
-{ hostFacts, ... }:
+{ config, lib, ... }:
 {
-  contract.wants.gui.enable = true;              # ask for a desktop
+  contract.supports.cli = true;                  # which sessions this home can run in
+  contract.supports.gui = true;                  # (no default — say at least one)
+
+  contract.wants.gui = true;                     # ask for a desktop
   contract.requests.gui.desktop = "plasma";      # …and which one
 
-  # a home may branch on a grant only where something builds for it
-  custom.home.profiles.gui.enable = hostFacts.granted.gui.enable or false;
+  # content that works in every session is written with no gate at all; only
+  # session-specific content is gated, on a switch the contract writes for you
+  home.file.".config/sway/config" = lib.mkIf config.custom.home.profiles.gui.enable {
+    text = "…";
+  };
 }
 ```
 
@@ -79,30 +89,27 @@ let
   pkgs    = nixpkgs.legacyPackages.x86_64-linux;
   members = contract.lib.mkMembers { usersDir = ./users; };
 
-  # which homes does this system need? `{ }` = its seats can use everything the contract names.
-  rows = (contract.lib.mkHomeMatrix { systems.x86_64-linux = { }; }).x86_64-linux;
+  # which modes can this system's seats run? `{ }` = all of them; a row states only what it takes away.
+  modes = (contract.lib.mkHomeMatrix { systems.x86_64-linux = { }; }).x86_64-linux;
 
-  # build one home per row, and hand the row back with its home attached
-  homesFor = member: map (row: row // {
-    home = contract.lib.mkContractHome {
-      inherit member pkgs;
-      inherit (row) grants;
-      homeManagerConfiguration = home-manager.lib.homeManagerConfiguration;
-      stateVersion = "25.11";
-    };
-  }) rows;
+  # build one home per mode, keyed by that mode
+  homesFor = member: lib.genAttrs modes (mode: contract.lib.mkContractHome {
+    inherit member mode pkgs;
+    homeManagerConfiguration = home-manager.lib.homeManagerConfiguration;
+    stateVersion = "25.11";
+  });
 in
 contract.lib.mkContractUsers {
   inherit pkgs members;
   homes = lib.mapAttrs (_: homesFor) members;
 }
-# → { packages.x86_64-linux.<u>-contractPackage-<label>; contractUsers.x86_64-linux.<u>; }
+# → { packages.x86_64-linux.<u>-contractPackage-<mode>; contractUsers.x86_64-linux.<u>; }
 ```
 
 `inherit … packages contractUsers` those straight into your flake outputs and a host can bind them.
 
 For more than one system, don't fold that block by hand — hand the whole join to `mkContractFleet`,
-which builds every member's every home on every system your matrix names, instantiates `pkgs` **once
+which builds every member for every mode on every system your matrix names, instantiates `pkgs` **once
 per system** (never once per user, or evaluation time multiplies), and gives back both flake outputs
 already nested by system:
 
@@ -111,17 +118,17 @@ fleet = contract.lib.mkContractFleet {
   inherit members;
   homeMatrix = contract.lib.mkHomeMatrix { systems = { x86_64-linux = { }; aarch64-linux.gui = false; }; };
   pkgsFor    = sys: nixpkgs.legacyPackages.${sys};
-  buildHome  = { member, grants, pkgs }: contract.lib.mkContractHome {
-    inherit member grants pkgs;
+  buildHome  = { member, mode, pkgs }: contract.lib.mkContractHome {
+    inherit member mode pkgs;
     homeManagerConfiguration = home-manager.lib.homeManagerConfiguration;
     stateVersion = "25.11";
   };
 };
-# → inherit (fleet) packages contractUsers;   …and `fleet.homes.<sys>.<u>.<label>` for your checks
+# → inherit (fleet) homes packages contractUsers;   …and `fleet.homes.<sys>.<u>.<mode>` for your checks
 ```
 
 Your builder stays yours — the contract applies it and never imports home-manager. Reach for
-`mkContractUsers` above instead when your bake is *not* every member × every home.
+`mkContractUsers` above instead when your build is *not* every member × every mode.
 [`examples/users/`](examples/users/) is the worked multi-system version, with checks.
 
 ---
@@ -132,15 +139,18 @@ Six words. Each means one thing, everywhere.
 
 | word | is |
 | --- | --- |
-| **grants** | a grant attrset, `{ gui.enable = true; }` — the name of every *argument* holding one |
-| **grantKey** | its sorted feature names, `[ "gui" ]` — the identity of one home |
-| **granted** | the same attrset seen as an *option path* (`hostFacts.granted`) — never an argument |
-| **home** | one built home, plus the grants it was built for |
+| **grant** | a host-side power conferred on an account at activation: `{ gui = true; }`. It rides the bind and can never change a home |
+| **mode** | the session shape a home is BUILT for (`cli`, `gui`). Exactly one per home, and no bind can change it |
+| **granted** | a grant attrset seen as an *option path* (`custom.users.<u>.granted`) — never an argument |
+| **home** | one built home, identified by its mode: `homes.<system>.<user>.<mode>` |
 | **contractPackage** | what gets published per home (activation script + a manifest sidecar) |
 | **member** | one user in a users repo: `{ name; dir; identity; }` |
 
-A home is **built ahead of time**, so a host can only *pick* one — never adjust it. That is why a
-user needs more than one: `mkHomeMatrix` says which.
+A home is **built ahead of time**, so a host can only *pick* one — never adjust it. That is the
+whole reason mode and grant are different words: a grant is the part a bind *can* still confer, and
+a mode is the part it cannot. A user says which modes it can run in (`contract.supports`), the
+producer's `mkHomeMatrix` says which its systems can build, and what gets published is the
+intersection.
 
 ---
 

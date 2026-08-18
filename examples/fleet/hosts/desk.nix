@@ -1,9 +1,11 @@
 # desk — a SEAT host (non-exposed) with the reference greeter enabled.
 #
 # It declares its `contract.affordances` ONCE and binds three users turnkey via `bindContractUser`
-# (ADR-0025) — no per-user grants, no bake names, no identity paths. Each user's grant is
-# derived as `affordances ∩ offer`, where the offer is each user's own `contract.wants` harvested
-# from its home (ADR-0028):
+# (ADR-0025) — no per-user grants, no mode names, no identity paths. Because it affords `gui`, it
+# RUNS `{ cli, gui }` (ADR-0032): the modes a host runs are DERIVED from its affordances and nobody
+# declares them, so nothing here says `gui` twice. Each user gets the rich mode it publishes, and
+# each user's grant is derived as `affordances ∩ offer`, where the offer is that user's own
+# `contract.wants` harvested from its home (ADR-0028):
 #   - ada wants gui (the safe-set default); desk affords gui ⇒ she gets it — her gui.desktop request
 #     bridges in, the display surface turns on, she gets the gui input groups. This is ada-as-gui-user
 #     (contrast agent, which does NOT afford gui, so the SAME ada is cli-only there).
@@ -20,7 +22,8 @@
 #
 # It also enables the reference greeter (a seat concern): the runtime login path. The greeter's
 # end-to-end provisioning is exercised by the fleet-integration VM, which consumes the same ada
-# output at runtime — declarative here, runtime there, one convention.
+# home at runtime — declarative here, runtime there, one convention, and since ADR-0032 literally
+# one artifact: there is no greeter-specific home to build.
 { contract, users, ... }:
 {
   imports = [

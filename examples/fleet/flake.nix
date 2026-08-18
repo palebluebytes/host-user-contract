@@ -75,13 +75,14 @@
         };
 
         # The runtime greeter path END-TO-END: a booted seat greeter-provisions ada from her
-        # `-greeter` home output (a sibling of `ada-contractPackage-base`, built from the same user
-        # with the safe-set grant) and observes her real home activate — the runtime half of the
-        # uniform flake-output consumption convention (declarative binds the contractPackage via
-        # bindContractUser, the greeter builds the greeter home), the
-        # counterpart to the declarative binds above. Focused seat node (like the contract's own
-        # greeter-provision-vm), not the full desk host, so the provisioned account never collides with a
-        # declarative one.
+        # ORDINARY published home (`homes.<system>.ada.gui`, the same artifact a declarative bind
+        # would activate) and observes it activate — the runtime half of the uniform flake-output
+        # consumption convention (declarative binds a contractPackage via bindContractUser, the
+        # greeter builds a home out of `homes`), the counterpart to the declarative binds above.
+        # There is no `-greeter` artifact any more: grants stopped reaching homes (ADR-0032), so a
+        # greeter-granted home had nothing left to differ in. Focused seat node (like the contract's
+        # own greeter-provision-vm), not the full desk host, so the provisioned account never
+        # collides with a declarative one.
         fleet-integration = import ./integration-vm.nix {
           # The seat scaffolding (boot base + greeter preamble + greetd wiring) is owned by the
           # contract's own mkSeatVM harness; reach it through the `contract` flake input's source
@@ -97,7 +98,9 @@
               contractModule = contract.nixosModules.default;
               greeterModule = contract.nixosModules.greeter;
             }).mkSeatVM;
-          homeActivation = users.homeConfigurations.ada-greeter.activationPackage;
+          # The nested `homes` output, exactly as a greeter's `homeBuilder` reaches it:
+          # `homes.<system>.<user>.<mode>`. `gui` because this seat runs a desktop session.
+          homeActivation = users.homes.${system}.ada.gui.activationPackage;
           identityJson = "${users}/users/ada/identity.json";
           username = "ada";
         };

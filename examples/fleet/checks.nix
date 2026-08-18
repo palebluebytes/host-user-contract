@@ -13,6 +13,11 @@ let
   cfgs = lib.mapAttrs (_: c: c.config) nixosConfigurations;
   acct = host: user: cfgs.${host}.users.users.${user};
   failing = c: builtins.filter (a: !a.assertion) c.assertions;
+  # WHICH home a host bound, observed the only way a host config shows it: the contractPackage its
+  # activation service runs. Two hosts landing on two paths for one user is two different homes —
+  # which is the whole of "the mode is selected per host" from the outside.
+  boundHome =
+    host: user: cfgs.${host}.systemd.services."contract-activate-${user}".serviceConfig.ExecStart;
 
   assertions = [
     {
@@ -38,6 +43,21 @@ let
       name = "grant-divergence: the SAME ada output is CLI-only on agent (no uinput, no surface) — silent degradation";
       ok =
         !(lib.elem "uinput" (acct "agent" "ada").extraGroups) && !cfgs.agent.custom.gui.surface.enabled;
+    }
+    {
+      # MODE SELECTION (ADR-0032), from the outside: desk affords gui so it RUNS { cli, gui } and
+      # binds ada's gui home; agent affords nothing so it runs { cli } and binds her cli home.
+      # Neither host declares a mode — the run set is derived from the affordances — and the same
+      # identity, from one users flake, lands on two different homes.
+      name = "mode selection: desk and agent bind DIFFERENT homes of the same ada";
+      ok = boundHome "desk" "ada" != boundHome "agent" "ada";
+    }
+    {
+      # …and the non-vacuity of that: two headless hosts both run { cli } alone, so the same user
+      # bound on both lands on the SAME home. Without this, "the paths differ" could pass for a
+      # reason that has nothing to do with the mode.
+      name = "mode selection: two hosts running the same modes bind the SAME home (the control)";
+      ok = boundHome "vault" "svc" == boundHome "agent" "svc";
     }
     {
       name = "clamp: cleo receives the privileged 'docker' group ONLY via the containers grant";

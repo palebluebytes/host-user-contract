@@ -17,7 +17,10 @@
   # (ADR-0028); a different desktop, because sharing a module costs a user none of its own voice.
   contract.requests.gui.desktop = "cosmic";
 
-  # No `custom.home.profiles.*` line either: duo-b gates nothing on the grant — its whole content
-  # comes from the shared module, which is identical in every bake. The grant wire and the content
-  # it gates are duo-a's story (issue #55); what duo-b proves is the shared-code half, unchanged.
+  # Same as duo-a: both session shapes, so the pair is comparable across modes and the arm tier can
+  # publish it. What duo-b does NOT have is duo-a's mode-specific content — its whole home comes
+  # from the shared module, which is identical in every mode. That is the point: the shared-code
+  # half is unchanged by the mode dimension, and the substitution half is duo-a's story.
+  contract.supports.cli = true;
+  contract.supports.gui = true;
 }

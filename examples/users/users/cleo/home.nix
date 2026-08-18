@@ -17,4 +17,10 @@
   # safe-set default, so it needs no line here.
   contract.wants.containers = true;
   contract.requests.gui.desktop = "gnome";
+
+  # WHICH SESSIONS THIS HOME CAN RUN IN (ADR-0032). cleo is a desktop user, and she also runs in a
+  # terminal — this fleet's arm tier is headless, so a home that could not is one the producer
+  # cannot publish there.
+  contract.supports.cli = true;
+  contract.supports.gui = true;
 }

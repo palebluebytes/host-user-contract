@@ -25,6 +25,14 @@
 # `"trustedKeys": []` would have taught that the boilerplate is required, which is false.
 { ... }:
 {
+  # WHICH SESSIONS THIS HOME CAN RUN IN (ADR-0032). There is no default, deliberately: a user's
+  # essential nature is not set by inheritance. ada says BOTH, and that is what makes her the
+  # roaming north star — a gui session on the seat host and a terminal one on the headless box,
+  # from one home. Say only `gui` and a headless host refuses her outright, which is the right
+  # answer for a home that would land there with no display to run in.
+  contract.supports.cli = true;
+  contract.supports.gui = true;
+
   # What ada asks a host for (ADR-0028) is the SAFE-SET DEFAULT: gui is non-privileged, so it is
   # wanted with no `contract.wants` line at all. She asks for nothing privileged, so this home has
   # no want to declare — the offer the producer's flake used to carry is now simply the default.

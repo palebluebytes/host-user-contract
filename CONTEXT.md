@@ -18,7 +18,7 @@ the term is stable, the code is pending (see the cited issue).
 - **the contract** — the shared schema + host-invariant realization + derivation logic both
   sides agree on. Ships as `nixosModules.default` / `homeModules.default` (the umbrella),
   `lib` (the functions), and a data surface (`features`, `featureGroups`,
-  `privilegedGroups`, `safeSet`, `homes`). Neither host nor user. (ADR-0001, ADR-0004)
+  `privilegedGroups`, `safeSet`, `modes`, `floorMode`). Neither host nor user. (ADR-0001, ADR-0004)
 - **host** — a machine config that imports the contract, materializes user accounts,
   **grants** features, and supplies **bindings**. Sovereign: it runs only what it grants.
 - **user** — a public identity + home config + the features it *offers*; host-agnostic (it
@@ -41,8 +41,9 @@ the term is stable, the code is pending (see the cited issue).
   `privilegedGroups`, `config`. (`features.nix`)
 - **registry** — `features.nix`, the **single source of truth** for the feature vocabulary.
 - **projection** — any surface *derived* from the registry (`featureGroups`,
-  `grantedOptions`, `wantedOptions`, `featureConfigOptions`, `safeSet`, [[homeAxes]]). Keys
-  can't drift across projections because there is one set of keys. (`kit.nix`)
+  `grantedOptions`, `wantedOptions`, `featureConfigOptions`, `safeSet`). Keys
+  can't drift across projections because there is one set of keys. The [[mode registry]] is the
+  second single source, projected the same way. (`kit.nix`)
 - **grantLib** — the grant-projection **helper set** computed once in the kit and *injected* into
   the realization and greeter modules and the derivation logic (`lib.nix`), the same way the
   [[projection]] data (`featureGroups`/`privilegedGroups`) is. It single-sources the three folds
@@ -54,18 +55,42 @@ the term is stable, the code is pending (see the cited issue).
   ADR-0025 formalised it per-user in the `users` flake; since ADR-0028 it is **declared in the
   user's own home** as [[wants]] and **harvested** into the [[binding index]] by
   [[mkContractUser]] — the producer passes no `offer`. A grant is derived as host [[affordance]] ∩
-  offer; the home-affecting subset of the offer is what the producer builds [[home]]s for.
-  (ADR-0002, ADR-0025, ADR-0028)
-- **homeAxes** — the name list of features whose grant may reach HOME content, so a home may
-  legitimately fan out on them (`{gui}` today; the per-feature `needsOwnHome` registry flag,
-  **declared**, not derived from the group lists). It is the upper bound on what a home may even
-  see. **Internal** (`kit.internal`) — both things a producer used the raw list for now ship
-  whole, which is what keeps them from drifting apart in a producer's hands: `hostFactsFor`
-  NARROWS [[hostFacts]]`.granted` with it (so a home reading a bind-riding grant like `sudo`
-  structurally gets `false` forever), and `powerset(homeAxes)` ships as the public `homes`, which
-  bounds the baked set (the per-system subset a fleet actually bakes is the consumer's fleet
-  fact — see [[home matrix]]). One surface, so no producer re-implements the rule in prose.
-  (Was the public `homeAffecting`; renamed by ADR-0030. ADR-0028; `lib.nix`)
+  offer, and rides the bind: it can never change a [[home]]. What the producer builds homes for is
+  the *other* half of the user's voice, [[supports]]. (ADR-0002, ADR-0025, ADR-0028, ADR-0032)
+
+## Modes
+
+- **mode** — the **session shape a home is BUILT for** (`cli`, `gui` today). Mutually exclusive:
+  a home is built for exactly one, so N modes give at most N homes per user rather than 2ⁿ. It is
+  the other half of what the retired `needsOwnHome` flag fused: a [[grant]] is a host-side effect
+  conferred at activation on whatever home exists, and a mode is what the home IS. A grant can
+  never change a home; a bind can never change a mode. (ADR-0032; `modes.nix`)
+- **mode registry** — `modes.nix`, the **single source of truth** for the mode vocabulary, on the
+  pattern [[registry]] sets. Per entry: `description`, an OPTIONAL associated `grant` (the feature
+  a host affords in order to run this mode — `gui` → the gui grant; the floor has none), and a
+  `floor` flag. Its projections are `contract.supports`' options, `custom.home.profiles.*`, the
+  [[home matrix]]'s row vocabulary, and the derived [[runs]] set. Exposed as `contract.modes`.
+- **floor** — the ONE mode every host runs, the fallback of every [[mode selection]], and the
+  reason [[runs]] is never empty (`cli` today). Read off the registry FLAG and never by name — the
+  selection algorithm names no mode, for the same reason a published home's name was always
+  documented as a cosmetic label rather than a parse target. **Exactly one** mode carries it; zero
+  or two is a named error (`floorOf`, exposed in
+  `kit.internal` so both directions are demonstrable against a synthetic registry). Exposed as
+  `contract.floorMode`. (ADR-0032)
+- **runs** — the modes a HOST runs, **derived** from its [[affordance]]s and nothing else:
+  `{ the floor } ∪ { m | m's associated grant is afforded }`. A gui-affording host runs
+  `{ cli, gui }`; a headless one runs `{ cli }`. **Nobody declares `cli`**, and no second
+  host-side namespace exists — two declarations that must agree with nothing forcing them to is the
+  defect class ADR-0032 removes, so the disagreement is made *unwriteable* rather than guarded.
+  (`runsFor`, `kit.internal`)
+- **mode selection** — how [[bindContractUser]] picks the home it binds: `runs ∩ published`, a
+  NON-floor mode winning, the floor otherwise. **Two** non-floor modes is a hard error (they are
+  incomparable by design — a phone and a desktop are not ordered against each other — so a host
+  offering both has not said which session it means), and an EMPTY intersection is a hard error
+  naming both sets. That empty case is where ADR-0032 narrows ADR-0002: degradation still governs
+  **grants**, but a mode mismatch is a **refusal**, because a home built for a graphical session
+  activated on a machine with no display is a worse answer than an error. (`selectModeOver`,
+  `kit.internal`)
 
 ## Grants and confinement
 
@@ -77,39 +102,54 @@ the term is stable, the code is pending (see the cited issue).
   `bindContractPackage { grants }` is now an internal kernel, not a consumer path; ADR-0026). It
   remains the sole privilege source the realization reads. (ADR-0001 mechanic 2, ADR-0025, ADR-0026)
 - **grant vocabulary** — the naming rule for the grant concept: **one word, one type** (ADR-0030).
-  **`grants`** is the ATTRSET (`{ <feature>.enable = bool; }`) and is the name of every ARGUMENT
-  holding one: [[mkContractUser]]'s `homes = [{ grants; home }]`, [[mkContractHome]]'s `grants`,
-  `hostFactsFor`'s `grants`, [[mkContractPackageForHome]]'s `grants`, [[home matrix]] rows'
-  `{ grants; label; }`. **[[grant-key]]** is the sorted NAME LIST, and names every argument and field
-  holding one: the [[binding index]]'s `contractPackages[].grantKey`, `writeManifest`'s `grantKey` argument,
-  `readManifest`'s `grantKey` field. **`granted`** is the ATTRSET seen as an OPTION PATH —
-  `custom.users.<u>.granted`, [[hostFacts]]`.granted` — and nothing else; it never denotes a list and
-  is never an argument. Before this rule one value travelled as `grants` → `granted` → `granted`
-  → `contractBakedGrantKey` → `grants` across four hops, and `granted` meant an attrset at one
-  site and a sorted list at another.
-  **The one exception, scoped:** the manifest's WIRE key in `contract-requests.json` is still
-  `granted` (v2 shipped it; a JSON key is a format commitment). `manifest.nix` owns the translation
-  — `grantKey` on both Nix faces, the wire spelling named once as `grantKeyWireField` — so no
-  reader downstream meets the mismatched word. It moves on the next manifest version bump, whatever
-  triggers it.
+  **`grants`** is the ATTRSET (`{ <feature> = bool; }` — one bool per feature; the `.enable` suffix
+  went with ADR-0032, having existed for shape-symmetry across four namespaces rather than because
+  a feature ever carried a second flag) and is the name of every ARGUMENT holding one:
+  [[bindContractPackage]]'s `grants`, `accountPlan`'s `grants`, [[traceUser]]'s `grants`.
+  **`granted`** is the same ATTRSET seen as an OPTION PATH — `custom.users.<u>.granted` — and
+  nothing else; it never denotes a list and is never an argument. Before this rule one value
+  travelled as `grants` → `granted` → `granted` → `contractBakedGrantKey` → `grants` across four
+  hops, and `granted` meant an attrset at one site and a sorted list at another.
+  **The grant-key is gone.** It named the sorted feature list a home was baked under, which
+  existed only because a grant could reach home content; homes are keyed by [[mode]] now, so there
+  is no key to publish, freeze or compare — and the manifest's `granted` wire field went with it
+  (v3 carries `mode`). (ADR-0030, ADR-0032)
 - **affordance** / **`contract.affordances`** — the **host's** voice (system-side), shaped
-  `{ <feature>.enable = bool; }`: the features this host is willing to grant to users who
-  [[offer]] them, declared **once** per host. The symmetric counterpart of [[request]]
-  (`contract.requests`, the user's voice) and a generalisation of the greeter's safe set (the
-  safe set *is* the greeter's affordance). A **necessary** condition for a derived grant — the
-  host's absolute veto: a feature it does not afford is never granted, whatever a user offers.
-  (ADR-0025; consumed by `bindContractUser`)
+  `{ <feature> = bool; }`: the features this host is willing to grant to users who
+  [[offer]] them, declared **once** per host, and **the only thing a host declares**. The
+  symmetric counterpart of [[request]] (`contract.requests`, the user's voice) and a
+  generalisation of the greeter's safe set (the safe set *is* the greeter's affordance). A
+  **necessary** condition for a derived grant — the host's absolute veto: a feature it does not
+  afford is never granted, whatever a user offers. The modes a host [[runs]] are DERIVED from this
+  same declaration (ADR-0032), which is why there is no host-side mode namespace to disagree with
+  it. (ADR-0025; consumed by `bindContractUser`)
 - **wants** / **`contract.wants`** — the **user's** voice on *which* features (home-side), the
   symmetric counterpart of the host's [[affordance]] and the typed form of the [[offer]]: a
-  submodule over `grantedOptions` (same `{ <feature>.enable = bool; }` shape, **no freeform**)
+  submodule over `grantedOptions` (same `{ <feature> = bool; }` shape, **no freeform**)
   declared in the user's own `home.nix`. [[mkContractUser]] **harvests** it off the evaluated home
   and publishes it as the index's `offer`. It defaults to the **[[safe set]]** — non-privileged
   features are wanted by default, privileged ones must be asked for — per FEATURE, so asking for
-  one keeps the rest; a user wanting no desktop writes `contract.wants.gui.enable = false` — and
-  must then carry no [[request]] data for it, the one place the two halves of the voice are held to
-  each other (issue #59). It must be **bake-invariant**: a want that reads [[hostFacts]]`.granted`
-  is circular (the grant is derived *from* the offer) and fails the bake with a named error.
+  one keeps the rest; a user wanting no desktop writes `contract.wants.gui = false` — and
+  must then carry no [[request]] data for it, and must not [[supports|support]] the gui [[mode]]
+  either, the two places the halves of the voice are held to each other (issue #59, ADR-0032). It
+  must be **mode-invariant**: a want that reads [[hostFacts]] is circular (the grant is derived
+  *from* the offer) and fails the bake with a named error.
   (ADR-0028; `homeModules.default`)
+- **supports** / **`contract.supports`** — the **user's** voice on *which [[mode]]s its home can
+  run in* (home-side), the second half of the voice beside [[wants]]. A submodule over the
+  [[mode registry]] (`{ <mode> = bool; }`, **no freeform**, so a typo'd mode is an eval error in
+  the user's own repo). **It is the publication set**: the producer builds one [[home]] per mode
+  its system's [[home matrix]] row keeps, and publishes those the user supports.
+  **No default satisfies its rule** — each mode defaults to `false` so the module system has a
+  value to merge, but nothing defaults to true, so a user saying nothing supports NOTHING and the
+  bake refuses it by name rather than publishing an empty set. A default that satisfied
+  "at least one" would set a user's essential nature by inheritance; `supports.gui = true` is a
+  **teaching convention** (ADR-0006's "gui by default"), not a value written for anyone. It must
+  be **mode-invariant** (or the published set would depend on which mode evaluated first), and
+  supporting a mode while vetoing that mode's associated grant is a bake-time error — issue #59's
+  rule one layer up, a contradiction no host can rescue. Distinct from
+  `custom.home.profiles.*`: `supports` is a CLAIM the user makes outward; a profile is the ANSWER
+  handed back. (ADR-0032; `homeModules.default`)
 - **deny** — the **absence of a grant**. Not a veto, not a default-open block — a host runs
   only what it grants (derived within its [[affordance]]s).
 - **feature configuration** *(a feature's **parameters**)* — the **host-owned** parameters the
@@ -188,7 +228,7 @@ the term is stable, the code is pending (see the cited issue).
   **(built — issue #35)** (ADR-0002, ADR-0004)
 - **`mkMemberChecks`** — the **members adapter** over the [[check kit]] (`check-kit.nix`):
   `{ members; homes; buildHome; require; pkgs; force ? …; positiveControl ? … }` → the whole
-  per-user check set (`home-confinement-<user>`, `bake-eval-<user>`, one `identity-posture`),
+  per-user check set (`home-confinement-<user>`, `home-eval-<user>`, one `identity-posture`),
   under names the kit single-sources. The helpers are members-generic because a hand-listed set
   always misses the entry someone forgot to add — and applying them by hand re-introduced exactly
   that fold in every consumer, so the contract performs it. It **replaces** none of them: the three
@@ -231,19 +271,18 @@ the term is stable, the code is pending (see the cited issue).
 - **incapacity vs prohibition** — a *headless* host has no greeter because it has no display:
   **incapacity**, not a ban. Keep "ban"/"prohibition" reserved for a real security *rule* so
   the word keeps its weight; don't model "no screen" as a ban. (ADR-0002)
-- **hostFacts** — the restricted, read-only, **self-scoped** projection of host state a
-  user's home module may read: `{ exposed, platform, granted }`. Built by `hostFactsFor { grants;
-  platform; exposed ? false; }` — the argument is `grants` (the attrset name every function on this
-  surface takes) and the field is `granted` (the option path a home reads it back on); see
-  [[grant vocabulary]]. Deliberately excludes
-  `hostName` so adaptation keys on *semantic* facts, not host identity. `granted` is **narrowed to
-  [[homeAxes]]** (ADR-0028) — a home may only see the grants something bakes for, so it cannot
-  become grant-sensitive on a bind-riding feature. The value is supplied by
-  whoever builds the home (the producer builds it per home, hand-built inline — there is no host
-  `config` at bake time). The `mkHostFacts` config-projector was **deleted** as caller-less (the
-  pre-built path never evaluates a home host-side, ADR-0026); the no-`hostName` confinement is now a
-  **convention** the producer keeps, unenforced until `hostFacts` is a typed option rather than a
-  bare `specialArg`. (ADR-0002, ADR-0026)
+- **hostFacts** — the restricted, read-only, **self-scoped** projection of the world a user's home
+  module may read: `{ exposed, platform, mode }`. Built by [[mkContractHome]] from the [[mode]] it
+  is building for. Deliberately excludes `hostName` so adaptation keys on *semantic* facts, not
+  host identity. **`granted` is gone** (ADR-0032): no grant can affect a home, so showing one the
+  grant set would be showing it something it must not use — the hazard ADR-0028's narrowing existed
+  to prevent, removed at the source rather than guarded, along with the `hostFactsFor` projection
+  whose whole content that narrowing was. `mode` is what replaced it, and it is the single source
+  the umbrella derives `custom.home.profiles.<mode>.enable` from. The `mkHostFacts`
+  config-projector was **deleted** as caller-less (the pre-built path never evaluates a home
+  host-side, ADR-0026); the no-`hostName` confinement is a **convention** the producer keeps,
+  unenforced until `hostFacts` is a typed option rather than a bare `specialArg`.
+  (ADR-0002, ADR-0026, ADR-0032)
 
 ## The greeter and binding
 
@@ -251,14 +290,16 @@ the term is stable, the code is pending (see the cited issue).
   Build-time = operator-authored fleet declaration, **default-closed**, via `bindContractUser`
   (pre-built). Runtime = the **greeter**, **default-open over the safe set**, building the user's
   own home output. Neither evaluates the home host-side inline: the build-time path binds a
-  pre-built `contractPackage`, the greeter builds `homeConfigurations.<u>` (ADR-0026 retired the
-  inline-eval mechanism). (ADR-0002, ADR-0006, ADR-0026)
+  pre-built `contractPackage`, the greeter builds `homes.<sys>.<u>.<mode>` (ADR-0026 retired the
+  inline-eval mechanism; ADR-0032 made the greeter's home an ordinary one).
+  (ADR-0002, ADR-0006, ADR-0026, ADR-0032)
 - **`bindContractUser`** — the **sole public consumer bind** (ADR-0025/0026): a host declares its
   `contract.affordances` once and binds one indexed user with `{ usersFlake; username }`. Reads the
-  user's [[binding index]] entry, derives `grant = affordances ∩ offer` (always **negotiated** —
-  there is no unilateral direct-grant path on the public surface), selects the maximal covering
-  [[home]]'s package, and delegates to the internal [[bindContractPackage]] kernel. The consumer twin of
-  the producer's [[mkContractUser]] (bind one contract-user ⇄ make one). **(built — issue #25)**
+  user's [[binding index]] entry, derives the modes it [[runs]] from its own affordances, picks one
+  by [[mode selection]], derives `grant = affordances ∩ offer` (always **negotiated** — there is no
+  unilateral direct-grant path on the public surface), and delegates to the internal
+  [[bindContractPackage]] kernel. The consumer twin of the producer's [[mkContractUser]] (bind one
+  contract-user ⇄ make one). **(built — issue #25; mode selection ADR-0032)**
 - **`traceUser`** — the home-manager-free **dry-run inspector**, and the one request→grant→bridge
   tool **outside** the contractUser produce/consume coin. Given a *contract-pure* home module +
   identity + grants it harvests via bare `evalModules` (no home-manager, not even a stub — ADR-0004)
@@ -359,14 +400,18 @@ the term is stable, the code is pending (see the cited issue).
   a display manager). The greeter resolves the user's name against the offered set and launches it
   via greetd-as-user (a full DE needs that seat session); an un-offered name degrades to
   `defaultDesktop`. DE-agnostic: the contract carries an opaque name, the seat maps it. The choice
-  is **auto-surfaced** to `~/.contract-desktop` by `homeModules.greeterDesktop` — a SEPARATE home
-  module from `homeModules.default` (it sets `home.file`, a home-manager option, so the default
-  umbrella stays tracer-pure / home-manager-free; a real home imports both). Inert when no desktop
-  is requested ⇒ the seat default. (ADR-0013; `features.nix`, `greeter.nix`, `modules.nix`)
+  is **auto-surfaced** to `~/.contract-desktop` by **`homeModules.greeterDesktop`** — a SEPARATE
+  home module from `homeModules.default` (it sets `home.file`, a home-manager option, so the default
+  umbrella stays tracer-pure / home-manager-free). [[mkContractHome]] composes it **by default**
+  (ADR-0032): it is `mkIf (… != "")`, so a home requesting no desktop gets nothing and a cli home
+  pays nothing. It cannot move host-side — the greeter reads that dotfile *before* evaluating the
+  home's Nix, so the file must be in the home — and composing it always is what let the separate
+  `<u>-greeter` home be retired. Inert when no desktop is requested ⇒ the seat default.
+  (ADR-0013, ADR-0032; `features.nix`, `greeter.nix`, `modules.nix`)
 - **safe set** — the features a runtime/greeter login may auto-grant: the **runtime-eligible**
   ones. `safeSet = ["gui"]` today. (`lib.nix`)
 - **greeterGrants** — the **canonical runtime grant value** (`self.greeterGrants`): the safe set
-  lifted into a grant attrset (`{ <feature>.enable = true; }`), i.e. **default-open over the
+  lifted into a grant attrset (`{ <feature> = true; }`), i.e. **default-open over the
   safe set**. The greeter provisions with it (`contract-greeter-provision` realizes at most the
   safe set); it is ADR-0008's conformance condition (3) — *a greeter grants at most the safe set* —
   made a single-sourced value, so escalation is impossible by construction, not by a deny rule.
@@ -418,10 +463,10 @@ the term is stable, the code is pending (see the cited issue).
   (ADR-0016; amends ADR-0007)
 - **manifest module** *(internal)* — the single owner of the `contract-requests.json` schema: the
   seam between the producer [[mkContractPackage]] and the consumer [[bindContractPackage]]. It owns
-  the manifest **version**, its **field set** (`version`, `username`, `requests`, `packages`, and
-  the coupling-guard grant-key — `granted` on the wire, `grantKey` on both Nix faces), the seam
-  **filename**, and the **v1→v2 compat read** (v2 added the grant-key field; a v1 manifest predates
-  it and reads back as `[ ]`). `writeManifest`
+  the manifest **version**, its **field set** (`version`, `username`, `requests`, `packages`,
+  `mode`), the seam **filename**, and the **backward-compat read** (v3 replaced v2's `granted`
+  grant-key with the [[mode]] the home was built for; a pre-v3 manifest predates the field and
+  reads back as `null`, so the [[coupling guard]] has nothing to check). `writeManifest`
   serializes a manifest to a store path at eval time (`builtins.toFile`, no IFD); `readManifest`
   parses a pinned/realized store path back into the canonical field set. The producer writes
   *through* `writeManifest` and the consumer reads *through* `readManifest`, so neither re-encodes
@@ -437,13 +482,12 @@ the term is stable, the code is pending (see the cited issue).
   [[mkContractUser]]/[[mkContractUsers]], which bake through it (ADR-0026). **(built — issue #14)**
   (ADR-0016)
 - **`mkContractPackageForHome`** *(internal kernel)* — the home-manager producer adapter:
-  `mkContractPackageForHome { home; grants ? { }; pkgs }`. Reads `mkContractPackage`'s four
+  `mkContractPackageForHome { home; mode ? null; pkgs }`. Reads `mkContractPackage`'s four
   primitives off an already-evaluated home (`home.activationPackage`,
-  `home.config.contract.requests`, `home.config.home.{packages,username}`) and forwards them. It
-  does **not** import home-manager (only *reads* attributes), so the package-free invariant
-  (ADR-0004) holds. It is where a home and a grant set join into a published artifact, so it is
-  also where the [[bake pairing]] is verified. **Not a flake output** — [[mkContractUser]] bakes
-  each bake through it (ADR-0026). **(built — issues #23, #56)** (ADR-0016)
+  `home.config.contract.requests`, `home.config.home.{packages,username}`) and forwards them, plus
+  the [[mode]] to freeze into the manifest. It does **not** import home-manager (only *reads*
+  attributes), so the package-free invariant (ADR-0004) holds. **Not a flake output** —
+  [[mkContractUser]] bakes each home through it (ADR-0026). **(built — issue #23)** (ADR-0016)
 - **`bindContractPackage`** *(internal kernel)* — the package-level host bind:
   `bindContractPackage { contractPackage; identity; grants }`. Returns a NixOS module that reads
   `contract-requests.json` at eval time via the [[manifest module]]'s `readManifest`, bridges
@@ -454,58 +498,56 @@ the term is stable, the code is pending (see the cited issue).
   public consumer [[bindContractUser]] selects a home's package and delegates here; the grant model is
   negotiation-only, so its unilateral `grants` argument is never a consumer entry (ADR-0026).
   **(built — issue #16)** (ADR-0016)
-- **home** *(as the producer's unit)* — a **built home identified by the grant set it was built under**. `mkContractPackage`
-  freezes `activationPackage`, so a grant that *changes the baked home* (a **home-affecting**
-  grant — one the user's `home.nix` fans out on, e.g. `gui` → emacs/ai) must be its own home,
-  while a grant conferring only host-side effects (a privileged group) rides the bind and needs
-  no home of its own. Which grants a home *may* branch on is contract data since ADR-0028 ([[homeAxes]],
-  the upper bound `hostFacts.granted` is narrowed to, so `powerset(homeAxes)` bounds the
-  baked set); whether *that* repo's home actually branches stays the producer's
-  call, so a repo whose homes read no grant still builds a single `base` home. `powerset(homeAxes)`
-  is the upper bound on what a host could grant, **not** a per-system baking obligation: *which*
-  homes a fleet builds per system is its [[home matrix]], the **consumer's fleet fact**
-  (decision #43). The contract keeps answering "what could a host grant"; the
-  members-generic `mkHomeEvalCheck` proves whatever IS baked evaluates, without opining on that
-  matrix. A
-  home's published name (`<user>-contractPackage-<key>`, key = sorted home-affecting grant names, empty
-  ⇒ `base`) is a cosmetic label, not a parse target.
-  **ONE shape, filled progressively** (ADR-0030): a row is `{ grants; label; }` as
-  [[home matrix]] hands it out, and gains `home` when the producer makes it — so a
-  producer writes `row // { home = …; }` rather than building a fresh record, and the grants a home
-  was baked *under* and the grants it is published *with* are the same value by construction (which
-  is what the [[bake pairing]] guard checks). It was called a **variant** until ADR-0030, a third noun for something `grants`,
-  `home` and [[contractPackage]] already named between them; the older ADRs keep that word. **(built — issue #25)** (ADR-0025, ADR-0030)
-- **home matrix** — *which* [[home]]s a fleet builds per system, declared as ONE fact:
-  **`mkHomeMatrix { systems = { <system> = { <axis> = bool; }; }; }`** → `{ <system> = [ bake ]; }`.
-  A row per system the fleet bakes, naming only the [[home]] axes that system's **seats cannot
-  use** (`{ }` = can use everything the contract names; `{ gui = false; }` = a headless tier). A
-  producer's per-system rows of homes and packages (`{ <system> = { <label> = home; }; }`) are
-  projections of the result. *Which members* bake used to be the same fleet fact one rung up
-  ([[mkContractUsers]]' `homes` keys), and still is for a producer that enumerates its own — but the
-  mainline no longer states it: [[mkContractFleet]] hard-wires the **cross-product**, so on that
-  path every member bakes every home in its system's row and the matrix is the only fleet fact left
-  in it. The *fact* stays the consumer's (decision #43); the **shape** of
-  the declaration is the contract's, because an under-bake is **silent** — [[bindContractUser]]
-  binds the maximal bake that *does* exist, so a missing one costs a home its content with
-  nothing objecting. Hence an **omitted axis is usable**: a registry that gains one bakes it
-  *everywhere*, restricted systems included, with no edit in any consumer repo. That is
-  ADR-0002's "one mechanism, opposite defaults" read for **coverage** rather than privilege — the
-  same reasoning that defaults [[wants]] to the [[safe set]]: fail-*closed* where the risk of the
-  unknown is admitting something, fail-*open* where the risk is omitting it. A per-system list of
-  **usable** features, or of **labels**, would drop each new axis in silence; that is the bug this
-  exists to kill. Being keyed by system makes three under-bakes **unexpressible** rather than
-  asserted (rows cannot disagree with the system list, presence *is* classification, and an
-  unrestricted system is just a row that takes nothing away). What is still guarded is what the type
-  cannot say: a setting that is not an axis (checked on the **key**, whatever the boolean — a
-  bind-riding feature, a *label*, a typo), a non-boolean setting, a malformed row, an emptied bake,
-  and a matrix over no systems. Producers previously hand-wrote the filter *and* the assert catching
-  their own filter's failure. **(built — issue #58)** (ADR-0026, ADR-0028)
+- **home** *(as the producer's unit)* — a **built home, identified by the [[mode]] it was built
+  for**. `mkContractPackage` freezes `activationPackage`, so what cannot be conferred at
+  activation — a desktop's dotfiles, a session config — must be built into its own home, while a
+  [[grant]] confers only host-side effects and rides the bind. Since ADR-0032 that split IS the
+  mode/grant split, so a home is keyed by one name and never by a combination: the powerset of
+  grant axes, the grant-less `base` home and the `{ grants; label; home }` record all went with the
+  fusion they served.
+  The **key IS the identity**: `homes.<system>.<user>.<mode>`, and the published package is
+  `<user>-contractPackage-<mode>`. Nothing is re-paired between building and publishing, which is
+  why the bake-pairing guard and its `contractBakedGrantKey` marker are gone rather than moved.
+  What a producer builds per system is its [[home matrix]] (the **consumer's fleet fact**,
+  decision #43); what it PUBLISHES is that ∩ the user's [[supports]], decided before any derivation
+  is instantiated. The members-generic `mkHomeEvalCheck` proves whatever IS published evaluates,
+  without opining on either. It was called a **variant** until ADR-0030 and a **bake** until
+  ADR-0032; the older ADRs keep those words. **(built — issues #25, #67)**
+  (ADR-0025, ADR-0030, ADR-0032)
+- **home matrix** — *which* [[mode]]s a fleet builds per system, declared as ONE fact:
+  **`mkHomeMatrix { systems = { <system> = { <mode> = bool; }; }; }`** → `{ <system> = [ <mode> ]; }`.
+  A row per system the fleet builds for, naming only the modes that system's **seats cannot run**
+  (`{ }` = can run every mode the contract names; `{ gui = false; }` = a headless tier) — a
+  **subtraction**, never an enumeration. A producer's per-system rows of homes and packages
+  (`{ <system> = { <user> = { <mode> = home; }; }; }`) are projections of the result. *Which
+  members* build used to be the same fleet fact one rung up ([[mkContractUsers]]' `homes` keys),
+  and still is for a producer that enumerates its own — but the mainline no longer states it:
+  [[mkContractFleet]] hard-wires the **cross-product**, so on that path every member is built for
+  every mode in its system's row and the matrix is the only fleet fact left in it. The *fact* stays
+  the consumer's (decision #43); the **shape** of the declaration is the contract's, because an
+  under-build is **silent** — a mode a system never built is a home nobody can bind there. Hence an
+  **omitted mode is usable**: a registry that gains one builds it *everywhere*, restricted systems
+  included, with no edit in any consumer repo. That is ADR-0002's "one mechanism, opposite
+  defaults" read for **coverage** rather than privilege — the same reasoning that defaults
+  [[wants]] to the [[safe set]]: fail-*closed* where the risk of the unknown is admitting
+  something, fail-*open* where the risk is omitting it. A per-system list of **usable** modes would
+  drop each new one in silence; that is the bug this exists to kill. Being keyed by system makes
+  three under-builds **unexpressible** rather than asserted (rows cannot disagree with the system
+  list, presence *is* classification, and an unrestricted system is just a row that takes nothing
+  away). What is still guarded is what the type cannot say: a setting that is not a mode (checked
+  on the **key**, whatever the boolean — a FEATURE, a retired label, a typo), a non-boolean
+  setting, a malformed row, an emptied row, and a matrix over no systems. Producers previously
+  hand-wrote the filter *and* the assert catching their own filter's failure.
+  **(built — issue #58; reshaped by ADR-0032)** (ADR-0026, ADR-0032)
 - **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
-  = { identity; offer; bakes = [{ grantKey; package }] }`. Plain data (no IFD), so a host
-  selects a [[home]]'s package without building any of them. Identity comes from the user's [[member]]
-  (resolved once, by the [[members]]); the `offer` is harvested from the home's [[wants]] (ADR-0028); each bake's `grantKey` is
-  its [[grant-key]], and cannot disagree with the home's own recorded key (the [[bake pairing]]
-  guard rides the whole bake record). **(built — issues #25, #56)** (ADR-0025)
+  = { identity; offer; contractPackages = { <mode> = package; } }`. Plain data (no IFD), so a host
+  selects a [[home]]'s package without building any of them. Identity comes from the user's
+  [[member]] (resolved once, by the [[members]]); the `offer` is harvested from the home's
+  [[wants]] (ADR-0028). **Its key set IS what this user publishes here** — the user's [[supports]]
+  as the [[home matrix]] narrowed it — which is the set [[mode selection]] intersects the host's
+  [[runs]] with. It is not published a second time as its own field, because two declarations that
+  must agree is the defect class ADR-0032 removes. **(built — issues #25, #67)**
+  (ADR-0025, ADR-0032)
 - **members** — the answer to *who is in this users repo*: `{ <name> = [[member]]; }`, derived from
   an ADR-0020 users directory by **`mkMembers { usersDir }`**. Every subdirectory holding an
   `identity.json` is a member, keyed by its directory name; a directory without one (a half-added
@@ -530,24 +572,26 @@ the term is stable, the code is pending (see the cited issue).
   resolution sites with three error texts and two contradicting precedence rules.) **(built — issue
   #57)**
 - **`mkContractUser`** — the **singular public producer** and the twin of the consumer's
-  [[bindContractUser]] (make one contract-user ⇄ bind one): `{ member; bakes; pkgs }`
+  [[bindContractUser]] (make one contract-user ⇄ bind one): `{ member; homes; pkgs }`
   (or, without a member set, `name` + `usersDir`) — no `system`, which is read off `pkgs` as
   [[mkContractHome]] and [[bindContractUser]] already do, so the outputs cannot be keyed by a system
-  their `pkgs` was not built for; and no `offer`, it is harvested from each bake's home
-  and must be home-invariant (ADR-0028). Builds ONE user's [[home]]s into the named packages and its
-  `contractUsers.<sys>.<user>` [[binding index]] entry — the ready-to-`inherit … packages
-  contractUsers` flake-output shape, so a single-user repo needs no members. It verifies the
-  [[bake pairing]] on the whole home record, so neither the index's [[grant-key]] nor the
-  published package's name can reach a flake output mispaired. **(built — ADR-0026; issue #56)**
+  their `pkgs` was not built for; and no `offer` or `supports`, both harvested from the homes and
+  both required to be mode-invariant (ADR-0028, ADR-0032). Takes `homes = { <mode> = home; }` — what
+  this system BUILT — and publishes the ones the user [[supports]], as the named packages
+  `<user>-contractPackage-<mode>` and the `contractUsers.<sys>.<user>` [[binding index]] entry:
+  the ready-to-`inherit … packages contractUsers` flake-output shape, so a single-user repo needs
+  no members. **(built — ADR-0026; reshaped issue #67)**
 - **`mkContractUsers`** — the **members public producer**: [[mkContractUser]] mapped over a whole
   `users` flake and merged, so a multi-user repo (ADR-0020) bakes its entire members in **one** call.
   The turnkey producer for the multi-user shape exactly as [[bindContractUser]] is the turnkey
-  consumer. Takes the [[members]] plus a `homes` attrset of `{ <user> = [ { grants; label; home } ]; }`:
-  *who* the members are is the members' answer, while *which* of them build and with which homes is
-  what a producer enumerating its own bake still states here — the same fleet fact the per-system
-  bake narrowing is, and no longer the mainline answer now that [[mkContractFleet]] hard-wires the
+  consumer. Takes the [[members]] plus a `homes` attrset of `{ <user> = { <mode> = home; }; }`:
+  *who* the members are is the members' answer, while *which* of them build and for which modes is
+  what a producer enumerating its own build still states here — the same fleet fact the per-system
+  subtraction is, and no longer the mainline answer now that [[mkContractFleet]] hard-wires the
   cross-product one rung up. A `homes` key the members does not
-  hold is a hard bake error (a hand-listed name that has drifted from the directory). Since
+  hold is a hard bake error (a hand-listed name that has drifted from the directory), and a `homes`
+  naming **no user at all** is one too — the anti-vacuity guard its three siblings carried and this
+  one did not, until issue #67. Since
   [[mkContractFleet]] it is also the **escape hatch**: a producer whose bake is not a full
   cross-product calls this rung directly, which is why it stays public although both reference
   producers stopped calling it.
@@ -557,39 +601,41 @@ the term is stable, the code is pending (see the cited issue).
   material — `{ members; homeMatrix; pkgsFor; buildHome }` — and returns the whole published
   surface: `{ homes; packages; contractUsers; systems; pkgsBySystem; }`, the last two derived rather
   than restated. It owns the residual **join** a multi-user, multi-system producer was otherwise
-  left holding: the per-home eval loop, the members × system × home fold, the grants↔home pairing,
-  the two output merges, and the once-per-system `pkgs`. Mechanics, not choices — which is the whole
-  case for it, since the *safety* half was already taken by the [[bake pairing]]. The arity reads
+  left holding: the per-home eval loop, the members × system × mode fold, the two output merges,
+  and the once-per-system `pkgs`. Mechanics, not choices. The arity reads
   one user / a members set you **enumerate** / one you **derive**. Four shape rules make it what it
-  is: `buildHome` is an **injected closure** `{ member, grants, pkgs } → home`, so the contract
+  is: `buildHome` is an **injected closure** `{ member, mode, pkgs } → home`, so the contract
   never names [[mkContractHome]], `stateVersion` or `extraModules`, never imports home-manager
   (ADR-0004), and a home built *without* the builder still bakes; `pkgsFor` is a **function**, so
   the producer derives `systems` from the matrix and applies it **once per system** rather than once
-  per user × home × system (the rule two producers carried as prose); the **cross-product is
-  hard-wired**, every member baking every home in its system's row, as [[mkMemberChecks]]' coverage
-  rule already assumed; and the outputs come **nested by system**, so `inherit (fleet) packages
-  contractUsers;` *is* the flake outputs. What stays the consumer's: `pkgsFor`, the matrix, the
-  builder's own facts, the `homeConfigurations` published names, the checks, and any **unbaked**
-  home — a greeter-login mapper calls [[mkContractHome]] directly and is exempt by design, not
-  served. **(built — issue #62)** (ADR-0029, ADR-0026)
+  per user × mode × system (the rule two producers carried as prose); the **cross-product is
+  hard-wired**, every member being BUILT for every mode in its system's row — what it PUBLISHES is
+  then that ∩ its [[supports]], decided one rung down where the voice is read — as
+  [[mkMemberChecks]]' coverage rule already assumed; and the outputs come **nested by system**, so
+  `inherit (fleet) homes packages contractUsers;` *is* the flake outputs. What stays the consumer's:
+  `pkgsFor`, the matrix, the builder's own facts, the `homeConfigurations` published names, the
+  checks, and any **unbaked**
+  home. **(built — issue #62; reshaped ADR-0032)** (ADR-0029, ADR-0026, ADR-0032)
 - **`mkContractHome`** — the **producer home builder** (ADR-0029, issue #40): the contract-owned
   composition every producer's `mkHome` glue previously hand-wrote — the home umbrella +
-  [[home baseline]] + the user's `home.nix` + the inline identity/`home.*` module + the narrowed
-  [[hostFacts]] specialArg (via `hostFactsFor`). Package-free by **injection**: the consumer passes
+  [[home baseline]] + the `greeterDesktop` helper + the user's `home.nix` + the inline
+  identity/`home.*` module + the [[hostFacts]] specialArg carrying the [[mode]] it is building for.
+  Package-free by **injection**: the consumer passes
   `home-manager.lib.homeManagerConfiguration` **verbatim** (ADR-0004; the check kit's `buildHome`
   posture) and the contract only composes arguments and applies the consumer's function. `hostFacts`
-  is contract-owned and WINS over `extraSpecialArgs` (a caller cannot hand a home an un-narrowed
-  grant set); `pkgs` and `stateVersion` stay consumer facts by design; `extraModules` is the open
-  seam (confinement probes, `greeterDesktop`, markers, repo glue) that lets one builder serve the
-  members homes, the greeter-login mapper, and the confinement check over the SAME module set.
-  `home.homeDirectory = "/home/<username>"` is a fixed contract rule, matching the realized
-  account. Its result CARRIES the [[grant-key]] it was baked under, which is what makes the
-  [[bake pairing]] checkable. Takes a [[member]] (supplying both the user directory and the
-  already-resolved identity) or a bare `memberDir` it resolves for itself — the same resolver the
-  producer coin uses, under the same rule. The grant it bakes under is `grants`, the [[grant
-  vocabulary]]'s one argument name for a grant attrset, so a producer hands the builder and the coin
-  the identically-named value.
-  **(built — issues #45, #56, #57)** (ADR-0029)
+  is contract-owned and WINS over `extraSpecialArgs` (a caller cannot hand a home a mode it was not
+  built for); `pkgs` and `stateVersion` stay consumer facts by design; `extraModules` is the open
+  seam (confinement probes, markers, repo glue) that lets one builder serve the published homes and
+  the confinement check over the SAME module set. `home.homeDirectory = "/home/<username>"` is a
+  fixed contract rule, matching the realized account. It composes the `greeterDesktop` helper by
+  DEFAULT alongside the [[home baseline]] (ADR-0032) — inert when no desktop is requested, so a cli
+  home pays nothing. Nothing rides its RESULT: with a home published under the very mode it was
+  built for there is no pairing to cross-check, so the `contractBakedGrantKey` marker is gone.
+  Takes a [[member]] (supplying both the user directory and the already-resolved identity) or a
+  bare `memberDir` it resolves for itself — the same resolver the producer coin uses, under the
+  same rule. The session shape it builds for is `mode`, the one word the matrix, the published key
+  and the manifest all use.
+  **(built — issues #45, #57; reshaped ADR-0032)** (ADR-0029, ADR-0032)
 - **home baseline** — the contract-shipped **universal home hygiene** (`homeModules.baseline`, kit
   attr `homeBaselineModule`): the standing, uniform-across-users home-manager posture every
   produced home starts from — the self-manage CLI, plus `systemd.user.startServices = "sd-switch"`
@@ -601,40 +647,23 @@ the term is stable, the code is pending (see the cited issue).
   default umbrella stays tracer-pure). The same species as the [[greeter-seat baseline]] — a
   standing, uniform-across-users posture, as against per-user intent — with opposite negotiability:
   the seat baseline is non-negotiable (the host owns the seat), the home baseline overridable
-  per-option (the user owns the home). Deliberately NOT in it: `xdg.mimeApps` (opinion), packages
-  (user intent), `greeterDesktop` (reference convention; opt-in via `extraModules`). (ADR-0029;
+  per-option (the user owns the home). Deliberately NOT in it: `xdg.mimeApps` (opinion) and
+  packages (user intent). (`greeterDesktop` is a sibling default rather than part of the baseline:
+  it is a REFERENCE convention with its own reason to be composed, not hygiene.) (ADR-0029;
   `modules.nix`)
 - **`bindContractUser`** — the **sole public consumer bind**: `{ usersFlake; username }`, **no
-  `grants`**. Reads `contract.affordances` and the user's [[binding index]], derives
-  `grant = affordances ∩ offer` (always negotiated), selects the **maximal built [[home]] whose
-  grant-key ⊆ grant** (no unique maximum ⇒ hard error), and delegates to the internal
-  [[bindContractPackage]] kernel with the derived grant and index-supplied identity. The host holds
-  **zero** users-repo internals (no bake names, no identity paths). Consumer twin of
-  [[mkContractUser]]. **(built — issue #25; renamed ADR-0026)** (ADR-0025)
-- **coupling guard** — `bindContractPackage`'s assertion `manifest.granted ⊆ grantedNamesOf grants`:
-  a [[home]]'s package may bind only if its baked grants are all granted. Required by ADR-0016 but never
-  enforced until ADR-0025; maximal-subset selection in [[bindContractUser]] satisfies it by
-  construction, so the check is defense-in-depth for the internal kernel. **(built — issue #25)**
-  (ADR-0016, ADR-0025)
-- **grant-key** — the sorted **enabled feature names** of a grant set: the canonical,
-  order-independent identity of a [[home]]. One projection (`grantKey`) behind the home
-  *label* (`base` when empty, else the names joined), the [[binding index]]'s `grantKey`, the
-  manifest's, and the [[bake pairing]] guard — so "the same grant set" cannot mean two things across
-  them. It also NAMES each of those fields, per [[grant vocabulary]].
-  **(built — issue #56)** (ADR-0025, ADR-0029 amendment; `lib.nix`)
-- **bake pairing** — the **join** the contract owns between its two ends of a bake:
-  [[mkContractHome]] evaluates a home *under* a grant set, the producer coin bakes it *with* one,
-  and a producer re-pairs `{ grants; home }` by label in between. The home **carries the
-  [[grant-key]] it was baked under** (`contractBakedGrantKey`, attached to the builder's returned
-  value — *not* a home option: `homeModules.default` stays tracer-pure, and `contract.*` in a home
-  is the user's voice, so a producer-written key there would be a spoofable second spelling of
-  `hostFacts.granted`), and [[mkContractPackageForHome]] and [[mkContractUser]] cross-check it. A
-  mispairing — a `base` home published under a `gui` key — is a hard bake error naming the user,
-  the baked key and the passed key, where before it was *structurally* undetectable: the manifest's
-  grant-key, the index's, and so the [[coupling guard]] and maximal-bake selection all
-  read the grant passed *alongside* the home, never the home. A home built without the builder
-  carries no key, so the check is **skipped, not fired** — the builder is a convenience, not a
-  requirement. **(built — issue #56)** (ADR-0029 amendment)
+  `grants`** and **no mode**. Reads `contract.affordances` and the user's [[binding index]], derives
+  the modes it [[runs]], picks one by [[mode selection]], derives `grant = affordances ∩ offer`
+  (always negotiated), and delegates to the internal [[bindContractPackage]] kernel with the
+  selected home's package, the derived grant, the run set and the index-supplied identity. The host
+  holds **zero** users-repo internals (no home names, no identity paths). Consumer twin of
+  [[mkContractUser]]. **(built — issue #25; renamed ADR-0026; mode-selecting ADR-0032)** (ADR-0025)
+- **coupling guard** — `bindContractPackage`'s assertion that the [[mode]] frozen into the manifest
+  is one the host [[runs]]: a [[home]] may be activated only where its session shape can run. One
+  field instead of the grant-key list v2 froze, and the direct translation of ADR-0016's guard once
+  a grant stopped being able to change a home. [[mode selection]] satisfies it by construction, so
+  the check is defense-in-depth for the internal kernel; a pre-v3 manifest freezes no mode and
+  there is nothing to check. **(built — issue #25; restated ADR-0032)** (ADR-0016, ADR-0032)
 
 ## Program scope and package policy
 
@@ -681,23 +710,27 @@ the term is stable, the code is pending (see the cited issue).
   `mkContractPackageForHome`'s home-attribute projection (same content-addressed store path as the
   direct call), `mkContractUser`/`mkContractUsers` parity, `bindContractPackage` reproducing the
   `traceUser` kernel's account + gui surface from a pre-built manifest, and the [[home matrix]]'s own
-  guards (`bake-matrix.nix`: each under-bake the narrowing must refuse, and a synthetic second axis
-  propagating to restricted and unrestricted systems alike). **VM
+  guards (`home-matrix.nix`: each under-build the subtraction must refuse, and a synthetic third
+  MODE propagating to restricted and unrestricted systems alike), the [[mode registry]]'s floor
+  guard in both directions and the [[mode selection]] algorithm over a synthetic three-mode world
+  (`modes.nix`). **VM
   tests** (each a `runNixOSTest` boot): `vm.nix` (gui-union renders), `greeter-vm.nix`
   (provisioning crux — now proving the runtime **renderer** surfaces the `accountPlan` record the
   same plan evaluates, ADR-0027), `nix-daemon-vm.nix` (grant/deny/clamp for daemon access),
   `prebuilt-bind-vm.nix` (account + activation via `bindContractPackage`),
   `daemon-restricted-vm.nix` (hello on PATH, curl absent, daemon refused).
 - **check kit** — the checks the contract SHIPS rather than runs (`check-kit.nix`, issues #35, #49):
-  [[mkConfinementCheck]], the [[credential posture]] check, and `mkHomeEvalCheck` (every baked
-  [[home]] × every baked system evaluates — members-generic, applied per user by the consumer's
-  mapper; deliberately no `tryEval`, and shape-agnostic about *which* bakes a fleet bakes, the
-  consumer's fact — decision #43) — plus [[mkMemberChecks]], the **members adapter** that applies
+  [[mkConfinementCheck]], the [[credential posture]] check, and `mkHomeEvalCheck` (every published
+  [[home]] × every built-for system evaluates — members-generic, applied per user by the consumer's
+  mapper; deliberately no `tryEval`, and shape-agnostic about *which* modes a fleet builds, the
+  consumer's fact — decision #43; its SHAPE and EMPTINESS refusals are separate, so a row holding a
+  home in the wrong shape is not reported as an empty one) — plus [[mkMemberChecks]], the
+  **members adapter** that applies
   all three across a whole member set in one call (issue #60). Each proves something only a **consumer** can
   prove — over its own real module set, over its own members, over its own home matrix — so the
   contract hands over the technique, not the verdict. Their own logic is proven in the suite
   (`conformance/confinement.nix`, `conformance/identity-posture.nix`,
-  `conformance/bake-eval.nix`, `conformance/members-checks.nix`): each accepting case, each
+  `conformance/home-eval.nix`, `conformance/member-checks.nix`): each accepting case, each
   rejecting case, and that a helper FAILS when its positive control is broken, when its home is
   never forced, when a posture is asked for that an identity does not carry, and when a home matrix
   is emptied or under-forced — each of those re-driven **through** the adapter too, since a fold is
@@ -715,11 +748,19 @@ the term is stable, the code is pending (see the cited issue).
   keep the word disciplined for when one returns.)
 - a feature's **grant** (the yes/no) vs its **configuration / parameters** (the knobs):
   never call configuration a "grant."
-- **`grants`** vs **`granted`** vs **[[grant-key]]** — see [[grant vocabulary]]. One word, one type:
-  `grants` is always the attrset, `grantKey` always the sorted name list, `granted` always the
-  attrset-as-option-path. Do not introduce a fourth spelling for a value already travelling under one
-  of these, and do not name anything `granted` because the option it eventually feeds is called that.
-  The manifest's wire key is the single scoped exception.
+- **`grants`** vs **`granted`** — see [[grant vocabulary]]. One word, one type: `grants` is always
+  the attrset-as-argument, `granted` always the attrset-as-option-path. Do not introduce a third
+  spelling for a value already travelling under one of these, and do not name anything `granted`
+  because the option it eventually feeds is called that. **`mode`** is the same rule for the other
+  dimension: the matrix row, the builder's argument, the published key, the manifest field and
+  `hostFacts.mode` are one word for one value.
+- **[[mode]]** vs **[[grant]]** — a mode is what a home IS; a grant is what a host confers on an
+  account at activation. A grant can never change a home; a bind can never change a mode. Never say
+  "the gui grant" when you mean the gui mode, and never call the mode set a grant set — the
+  registries are separate for exactly that reason.
+- **[[supports]]** (which modes a home can run in) vs **`custom.home.profiles.*`** (which mode it
+  IS running in) — a claim the user makes outward, versus the answer handed back. Only `supports`
+  reaches the producer; only the profile reaches a leaf module's `mkIf`.
 - **wants** (which features a user asks for) vs **requests** (the parameters of a feature) —
   both are the user's voice, home-side, but only [[wants]] feeds the negotiation. Say "wants" (or
   its published form, the [[offer]]) when you mean the feature selection; never call a request an
@@ -763,7 +804,7 @@ the term is stable, the code is pending (see the cited issue).
 - **The user's voice is typed and lives in the home** — both halves ([[wants]] and [[request]])
   are declared in the user's own home and carry no freeform, so a typo is an eval error; the
   producer passes neither. The one tolerant reader is the `traceUser` inspector. (ADR-0028)
-- **A user can only see what it may vary on** — `hostFacts.granted` is narrowed to
-  [[homeAxes]], and an offer that varies across bakes fails the bake. (ADR-0028)
+- **A user can only see what it may vary on** — a home sees the [[mode]] it was built for and no
+  grant at all, and an offer that varies across its homes fails the bake. (ADR-0028, ADR-0032)
 - **A request names a host effect but never performs it** — the host writes, only on grant.
 - **Data before code** — authenticate on `identity.json` before evaluating any user Nix.

@@ -8,10 +8,16 @@
 # shape a users repo has and worth one fixture.
 { ... }:
 {
+  # The MINIMAL declaration (ADR-0032): one line, naming the one session shape this home runs in.
+  # ben is a terminal user, so `cli` is the whole of it — and because there is no default, saying
+  # nothing would make him uninstallable rather than quietly cli.
+  contract.supports.cli = true;
+
   # ben declares no `contract.wants` at all, so his offer is the safe-set default (ADR-0028): he
   # asks for nothing privileged and takes a seat wherever one is afforded. Contrast svc, which
   # opts OUT of gui explicitly.
   #
-  # He declares no `custom.home.profiles.*` either — it is a switch a home gates its OWN content on
-  # (the rule is stated once, in the contract's `home-profiles.nix`), and he has none to gate.
+  # He declares no `custom.home.profiles.*` either — the contract writes those from the mode it
+  # built him for (the rule is stated once, in `home-profiles.nix`), and he has no content to gate
+  # on them anyway.
 }
