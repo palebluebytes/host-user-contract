@@ -7,6 +7,10 @@
 { lib }:
 let
   registry = import ./features.nix { inherit lib; };
+  # The MODE registry (ADR-0032) — the second single source beside the feature one. It takes no
+  # arguments: a mode entry is a description, an optional grant NAME and a flag, so unlike a
+  # feature it declares no options of its own and has nothing to build them with.
+  modeRegistry = import ./modes.nix;
 
   # --- projections of the single registry (the data) ---
   # Groups that are privilege-protected before any feature has been written to grant them.
@@ -90,6 +94,7 @@ let
     inherit
       lib
       registry
+      modeRegistry
       manifest
       grantLib
       featureConfigOptions
@@ -130,9 +135,15 @@ in
     featureGroups
     privilegedGroups
     ;
+  # The MODE registry (ADR-0032), exposed exactly as `features` is and for the same reason: it is
+  # the vocabulary a consumer reads — the names a per-system matrix row may take away, the names a
+  # user's `contract.supports` declares over, and (through `description`) what each mode IS. The
+  # FLOOR travels beside it because it is derived, not declared: a consumer asking "what does a
+  # host that affords nothing run?" must not have to re-scan the registry for the flag.
+  modes = modeRegistry;
   inherit (contractLib)
     safeSet
-    homes
+    floorMode
     greeterGrants
     tier1EvalConfig
     ;
@@ -148,16 +159,12 @@ in
   # `internal`, which it never did.)
   lib = {
     inherit (contractLib) renderNixConfig;
-    # The producer-side hostFacts projection (ADR-0028): narrows the `grants` it is handed to the
-    # bake axes and returns them as `granted` (the option path a home reads them back on), the one
-    # rule every producer previously hand-wrote as a `filterAttrs`. See lib.nix.
-    inherit (contractLib) hostFactsFor;
-    # mkHomeMatrix (issue #58): the per-system HOME MATRIX over `contract.homes`. The caller declares its
-    # whole matrix as one fact — `{ <system> = { <axis> = bool; }; }`, a row per system it bakes,
-    # each row naming only the axes that system's seats CANNOT use — and gets the narrowing plus its
-    # guards. Which bakes a fleet bakes stays the fleet's (decision #43); the shape of the
-    # declaration is the contract's, because an under-bake is silent and an omitted axis must
-    # therefore default to BAKED. See lib.nix.
+    # mkHomeMatrix (issue #58, reshaped by ADR-0032): the per-system HOME MATRIX over `contract.modes`.
+    # The caller declares its whole matrix as one fact — `{ <system> = { <mode> = bool; }; }`, a row
+    # per system it bakes, each row naming only the modes that system's seats CANNOT run — and gets
+    # the subtraction plus its guards. Which modes a fleet bakes stays the fleet's (decision #43);
+    # the shape of the declaration is the contract's, because an under-bake is silent and an omitted
+    # mode must therefore default to BAKED. See lib.nix.
     inherit (contractLib) mkHomeMatrix;
     # The identity.json loader (ADR-0007): lossless over identity.nix, used by a user's home
     # module and by the producer coin below.
@@ -268,14 +275,20 @@ in
     # Re-exposing an entry publicly stays a one-line move to `lib` above, plus an ADR amendment
     # (ADR-0026's posture).
     #
-    # The home-axis projection behind the public `homes`/`hostFactsFor` (ADR-0028). Internal
-    # because no consumer needs the raw list once both derived forms ship; exposed here so the
-    # conformance suite can prove the taxonomy itself (which features ride the bind) in isolation.
-    inherit (contractLib) homeAxes;
-    # The bake-matrix kernel behind the public `mkHomeMatrix` (issue #58), taking the upper bound to
-    # narrow instead of closing over `homes`. Internal for the same reason `homeAxes` is: no
-    # consumer needs it, and the suite cannot otherwise prove that a contract which GAINS an axis
-    # extends every system's bake — the registry has one axis, so the second is synthetic.
+    # The floor kernel behind `floorMode` (ADR-0032), taking a mode registry explicitly. Internal
+    # because no consumer needs it: `floorMode` is the answer. Exposed here because the contract's
+    # own registry has exactly one floor by construction, so the guard's two failure directions —
+    # no floor, and two — are only demonstrable against a synthetic registry.
+    inherit (contractLib) floorOf;
+    # The host-side mode DERIVATION (ADR-0032 §4): afforded feature names → the modes a host runs.
+    # `bindContractUser` is its only caller, so a consumer never needs it; exposed here so the
+    # suite can state "a gui-affording host runs { cli, gui }; a headless one runs { cli }" as a
+    # claim about the derivation itself rather than only through a whole bind.
+    inherit (contractLib) runsFor;
+    # The home-matrix kernel behind the public `mkHomeMatrix` (issue #58), taking the upper bound to
+    # narrow instead of closing over `modes`. Internal for the same reason `floorOf` is: no
+    # consumer needs it, and the suite cannot otherwise prove that a contract which GAINS a mode
+    # extends every system's bake — the registry has two modes, so the third is synthetic.
     inherit (contractLib) homeMatrixOver;
     inherit (contractLib)
       mkContractPackage

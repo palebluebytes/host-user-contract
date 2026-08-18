@@ -10,6 +10,7 @@
 {
   lib,
   registry,
+  modeRegistry,
   manifest,
   grantLib,
   featureConfigOptions,
@@ -34,147 +35,180 @@ let
   # The runtime-eligible feature names — the safe set (ADR-0002, slice 15).
   safeSet = lib.filter runtimeEligibleFeature (lib.attrNames registry);
 
-  # The HOME AXES (ADR-0028): the features whose grant cannot be applied to an already-built
-  # home (`needsOwnHome` in the registry). Each is one axis of the home matrix a producer builds,
-  # which is what makes `homes` below its powerset; everything else rides the bind.
+  # --- the MODE projections (ADR-0032) ---
+  # The mode names — the contract's whole session-shape vocabulary, read straight off
+  # `modes.nix`. This is what a per-system matrix row may name, what a user's `contract.supports`
+  # declares over, and what a home is keyed by.
   #
-  # INTERNAL. This was the public `homeAffecting`, and every consumer used it for exactly two
-  # things — both now shipped whole, as `homes` and `hostFactsFor` below. With the derived
-  # forms exported there is no consumer for the raw list, and keeping it in means the two
-  # derivations can no longer drift apart in a producer's hands.
-  homeAxes = lib.filter (f: registry.${f}.needsOwnHome or false) (lib.attrNames registry);
+  # It replaces `homeAxes` and the `homes` POWERSET that was derived from it. Not a rename: modes
+  # are mutually exclusive, so N of them yield at most N homes per user rather than 2ⁿ, and there
+  # is no combination anywhere downstream to label, pair or narrow (ADR-0032).
+  modeNames = lib.attrNames modeRegistry;
 
-  # The upper-bound HOME SET — the answer to a producer's "what must I build?". One entry per
-  # COMBINATION of the axes (`powerset(homeAxes)`, which is why a second axis doubles it),
-  # carrying the grant attrset to bake with and the canonical label to publish it under.
+  # floorOf: the ONE mode a registry declares as its FLOOR — the mode every host runs, the
+  # fallback of every selection, and the reason `runs` never comes out empty.
   #
-  # Every producer used to derive this by hand: a powerset fold, a label function mirroring the
-  # private `homeLabel`, and a comment restating the taxonomy — re-typed per repo, and silently
-  # wrong the moment the registry gains an axis (a host granting the new feature binds the maximal
-  # bake that IS baked and the home simply lacks its content, which nothing downstream reports).
-  # `label` travels with `grants` so a caller cannot pair them up wrongly.
-  homes = map (
-    names:
+  # Takes the registry EXPLICITLY, as `homeMatrixOver` takes its upper bound and for the same
+  # reason: the contract's own registry has exactly one floor by construction, so the two failures
+  # this guards — none, and more than one — are only demonstrable against a synthetic registry.
+  # `floorMode` below is this closed over the real one.
+  floorOf =
+    reg:
     let
-      grants = lib.genAttrs names (_: {
-        enable = true;
-      });
+      floors = lib.filter (m: reg.${m}.floor or false) (lib.attrNames reg);
     in
-    {
-      inherit grants;
-      label = homeLabel grants;
-    }
-  ) (lib.foldl' (acc: f: acc ++ map (s: s ++ [ f ]) acc) [ [ ] ] homeAxes);
+    assert diag.must {
+      ok = lib.length floors == 1;
+      who = "modes";
+      problem =
+        if floors == [ ] then
+          "no mode is the floor (modes: ${showList (lib.attrNames reg)})"
+        else
+          "more than one mode is the floor: ${showList floors}";
+      why =
+        "Exactly one mode is the floor: it is what a host runs when it affords nothing and what "
+        + "selection falls back to, so a registry with none leaves a headless host running no mode "
+        + "at all, and one with two leaves the fallback undecided.";
+      fix = "Set `floor = true;` on exactly one entry of `modes.nix`.";
+    };
+    lib.head floors;
 
-  # The HOME MATRIX kernel (issue #58): narrow an upper bound to what each system bakes, and guard
-  # the narrowing. `homeMatrixOver` takes the bound explicitly; the public `mkHomeMatrix` below is
-  # this closed over the contract's own `homes`, so no consumer-facing argument exists for the
-  # suite's sake. INTERNAL, exposed only so the conformance suite can drive a synthetic TWO-axis
-  # bound — the propagation this design exists for cannot otherwise be shown until some future
-  # feature sets `needsOwnHome` (the posture `homeAxes` above is exposed under).
+  # The contract's own floor. Read off the registry FLAG, never by name: the selection algorithm
+  # below names no mode, for the same reason `keyLabel`'s output was documented as cosmetic — a
+  # literal `"cli"` in the algorithm would make the flag decorative.
+  floorMode = floorOf modeRegistry;
+
+  # The FEATURE whose grant is associated with a mode, or `null` for the floor. One-way: a host
+  # affording that feature RUNS this mode (`runsFor` below), but the mode never implies the grant
+  # — `wants.<f>` stays independently vetoable, and a cli-mode user can still be given gui's
+  # groups (ADR-0032, rejected "make the mode imply the grant").
+  grantOfMode = mode: modeRegistry.${mode}.grant or null;
+
+  # runsFor: the modes a host RUNS, derived from the features it affords (ADR-0032 §4).
   #
-  # WHICH bakes a fleet bakes per system stays the consumer's fleet fact (decision #43): the
+  #   runs = { the floor } ∪ { m | m's associated grant is afforded }
+  #
+  # A host declares `contract.affordances` and NOTHING else; there is no second host-side namespace
+  # for modes. That is the point: two declarations that must agree, with nothing forcing them to,
+  # is precisely the defect class this restructuring removes — deriving makes the disagreement
+  # UNWRITEABLE, the same move ADR-0030 made dropping `system` in favour of reading it off `pkgs`.
+  #
+  # Takes the afforded feature NAMES (what `grantedNamesOf` yields off a host's affordances), so
+  # this reads no config and can be driven over any affordance set.
+  runsFor =
+    afforded:
+    lib.filter (
+      m:
+      m == floorMode
+      || (
+        let
+          g = grantOfMode m;
+        in
+        g != null && lib.elem g afforded
+      )
+    ) modeNames;
+
+  # The HOME MATRIX kernel (issue #58, reshaped by ADR-0032): narrow an upper bound of MODES to
+  # what each system bakes, and guard the narrowing. `homeMatrixOver` takes the bound explicitly;
+  # the public `mkHomeMatrix` below is this closed over the contract's own mode names, so no
+  # consumer-facing argument exists for the suite's sake. INTERNAL, exposed only so the conformance
+  # suite can drive a synthetic THREE-mode bound — the propagation this design exists for cannot
+  # otherwise be shown until the registry itself grows a third mode.
+  #
+  # WHICH modes a fleet bakes per system stays the consumer's fleet fact (decision #43): the
   # matrix is the caller's declaration, and this only applies it. What the CONTRACT owns is the
-  # SHAPE of that declaration, because the failure mode is silent: `bindContractUser` binds the
-  # maximal bake that DOES exist, so an under-baked set costs a home its content with nothing
-  # objecting. Producers hand-wrote the filter AND hand-wrote the assert catching their own filter's
-  # failure — and a producer who writes it against a label list rather than the features, or against
-  # the axes a system CAN use, drops a newly-added registry axis from a system's bake in silence.
+  # SHAPE of that declaration, because the failure mode is silent: an omitted mode is a home that
+  # is never published, and a host that runs it then binds a lesser one or none at all.
   #
-  # So the declaration is per-AXIS and OPEN by default: an axis a system's row omits is usable, and
+  # So the declaration is per-MODE and OPEN by default: a mode a system's row omits is usable, and
   # a system's row states only what it takes AWAY. That is ADR-0002's "one mechanism, opposite
-  # defaults" read for coverage rather than privilege — the same reasoning that defaults `wants` to
-  # the safe set (ADR-0028): fail-CLOSED is right where the risk of the unknown is admitting
-  # something, fail-OPEN where the risk is omitting it. Under-baking is silent and costly;
-  # over-baking wastes build time and nothing else. A contract that gains an axis therefore bakes it
-  # EVERYWHERE — on the restricted systems too — with no edit in any consumer repo.
+  # defaults" read for coverage rather than privilege: fail-CLOSED is right where the risk of the
+  # unknown is admitting something, fail-OPEN where the risk is omitting it. Under-baking is silent
+  # and costly; over-baking wastes build time and nothing else. A contract that gains a MODE
+  # therefore bakes it EVERYWHERE — on the restricted systems too — with no edit in any consumer
+  # repo. This is the one property of the original grant-axis matrix that ADR-0032 does not
+  # invalidate, which is why the matrix survives the restructuring as a SUBTRACTION rather than
+  # disappearing with the powerset it used to narrow.
   #
-  # The three under-bakes an earlier shape needed asserts for are now UNEXPRESSIBLE rather than
-  # caught: the matrix is keyed by system, so its rows and its system list cannot disagree; presence
-  # in it IS the classification, so no system can go unclassified; and an unrestricted system is one
-  # whose row takes nothing away, which no separate claim can contradict. What remains guarded is
-  # what the type cannot say.
+  # The three under-bakes an earlier shape needed asserts for are UNEXPRESSIBLE rather than caught:
+  # the matrix is keyed by system, so its rows and its system list cannot disagree; presence in it
+  # IS the classification, so no system can go unclassified; and an unrestricted system is one whose
+  # row takes nothing away, which no separate claim can contradict. What remains guarded is what
+  # the type cannot say.
   homeMatrixOver =
     {
-      # The fleet's whole home matrix, in ONE fact: `{ <system> = { <axis> = bool; }; }` — which
-      # systems this repo bakes, and, per system, which home axes its SEATS can use. An axis a
-      # row OMITS is usable (absent ⇒ true), so `{ }` is a system that can use everything the
-      # contract names and `{ gui = false; }` is a headless tier. A system absent from the matrix is
-      # not baked at all.
+      # The fleet's whole home matrix, in ONE fact: `{ <system> = { <mode> = bool; }; }` — which
+      # systems this repo bakes, and, per system, which modes its SEATS can run. A mode a row
+      # OMITS is usable (absent ⇒ true), so `{ }` is a system that can run everything the contract
+      # names and `{ gui = false; }` is a headless tier. A system absent from the matrix is not
+      # baked at all.
       systems,
-      # The bound to narrow — `homes` for the public entry point.
+      # The bound to narrow — the contract's own `modes` for the public entry point.
       upperBound,
     }:
     let
-      # The axes of the handed bound — the features any of its bakes is baked per. Derived from
-      # the bound rather than read off `homeAxes` so there is ONE input to disagree with: a row's
-      # axis names are checked against the very set the filter cuts by.
-      axes = lib.unique (lib.concatMap (v: lib.attrNames v.grants) upperBound);
       systemNames = lib.attrNames systems;
       rowOf = sys: systems.${sys};
       settingsIn = sys: lib.attrNames (rowOf sys);
-      # The axes a system's seats CANNOT use: the `false` entries of its row, and only those.
-      unusableIn = sys: lib.filter (f: !(rowOf sys).${f}) (settingsIn sys);
-      # The narrowing itself: drop every bake made per an axis this system's seats cannot use.
-      matrix = lib.genAttrs systemNames (
-        sys: lib.filter (v: !lib.any (f: v.grants ? ${f}) (unusableIn sys)) upperBound
-      );
-
-      labelsOf = vs: showList (map (v: v.label) vs);
+      # The modes a system's seats CANNOT run: the `false` entries of its row, and only those.
+      unusableIn = sys: lib.filter (m: !(rowOf sys).${m}) (settingsIn sys);
+      # The subtraction itself: drop every mode this system's seats cannot run.
+      matrix = lib.genAttrs systemNames (sys: lib.filter (m: !lib.elem m (unusableIn sys)) upperBound);
 
       malformedRows = lib.filter (sys: !lib.isAttrs (rowOf sys)) systemNames;
-      nonBoolIn = sys: lib.filter (f: !lib.isBool (rowOf sys).${f}) (settingsIn sys);
+      nonBoolIn = sys: lib.filter (m: !lib.isBool (rowOf sys).${m}) (settingsIn sys);
       byNonBool = lib.filter (sys: nonBoolIn sys != [ ]) systemNames;
       # Checked on the KEY whatever the boolean says: `sudo = true` is as much a mistake about what
-      # the bake fans out on as `sudo = false` is, and reads as though it had been considered.
-      nonAxesIn = sys: lib.filter (f: !lib.elem f axes) (settingsIn sys);
-      byNonAxis = lib.filter (sys: nonAxesIn sys != [ ]) systemNames;
+      # a row names as `sudo = false` is, and reads as though it had been considered.
+      nonModesIn = sys: lib.filter (m: !lib.elem m upperBound) (settingsIn sys);
+      byNonMode = lib.filter (sys: nonModesIn sys != [ ]) systemNames;
       emptied = lib.filter (sys: matrix.${sys} == [ ]) systemNames;
     in
-    # Ordered so a broken declaration reports before any verdict about the homes, most specific first:
-    # no systems at all, then a row of the wrong shape, then a non-boolean setting, then a setting
-    # that names nothing the bake fans out on — and only then the one verdict about what IS baked.
+    # Ordered so a broken declaration reports before any verdict about the modes, most specific
+    # first: no systems at all, then a row of the wrong shape, then a non-boolean setting, then a
+    # setting that names nothing the contract runs — and only then the one verdict about what IS
+    # baked.
     assert diag.must {
       ok = systems != { };
       who = "mkHomeMatrix";
       problem = "the matrix is empty";
       why = diag.vacuity { subject = "matrix"; };
       fix =
-        "`systems` is `{ <system> = { <axis> = bool; }; }`: one entry per system this repo builds "
-        + "for, `{ }` for a system whose seats can use everything the contract names.";
+        "`systems` is `{ <system> = { <mode> = bool; }; }`: one entry per system this repo builds "
+        + "for, `{ }` for a system whose seats can run every mode the contract names.";
     };
     assert diag.must {
       ok = malformedRows == [ ];
       who = "mkHomeMatrix";
       problem = "the row(s) for ${showList malformedRows} are not attrsets";
       fix =
-        "Each system's row is `{ <axis> = bool; }`, the home axes its seats can use, and `{ }` for "
-        + "a system that can use everything the contract names.";
+        "Each system's row is `{ <mode> = bool; }`, and `{ }` for a system that can run every mode "
+        + "the contract names.";
     };
     assert diag.must {
       ok = byNonBool == [ ];
       who = "mkHomeMatrix";
-      problem = "non-boolean axis setting(s): ${diag.showPer nonBoolIn byNonBool}";
-      why = "Each axis in a row is a BOOL — `false` where that system's seats cannot use it.";
-      fix = "An omitted axis is usable, so a row states only what it takes away.";
+      problem = "non-boolean mode setting(s): ${diag.showPer nonBoolIn byNonBool}";
+      why = "Each mode in a row is a BOOL — `false` where that system's seats cannot run it.";
+      fix = "An omitted mode is usable, so a row states only what it takes away.";
     };
     assert diag.must {
-      ok = byNonAxis == [ ];
+      ok = byNonMode == [ ];
       who = "mkHomeMatrix";
-      problem = "setting(s) that are not home AXES: ${diag.showPer nonAxesIn byNonAxis}";
+      problem = "setting(s) that are not MODES: ${diag.showPer nonModesIn byNonMode}";
       why =
-        "The axes of this contract are ${showList axes} — only a feature whose grant cannot be "
-        + "applied to an already-built home (`needsOwnHome`) is one. A bind-riding feature "
-        + "(`sudo`), a home LABEL (`base`) or a typo names nothing the build fans out on, so the "
-        + "system would build the full set while reading as restricted.";
-      fix = "Name the FEATURES a system's seats cannot use.";
+        "The modes of this contract are ${showList upperBound} — a home is built for exactly one "
+        + "of them. A FEATURE (`sudo`, `gui`) names a grant, which rides the bind and no longer "
+        + "keys a home at all (ADR-0032), so the system would build every mode while reading as "
+        + "restricted.";
+      fix = "Name the MODES a system's seats cannot run.";
     };
     assert diag.must {
       ok = emptied == [ ];
       who = "mkHomeMatrix";
       problem = "system(s) ${diag.showPer unusableIn emptied} build NO home at all";
       why =
-        "Those axes cut every entry of the upper bound ${labelsOf upperBound}. "
+        "Those modes cut every entry of the upper bound ${showList upperBound}. "
         + diag.vacuity {
           subject = "row";
           verbs = "publish, bind and check";
@@ -184,45 +218,40 @@ let
     matrix;
 
   # mkHomeMatrix (issue #58): the PUBLIC per-system home matrix — `homeMatrixOver` closed over the
-  # contract's own `homes`, which is what makes a registry that gains an axis reach every
-  # consumer's bake with no edit. Returns `{ <system> = [ <bake> ]; }`, each entry the same
-  # `{ grants; label; }` value `homes` hands out, so a producer maps over a row exactly as it
-  # would over the whole set. See `homeMatrixOver` above for the declaration shape and the guards.
+  # contract's own mode names, which is what makes a registry that gains a mode reach every
+  # consumer's bake with no edit. Returns `{ <system> = [ <mode> ]; }`, so a producer maps over a row
+  # exactly as it would over the whole mode set. See `homeMatrixOver` above for the declaration shape
+  # and the guards.
   mkHomeMatrix =
     { systems }:
     homeMatrixOver {
       inherit systems;
-      upperBound = homes;
+      upperBound = modeNames;
     };
 
-  # The producer-side `hostFacts` projection: what a PRODUCER passes into a home it is baking.
-  # Deliberately NOT the retired `mkHostFacts` under a new name — that one projected from a NixOS
-  # host `config`, which only exists where a host evaluates a home inline (retired with that path
-  # by ADR-0026). This one has no host in sight.
+  # hostFactsOf: the FACTS a producer hands a home it is baking (ADR-0032 §7). It is the whole of
+  # what a home learns about the world outside itself, and it is now three plain fields:
   #
-  # The whole content is the narrowing. The grant set is cut to the bake axes, because those are
-  # the only grants whose value is true information inside a given build: a home reading a
-  # bind-riding grant structurally gets `false` forever instead of becoming grant-sensitive on
-  # something no bake exists for. Producers wrote this `filterAttrs` out by hand — identically, in
-  # two separate repos — and getting it wrong fails silently, by showing a home a grant it must not
-  # see.
+  #   mode      the session shape this home is BUILT for. The single source the home umbrella
+  #             derives `custom.home.profiles.<mode>.enable` from — exactly one true.
+  #   platform  the system this home is built for, read off the producer's own `pkgs`.
+  #   exposed   false, because a pre-built home is baked per MODE, not per host: which seat
+  #             eventually binds it, and whether that seat is exposed, is unknowable here.
   #
-  # `exposed` defaults false because a pre-built bake is baked per grant-combination, not per
-  # host: which seat eventually binds it, and whether that seat is exposed, is unknowable here.
-  #
-  # Takes `grants` and returns it under `granted`, deliberately: `grants` is the ARGUMENT name every
-  # function on this surface uses for a grant attrset, while `granted` is the OPTION PATH a home
-  # reads it back on (`hostFacts.granted`, the same word `custom.users.<u>.granted` uses). Argument
-  # and option path are two different kinds of name, and this is the one place both appear.
-  hostFactsFor =
+  # `granted` is deliberately ABSENT. No grant can affect a home (ADR-0032 §1), so showing a home
+  # the grant set would be showing it something it must not use — the hazard ADR-0028's narrowing
+  # existed to prevent, removed at the source rather than guarded. This replaces the exported
+  # `hostFactsFor`, whose entire content WAS that narrowing: with nothing left to narrow, there is
+  # no rule for a producer to get wrong and so no projection worth exporting. Every home's facts
+  # come from `mkContractHome` below, which is the one caller.
+  hostFactsOf =
     {
-      grants ? { },
+      mode,
       platform,
       exposed ? false,
     }:
     {
-      inherit exposed platform;
-      granted = lib.filterAttrs (f: _: lib.elem f homeAxes) grants;
+      inherit exposed mode platform;
     };
 
   # The request→feature-configuration bridge, shared by BOTH binding shapes (the headless
@@ -1062,27 +1091,25 @@ let
 
   # mkContractHome (ADR-0029, issue #40): the producer HOME builder — absorbs the mkHome glue every
   # producer hand-wrote (the umbrella + the user's home.nix + the identity/home.* inline module +
-  # the hostFactsFor specialArg) into the one contract-owned composition. ADR-0004's package-free
+  # the hostFacts specialArg) into the one contract-owned composition. ADR-0004's package-free
   # invariant holds by INJECTION: the consumer passes home-manager's own entry point
   # (`home-manager.lib.homeManagerConfiguration`) verbatim, and the contract only composes the
   # arguments and applies the consumer's function — the same trick as mkConfinementCheck's
-  # `buildHome`. `homeModule`/`homeBaselineModule`/`loadIdentity` are injected by the kit (as
-  # `homeModule` is for traceUser), so a caller passes only its own side.
+  # `buildHome`. `homeModule`/`homeBaselineModule`/`homeGreeterDesktopModule`/`loadIdentity` are
+  # injected by the kit (as `homeModule` is for traceUser), so a caller passes only its own side.
+  #
+  # It builds a home for ONE MODE (ADR-0032). That is the whole of what used to be a grant set
+  # here: a grant can no longer change a home, so there is nothing about a bake for the builder to
+  # record and nothing for the producer to re-pair afterwards — the `contractBakedGrantKey` marker
+  # and its `assertHomePairing` cross-check are gone with the pairing they existed to protect.
   #
   # What stays consumer-side BY DESIGN: `pkgs` (each home layers its own overlays/config, and the
   # platform is read off it), `stateVersion` (a consumer fact — real repos differ — so no contract
   # default), and everything threaded through the two open seams: `extraModules` (confinement
-  # probes, greeterDesktop, marker files, repo glue) and `extraSpecialArgs` (opaque passthrough,
-  # e.g. the ADR-0020 `inputs` convention). `hostFacts` is contract-owned and WINS over any
-  # extraSpecialArgs entry: the narrowing (ADR-0028) is the contract's rule, so a caller cannot
-  # accidentally hand a home an un-narrowed grant set by spelling the specialArg itself.
-  #
-  # The built home CARRIES the grant-key it was baked under, as `contractBakedGrantKey` on the
-  # returned value (issue #56). That is the fact the producer coin cross-checks against the grant it
-  # is asked to publish the home under, so a mispaired `{ grants; home }` is a bake-time error
-  # instead of a silently mislabelled bake — see `assertHomePairing`. It records the key AS
-  # PASSED here, before the `hostFactsFor` narrowing, because the pairing rule a producer holds is
-  # "hand the bake the same grant attrset you handed the builder".
+  # probes, marker files, repo glue) and `extraSpecialArgs` (opaque passthrough, e.g. the ADR-0020
+  # `inputs` convention). `hostFacts` is contract-owned and WINS over any extraSpecialArgs entry:
+  # the mode a home was built for is the contract's own fact, so a caller cannot hand a home a
+  # different one by spelling the specialArg itself.
   mkContractHome =
     {
       # Kit-injected (a caller never passes these): the home umbrella, the baseline hygiene
@@ -1106,11 +1133,13 @@ let
       # alike.
       memberDir ? null,
       identity ? null,
-      # The grant attrset this bake is baked with; narrowed to the bake axes by hostFactsFor
-      # (ADR-0028), so no caller re-derives that rule. Named `grants` because that is what a producer
-      # already holds it as — the `{ grants; home }` records the coin consumes — so one value keeps
-      # one name from the home matrix all the way to the pairing guard.
-      grants ? { },
+      # THE SESSION SHAPE this home is built for (ADR-0032) — the one mode, handed to the home as
+      # `hostFacts.mode` and derived by the umbrella into `custom.home.profiles.<mode>.enable`.
+      # REQUIRED and unvalidated against the registry here: the producer's matrix row is where a
+      # mode name is checked (`mkHomeMatrix`), and re-checking it would be a second owner of the
+      # rule. Named `mode` throughout — the matrix row, the builder, the published key and the
+      # manifest field are one word for one value (ADR-0030).
+      mode,
       # REQUIRED consumer fact — the real repos differ, so the contract carries no default.
       stateVersion,
       # The open seam: everything that makes one producer's homes differ from another's.
@@ -1151,16 +1180,11 @@ let
       ]
       ++ extraModules;
       extraSpecialArgs = extraSpecialArgs // {
-        hostFacts = hostFactsFor {
-          inherit grants;
+        hostFacts = hostFactsOf {
+          inherit mode;
           platform = pkgs.stdenv.hostPlatform.system;
         };
       };
-    }
-    // {
-      # The bake key travels with the home (see above). Added to the builder's RESULT, so a home
-      # built by hand simply lacks it and the producer's cross-check is skipped rather than fired.
-      contractBakedGrantKey = grantKey grants;
     };
 
   # bindContractPackage (ADR-0016, issue #16): the INTERNAL package-level kernel `bindContractUser`
@@ -1354,11 +1378,12 @@ in
 {
   inherit
     safeSet
-    homeAxes
-    homes
+    modeNames
+    floorOf
+    floorMode
+    runsFor
     homeMatrixOver
     mkHomeMatrix
-    hostFactsFor
     ;
 
   # The runtime/greeter grant (ADR-0006, ADR-0008): "default-open over the safe set". The

@@ -6,9 +6,6 @@
   toolkit,
   loadIdentity,
   safeSet,
-  homeAxes,
-  homes,
-  hostFactsFor,
   featureGroups,
   privilegedGroups,
 }:
@@ -154,33 +151,6 @@ let
     "bob"
     "carol"
   ];
-
-  # --- the home-affecting feature set (ADR-0028) ---
-  # The public data surface a PRODUCER narrows `hostFacts.granted` with (and derives its baked
-  # home set from). There is no host config at bake time, so the facts literal is built on the
-  # producer side — but the FOLD itself is the contract's rule, shipped as `hostFactsFor` and
-  # applied by `mkContractHome` on every producer home. What is pinned here is the surface and the
-  # RESULT that fold must yield on a maximal grant: a home may only SEE the home-affecting
-  # features, so one reading `granted.sudo` structurally gets false forever and cannot become
-  # grant-sensitive on a feature nothing bakes for.
-  everyFeature = [
-    "gui"
-    "containers"
-    "sudo"
-    "virtualization"
-    "nix-daemon"
-  ];
-  fullGrant = lib.genAttrs everyFeature (_: {
-    enable = true;
-  });
-  # Driven through the SHIPPED projection rather than a re-typed `filterAttrs`: this used to
-  # restate the producer's idiom, which meant the suite proved its own copy and would have gone
-  # on passing if `hostFactsFor` drifted from it.
-  narrowedFacts =
-    (hostFactsFor {
-      grants = fullGrant;
-      platform = "x86_64-linux";
-    }).granted;
 in
 {
   assertions = [
@@ -292,55 +262,6 @@ in
         "virtualization"
         "nix-daemon"
       ];
-    }
-    # --- the bake axes and the producer projection over them (ADR-0028) ---
-    {
-      # gui is the only feature with a home channel today: it carries request params the home
-      # emits, so a home can legitimately fan out on the gui grant.
-      name = "homeAxes: gui cannot be applied to an already-built home, so it is an axis";
-      ok = homeAxes == [ "gui" ];
-    }
-    {
-      # The pure privileged-group grants confer host-side powers and touch no home content, so
-      # they ride the BIND and never multiply a producer's bakes.
-      name = "homeAxes: pure privileged-group grants need no build of their own (they ride the bind)";
-      ok = lib.all (f: !(lib.elem f homeAxes)) [
-        "containers"
-        "sudo"
-        "virtualization"
-        "nix-daemon"
-      ];
-    }
-    {
-      # `homes` is what a producer bakes from, so its SHAPE is load-bearing: one entry per
-      # subset of the axes. Asserted generically (2^n entries, unique labels, exactly one
-      # grant-less `base`) so a second axis is covered the day it lands, with no new case here.
-      name = "homes: one labelled entry per combination of the axes";
-      ok =
-        let
-          expected = lib.foldl' (acc: _: acc * 2) 1 homeAxes;
-          labels = map (v: v.label) homes;
-          empties = lib.filter (v: v.grants == { }) homes;
-        in
-        lib.length homes == expected
-        && lib.length (lib.unique labels) == expected
-        && lib.length empties == 1
-        && (lib.head empties).label == "base";
-    }
-    {
-      # Nothing that rides the bind may appear as a baked grant: a bake keyed on a bind-riding
-      # feature would multiply every user's bake for a grant the home cannot even see.
-      name = "homes: every baked grant is a bake axis";
-      ok = lib.all (v: lib.all (f: lib.elem f homeAxes) (lib.attrNames v.grants)) homes;
-    }
-    {
-      # The narrowing a producer performs with this surface: a home may see only what something
-      # bakes for. `granted.sudo` is then structurally absent ⇒ `or false` forever.
-      name = "hostFactsFor: the shipped projection drops every bind-riding grant";
-      ok =
-        narrowedFacts.gui.enable
-        && !(narrowedFacts.sudo.enable or false)
-        && lib.attrNames narrowedFacts == homeAxes;
     }
     {
       name = "gui confers no privileged group";

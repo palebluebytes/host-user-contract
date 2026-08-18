@@ -22,7 +22,8 @@ let
   homeBaselineModule = self.homeModules.baseline;
   inherit (self)
     safeSet
-    homes
+    modes
+    floorMode
     greeterGrants
     tier1EvalConfig
     featureGroups
@@ -43,10 +44,10 @@ let
     mkContractHome
     bindContractUser
     renderNixConfig
-    hostFactsFor
     ;
   inherit (kit.internal)
-    homeAxes
+    floorOf
+    runsFor
     homeMatrixOver
     mkContractPackage
     mkContractPackageForHome
@@ -76,9 +77,6 @@ let
         toolkit
         loadIdentity
         safeSet
-        homeAxes
-        homes
-        hostFactsFor
         featureGroups
         privilegedGroups
         ;
@@ -108,10 +106,19 @@ let
         mkHomeEvalCheck
         ;
     })
+    (import ./modes.nix {
+      inherit
+        lib
+        modes
+        floorMode
+        floorOf
+        runsFor
+        ;
+    })
     (import ./home-matrix.nix {
       inherit
         lib
-        homes
+        modes
         homeMatrixOver
         mkHomeMatrix
         ;
