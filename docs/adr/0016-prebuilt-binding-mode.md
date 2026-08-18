@@ -10,7 +10,7 @@ grants`), and the turnkey `bindUserFromFlake`/`mkUserBindings` helpers wrap this
 **Amended by [ADR-0026](0026-consumer-producer-public-surface.md)**: those wrappers are renamed
 `bindContractUser`/`mkContractUsers` (+ singular `mkContractUser`), and this ADR's primitives
 (`mkContractPackage`, `mkContractPackageForHome`, `bindContractPackage`) become **internal**
-kernels — not flake outputs — since the public surface now speaks only in "contract users."
+kernels — not flake outputs — since the public surface now speaks only in "contract users." **Amended by [ADR-0032](0032-grants-ride-the-bind-modes-build-homes.md) (2026-08-18)**: the coupling guard is restated in mode terms — the manifest freezes the MODE a home was built for and the host asserts it runs that mode; the grant-key is gone from the manifest, since no grant reaches a home.
 
 [ADR-0007](0007-user-flake-shape.md) fixed the user flake shape and `bindUserModule` as the
 real binding mechanism: the host imports the user's home module into `home-manager.users.<u>`

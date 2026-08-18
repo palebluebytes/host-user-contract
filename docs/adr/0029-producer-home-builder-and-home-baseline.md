@@ -8,7 +8,7 @@ precedent from the check kit, issue #35). Executes wayfinder tickets #40 (the bu
 home the grant-key it was baked under, so the producer coin verifies the pairing instead of trusting
 the caller's; see the amendment at the end. **Amended again (2026-08-17)** — the fatter producer
 this ADR rejected under Considered Options is **overturned**: the contract also ships
-`mkContractFleet`, the fleet-level producer that owns the residual join. See the second amendment.
+`mkContractFleet`, the fleet-level producer that owns the residual join. See the second amendment. **Amended by [ADR-0032](0032-grants-ride-the-bind-modes-build-homes.md) (2026-08-18)**: `mkContractHome` takes a MODE rather than a grant set, and `homeModules.greeterDesktop` joins `homeModules.baseline` in the default composition — which retires the separate greeter home.
 
 > **Terminology note (2026-08-17, [ADR-0030](0030-one-name-per-value-on-the-producer-surface.md)):** this record says **variant**, and its second amendment says `mkContractRoster` / `mkBakeMatrix` / `mkRosterChecks`; the code and `CONTEXT.md` now say **home**, `mkMembers`, `mkHomeMatrix` and `mkMemberChecks`. The decisions below are unchanged — only the vocabulary moved, and ADR-0030 carries the full table. This ADR is left as written **except where it states a signature**: a signature gets copied rather than read, so the two in the second amendment were moved to the shipped spelling in place.
 

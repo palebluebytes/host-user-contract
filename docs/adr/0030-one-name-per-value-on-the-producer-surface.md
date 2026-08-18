@@ -6,7 +6,7 @@ public surface), [ADR-0029](0029-producer-home-builder-and-home-baseline.md) (`m
 changes **argument names and argument counts only** — no behaviour, no published data shape, no
 option path. It settles three naming and shape rules that future surface must follow, including the
 signature of the not-yet-built `mkContractFleet` ([ADR-0029](0029-producer-home-builder-and-home-baseline.md)'s
-2026-08-17 amendment, issue #61). **Amended in place (2026-08-18)** — two corrections to this record's claims about itself: the "only one exception" sentence, and the account of `variant`'s deletion. No decision changes; see the amendment at the end.
+2026-08-17 amendment, issue #61). **Amended in place (2026-08-18)** — two corrections to this record's claims about itself: the "only one exception" sentence, and the account of `variant`'s deletion. No decision changes; see the amendment at the end. **Amended by [ADR-0032](0032-grants-ride-the-bind-modes-build-homes.md) (2026-08-18)**: the `{ grants; label; home; }` record is deleted, so `homes` denotes one shape (`homes.<system>.<user>.<mode>`) and the progressive-filling doctrine has nothing left to govern; `.enable` is dropped across the grant vocabulary.
 
 ADR-0026 fixed *which* functions the surface carries and re-levelled them onto one concept seam. It
 did not look at what those functions **call their arguments**. An architecture review focused on
