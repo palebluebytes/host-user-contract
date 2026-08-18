@@ -48,6 +48,7 @@ let
   inherit (kit.internal)
     floorOf
     runsFor
+    selectModeOver
     homeMatrixOver
     mkContractPackage
     mkContractPackageForHome
@@ -114,6 +115,7 @@ let
         floorMode
         floorOf
         runsFor
+        selectModeOver
         ;
     })
     (import ./home-matrix.nix {

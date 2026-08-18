@@ -19,6 +19,7 @@
   floorMode,
   floorOf,
   runsFor,
+  selectModeOver,
 }:
 let
   # The verdict of the floor guard over a synthetic registry, as a boolean. The guard throws a
@@ -52,6 +53,18 @@ let
       grant = "gui";
     };
   };
+  # The selection, over an explicit floor — the kernel form, for the same reason `floorOf` takes a
+  # registry: the contract has ONE non-floor mode today, so "two rich modes is an error" is only
+  # demonstrable against a synthetic world. `who`/`subject` are the diagnostic's own facts.
+  select =
+    { runs, published }:
+    selectModeOver {
+      who = "conformance";
+      subject = "ada";
+      floor = "cli";
+      inherit runs published;
+    };
+  selects = args: (builtins.tryEval (select args)).success;
 in
 {
   assertions = [
@@ -100,6 +113,82 @@ in
       # grant that reaches no home cannot change what a home was built as.
       name = "runs: a bind-riding grant adds no mode (sudo is nobody's session shape)";
       ok = runsFor [ "sudo" ] == [ floorMode ];
+    }
+
+    # --- the selection (ADR-0032 §5) ---
+    {
+      # A rich mode in the intersection WINS over the floor. No mode name appears in the algorithm
+      # — the floor is a parameter — so this is "the non-floor one", not "gui".
+      name = "selection: a rich mode available to both sides wins over the floor";
+      ok =
+        select {
+          runs = [
+            "cli"
+            "gui"
+          ];
+          published = [
+            "cli"
+            "gui"
+          ];
+        } == "gui";
+    }
+    {
+      # …and with no rich mode in common, the floor. This is a headless host binding an ordinary
+      # user: it runs the floor, the user publishes both, and the floor is what they share.
+      name = "selection: with no rich mode in common, the floor is what is selected";
+      ok =
+        select {
+          runs = [ "cli" ];
+          published = [
+            "cli"
+            "gui"
+          ];
+        } == "cli";
+    }
+    {
+      # THE REFUSAL: an empty intersection is a hard error naming both sets — a gui-only user on a
+      # headless host, which ADR-0032 makes a refusal rather than a silently lesser home.
+      name = "selection: an empty intersection is a hard error, never a silent fallback";
+      ok =
+        !(selects {
+          runs = [ "cli" ];
+          published = [ "gui" ];
+        });
+    }
+    {
+      # TWO RICH MODES: incomparable by design (a phone and a desktop are not ordered against each
+      # other), so a host offering both has not said which session it means. Only reachable with a
+      # third mode, which the registry does not have — hence the synthetic world.
+      name = "selection: two non-floor modes in the intersection is a hard error, not an ordering";
+      ok =
+        !(selects {
+          runs = [
+            "cli"
+            "gui"
+            "mobile"
+          ];
+          published = [
+            "gui"
+            "mobile"
+          ];
+        });
+    }
+    {
+      # …and its control: the SAME three-mode world with one rich mode published selects it, so the
+      # refusal above is about the ambiguity and not about the extra mode existing.
+      name = "selection: the same three-mode world with one rich mode published selects it (the control)";
+      ok =
+        select {
+          runs = [
+            "cli"
+            "gui"
+            "mobile"
+          ];
+          published = [
+            "cli"
+            "mobile"
+          ];
+        } == "mobile";
     }
 
     # --- the floor guard, in BOTH directions ---

@@ -311,6 +311,12 @@ in
     # suite can state "a gui-affording host runs { cli, gui }; a headless one runs { cli }" as a
     # claim about the derivation itself rather than only through a whole bind.
     inherit (contractLib) runsFor;
+    # The SELECTION kernel behind `bindContractUser` (ADR-0032 §5), taking the floor explicitly.
+    # Internal for the same reason the two above are: no consumer selects a mode itself. Exposed
+    # here because the registry has ONE non-floor mode, so "two rich modes is a hard error" — the
+    # rule that keeps incomparable modes from being silently ordered — is only demonstrable against
+    # a synthetic world.
+    inherit (contractLib) selectModeOver;
     # The home-matrix kernel behind the public `mkHomeMatrix` (issue #58), taking the upper bound to
     # narrow instead of closing over `modes`. Internal for the same reason `floorOf` is: no
     # consumer needs it, and the suite cannot otherwise prove that a contract which GAINS a mode

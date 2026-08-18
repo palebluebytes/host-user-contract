@@ -31,12 +31,9 @@ let
     homeManagerConfiguration = recordingHMC;
     pkgs = stubPkgs;
     memberDir = ../examples/users/users/ada;
-    # sudo is a bind-riding grant (not a bake axis): the narrowing must drop it before a home
-    # can ever see it (ADR-0028).
-    grants = {
-      gui = true;
-      sudo = true;
-    };
+    # The SESSION SHAPE this home is built for (ADR-0032) — the only thing a producer tells a home
+    # about the world outside it, beyond the platform and the exposure fact.
+    mode = "gui";
     stateVersion = "25.11";
     extraModules = [ probe ];
     # The clobber attempt: hostFacts is contract-owned and must win; everything else (the
@@ -84,6 +81,7 @@ let
     identity = {
       username = "sol";
     };
+    mode = "cli";
     stateVersion = "26.05";
   };
   overriddenInline = inlineOf overridden;
@@ -103,6 +101,7 @@ let
         username = "rosa";
       };
     };
+    mode = "cli";
     stateVersion = "25.11";
   };
   memberInline = inlineOf memberBuilt;
@@ -114,6 +113,7 @@ let
       (mkContractHome {
         homeManagerConfiguration = recordingHMC;
         pkgs = stubPkgs;
+        mode = "cli";
         stateVersion = "25.11";
       }).modules
       2

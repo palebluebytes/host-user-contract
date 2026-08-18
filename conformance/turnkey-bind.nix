@@ -33,21 +33,20 @@ let
     extraGroups = [ "wheel" ];
   };
 
-  # Fabricate a binding index exactly as mkContractUsers would emit it — pure data. `grantKey` is
-  # a home's sorted NAME LIST; `package` is the fixture path. Two entries (base + gui) let us
-  # exercise maximal-subset selection without building anything.
+  # Fabricate a binding index exactly as mkContractUsers would emit it — pure data.
+  # `contractPackages` is keyed by MODE and its leaf is the package, so its KEY SET is what this
+  # user publishes here (its `supports` as the producer's matrix narrowed it) and selection reads
+  # exactly that. The package is the repo-path fixture, so selection builds nothing.
   mkIndex =
     {
       identity,
       offer,
-      grantKeys,
+      modes,
+      package ? fixturePackage,
     }:
     {
       inherit identity offer;
-      contractPackages = map (grantKey: {
-        inherit grantKey;
-        package = fixturePackage;
-      }) grantKeys;
+      contractPackages = lib.genAttrs modes (_: package);
     };
 
   # A usersFlake stand-in: only the `contractUsers.<sys>.<user>` surface bindContractUser reads.
@@ -69,16 +68,15 @@ let
 
   # --- (a) affordances ∩ offer grant derivation, incl. the host veto ---
   # ada offers gui + sudo; the host affords gui only ⇒ grant = { gui }. sudo is offered but not
-  # afforded, so the host's veto drops it.
+  # afforded, so the host's veto drops it. The GRANT is derived independently of the mode, which is
+  # what keeps "gui's groups on a cli-mode user" expressible: this index publishes cli alone.
   adaGuiSudoOffer = mkIndex {
     identity = adaIdentity;
     offer = {
       gui = true;
       sudo = true;
     };
-    grantKeys = [
-      [ ] # base
-    ];
+    modes = [ "cli" ];
   };
   vetoBind = bindTurnkey {
     index = adaGuiSudoOffer;
@@ -88,22 +86,22 @@ let
   };
   vetoGrant = vetoBind.custom.users.ada.granted;
 
-  # --- (b) maximal-subset bake selection incl. the hard-error case ---
-  # A user with base + gui bakes. Grant { gui, sudo } ⇒ selects gui (sudo rides the bind);
-  # grant { sudo } ⇒ selects base (gui not covered). The selected package is the fixture path,
-  # so we assert selection SUCCEEDS (the account materializes) rather than inspecting the path.
-  twoHomes =
+  # --- (b) MODE SELECTION (ADR-0032 §5) ---
+  # A user publishing both modes. A host affording gui RUNS { cli, gui }, so the rich mode wins; a
+  # host affording nothing runs { cli } alone, so selection falls back to the floor. Nobody
+  # declares `cli` anywhere in either case — the run set is derived from the affordances.
+  twoModes =
     offer:
     mkIndex {
       identity = adaIdentity;
       inherit offer;
-      grantKeys = [
-        [ ] # base
-        [ "gui" ] # gui
+      modes = [
+        "cli"
+        "gui"
       ];
     };
   selGui = bindTurnkey {
-    index = twoHomes {
+    index = twoModes {
       gui = true;
       sudo = true;
     };
@@ -112,8 +110,8 @@ let
       sudo = true;
     };
   };
-  selBase = bindTurnkey {
-    index = twoHomes {
+  selFloor = bindTurnkey {
+    index = twoModes {
       sudo = true;
     };
     affordances = {
@@ -121,52 +119,52 @@ let
     };
   };
 
-  # The hard-error case: two incomparable bakes ([gui] and [sudo]) both ⊆ the derived
-  # grant { gui, sudo }, and the combo [gui, sudo] was never baked ⇒ no unique maximum ⇒ throw.
-  incomparableIndex = mkIndex {
+  # THE REFUSAL (ADR-0032's narrowing of ADR-0002): a user publishing gui ALONE, bound by a host
+  # that affords nothing. `runs ∩ published` is empty, and that is a hard error naming both sets —
+  # not a silently lesser home, because a home built for a graphical session activated on a machine
+  # with no display is the worse answer. This is the `vault`/`agent` case in the reference fleet.
+  guiOnlyIndex = mkIndex {
     identity = adaIdentity;
     offer = {
       gui = true;
-      sudo = true;
     };
-    grantKeys = [
-      [ "gui" ]
-      [ "sudo" ]
-    ];
+    modes = [ "gui" ];
   };
-  incomparableEval = builtins.tryEval (
+  noCommonModeEval = builtins.tryEval (
     (bindTurnkey {
-      index = incomparableIndex;
-      affordances = {
-        gui = true;
-        sudo = true;
-      };
+      index = guiOnlyIndex;
+      affordances = { };
     }).custom.users.ada.granted
   );
+  # …and its positive control: the SAME gui-only user on a host that affords gui binds fine, so the
+  # refusal is about the mismatch and not about publishing one mode.
+  guiOnlyOnASeat = bindTurnkey {
+    index = guiOnlyIndex;
+    affordances = {
+      gui = true;
+    };
+  };
 
-  # --- (c) the coupling guard: accept ⊆, reject ⊄ ---
-  # The fixture is a v1 manifest (no baked grant-key) ⇒ grantKey = [ ] ⊆ any grant, so the
-  # turnkey binds above already exercise ACCEPT. To exercise REJECT we drive the primitive with a
-  # bake whose grant-key is NOT granted — modelled by selecting a baked-[gui] bake while the
-  # host affords/derives nothing. Selection would pick base if it existed; with ONLY a [gui]
-  # bake and an empty grant, [gui] is not covered ⇒ selection itself errors first. The guard's
-  # own accept/reject is proven directly against bindContractPackage in ./contract-package.nix's
-  # sibling world; here we assert the turnkey path never lets an uncovered bake through.
-  onlyGuiIndex = mkIndex {
+  # --- (c) the mode coupling guard on the turnkey path ---
+  # Selection satisfies the guard by construction — it can only pick a mode the host runs — so what
+  # the turnkey path proves is that a home whose FROZEN mode is one this host runs binds. The gui
+  # fixture's manifest carries `mode = "gui"`, so binding it under the gui key on a gui-affording
+  # host exercises the guard's accept end through the real selection. Its reject end is only
+  # reachable by calling the kernel directly, which ./contract-package.nix does.
+  guiFixtureIndex = mkIndex {
     identity = adaIdentity;
     offer = {
       gui = true;
     };
-    grantKeys = [
-      [ "gui" ]
-    ];
+    modes = [ "gui" ];
+    package = ./fixtures/reference-contract-package-gui;
   };
-  uncoveredEval = builtins.tryEval (
-    (bindTurnkey {
-      index = onlyGuiIndex;
-      affordances = { }; # affords nothing ⇒ grant = { } ⇒ [gui] uncovered
-    }).custom.users.ada.granted
-  );
+  frozenModeBind = bindTurnkey {
+    index = guiFixtureIndex;
+    affordances = {
+      gui = true;
+    };
+  };
 
   # --- (d) untrusted safety: a privileged offer under a safe-set affordance ---
   # mallory offers sudo and self-declares `wheel` in identity. The host affords only gui (the safe
@@ -177,9 +175,7 @@ let
     offer = {
       sudo = true;
     };
-    grantKeys = [
-      [ ]
-    ];
+    modes = [ "cli" ];
   };
   malloryBind = eval [
     {
@@ -322,10 +318,21 @@ let
     };
     homes.ada = adaHomes;
   };
-  # The two routes OUT of a bake, spelled once: the published package NAMES and the binding INDEX.
-  # Every guard that rides the bake record must be probed through both (issues #56, #59), so the
-  # readers are named here rather than re-spelled at each call site.
+  # The routes OUT of a bake, spelled once, so each guard is probed through the ones it must reach
+  # rather than through whichever is handy. They are not interchangeable, and the difference is
+  # structural since homes became mode-keyed (ADR-0032):
+  #
+  #   readPackageNames  the published NAMES. `<user>-contractPackage-<mode>` is derived from the
+  #                     PUBLISHED KEY SET alone, so reading it forces the voice — which decides
+  #                     that set — and nothing per-home.
+  #   readPackages      the published DERIVATIONS, which is what a user repo's own
+  #                     `checks = packages` forces. This is the route a per-home guard must reach.
+  #                     Taken to `outPath` rather than deep-forced: a derivation is a recursive
+  #                     attrset, so `deepSeq` over one never terminates — `outPath` forces the
+  #                     package (and so every guard riding it) and stops at a string.
+  #   readIndex         the binding index a host reads.
   readPackageNames = u: lib.attrNames u.packages.${system};
+  readPackages = u: lib.mapAttrs (_: p: p.outPath) u.packages.${system};
   readIndex = u: u.contractUsers.${system};
   # A member handed alongside a DISAGREEING `name`: the package name and the index key come from
   # `name`, the identity from the member, so this would publish ada's identity under ben's name —
@@ -436,9 +443,9 @@ let
   # `affordances ∩ offer` and the user's side of the intersection is already empty — so this is dead
   # data in the user's own repo, not a degradation. It must fail the BAKE.
   #
-  # This guard rides the whole bake RECORD, so both routes out of the bake are probed: the
-  # published package NAME (what a user repo's own `checks = packages` forces — the repo that owns
-  # the defect) and the binding index a host reads.
+  # This guard rides each PUBLISHED home, so both routes that reach one are probed: the published
+  # package derivations (what a user repo's own `checks = packages` forces — the repo that owns the
+  # defect) and the binding index a host reads.
   vetoBake =
     requests:
     mkContractUser {
@@ -459,13 +466,13 @@ let
       };
     };
   vetoWith = read: requests: builtins.tryEval (builtins.deepSeq (read (vetoBake requests)) true);
-  vetoedRequestPackage = vetoWith readPackageNames { gui.desktop = "plasma"; };
+  vetoedRequestPackage = vetoWith readPackages { gui.desktop = "plasma"; };
   vetoedRequestIndex = vetoWith readIndex { gui.desktop = "plasma"; };
   # The svc posture (examples/users/users/svc): the same veto with the request namespace left at its
   # DEFAULT is a perfectly good user. Spelled as an explicit `desktop = ""` rather than an absent
   # key, so this proves the guard tests request DATA against the schema's default and not mere key
   # presence — every declared key is always present on a real harvested home (ADR-0028, no freeform).
-  vetoNoRequestUser = vetoWith readPackageNames { gui.desktop = ""; };
+  vetoNoRequestUser = vetoWith readPackages { gui.desktop = ""; };
 in
 {
   assertions = [
@@ -479,28 +486,39 @@ in
       ok = !(vetoGrant.sudo or false);
     }
 
-    # (b) maximal-subset selection
+    # (b) mode selection (ADR-0032 §5) — nobody declares a mode; `runs` is derived
     {
-      name = "bake selection: grant {gui,sudo} over {base,gui} selects gui (account materializes)";
+      # A gui-affording host RUNS { cli, gui }, so the rich mode wins over the floor.
+      name = "mode selection: a gui-affording host runs { cli, gui } and binds the gui home";
       ok = selGui.users.users.ada.isNormalUser && selGui.custom.gui.surface.enabled;
     }
     {
-      name = "bake selection: grant {sudo} over {base,gui} selects base (no gui surface)";
-      ok = selBase.users.users.ada.isNormalUser && !selBase.custom.gui.surface.enabled;
+      # …and one affording nothing runs { cli } alone, so selection falls back to the floor —
+      # without any host having written `cli` anywhere.
+      name = "mode selection: a host affording no mode grant falls back to the floor";
+      ok = selFloor.users.users.ada.isNormalUser && !selFloor.custom.gui.surface.enabled;
     }
     {
-      name = "bake selection: incomparable covers (gui|sudo, combo never baked) is a hard error";
-      ok = !incomparableEval.success;
+      # THE REFUSAL: a gui-only user on a headless host has no mode in common with it, and that is
+      # a hard error naming both sets — ADR-0032 narrows ADR-0002's silent degradation to GRANTS.
+      name = "mode selection: a gui-only user on a host running only the floor is a hard error";
+      ok = !noCommonModeEval.success;
+    }
+    {
+      # …and its control: the same user on a gui-affording seat binds, so the refusal is about the
+      # mismatch and not about publishing one mode.
+      name = "mode selection: the same gui-only user binds on a gui-affording seat (the control)";
+      ok = guiOnlyOnASeat.users.users.ada.isNormalUser;
     }
 
-    # (c) coupling guard / turnkey never binds an uncovered bake
+    # (c) the mode coupling guard, reached through the real selection
     {
-      name = "coupling guard: v1 manifest (grantKey=[]) ⊆ any grant ⇒ accept (turnkey binds ok)";
-      ok = vetoBind.users.users.ada.isNormalUser;
+      name = "coupling guard: a home frozen as `gui` binds on a host that runs gui (accept)";
+      ok = frozenModeBind.users.users.ada.isNormalUser;
     }
     {
-      name = "turnkey: an uncovered [gui]-only bake under an empty grant is a hard error";
-      ok = !uncoveredEval.success;
+      name = "coupling guard: a pre-v3 manifest freezes no mode ⇒ nothing to check (turnkey binds ok)";
+      ok = vetoBind.users.users.ada.isNormalUser;
     }
 
     # (d) untrusted safety
@@ -656,7 +674,7 @@ in
     }
     {
       name = "XDG fold: a cli-only host omits the XDG pathsToLink";
-      ok = !(lib.elem "/share/xdg-desktop-portal" selBase.environment.pathsToLink);
+      ok = !(lib.elem "/share/xdg-desktop-portal" selFloor.environment.pathsToLink);
     }
   ];
 }

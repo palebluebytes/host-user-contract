@@ -108,6 +108,65 @@ let
       )
     ) modeNames;
 
+  # selectModeOver: THE SELECTION (ADR-0032 §5), as a kernel over an explicit floor.
+  #
+  #   1. `modes = runs ∩ published`. Empty ⇒ a hard error naming both sets.
+  #   2. A NON-FLOOR mode in that set wins. TWO non-floor modes ⇒ a hard error: a host claiming two
+  #      rich modes must say which it means.
+  #   3. Otherwise the floor.
+  #
+  # NO MODE NAME APPEARS IN THE ALGORITHM. The floor is a parameter read off the registry flag, for
+  # the same reason `keyLabel`'s output was documented as cosmetic: a literal here would make the
+  # flag decorative and a second mode's arrival a code change.
+  #
+  # The floor is EXPLICIT for the reason `homeMatrixOver` takes its upper bound: with one non-floor
+  # mode in the registry, "two non-floor modes" is only demonstrable against a synthetic world.
+  # `who`/`subject` are the diagnostic's own facts, since this kernel is never called directly and
+  # naming itself would name a function no caller has heard of.
+  selectModeOver =
+    {
+      who,
+      subject,
+      floor,
+      # The modes the host RUNS (`runsFor` of its affordances).
+      runs,
+      # The modes this user PUBLISHES here — the key set of its binding index's contractPackages,
+      # which IS its `supports` as narrowed by the producer's matrix. Read from there rather than
+      # published a second time as its own field: two declarations that must agree is the defect
+      # class ADR-0032 removes.
+      published,
+    }:
+    let
+      candidates = lib.filter (m: lib.elem m published) runs;
+      rich = lib.filter (m: m != floor) candidates;
+      show = "this host runs ${showList runs}; ${showName subject} publishes ${showList published}";
+    in
+    if candidates == [ ] then
+      diag.stop {
+        inherit who;
+        problem = "no mode is common to the host and ${showName subject} — ${show}";
+        why =
+          "A mode is what a home IS, so a mismatch is a REFUSAL rather than a silently lesser home "
+          + "(ADR-0032 narrows ADR-0002's degradation posture to grants). Every SEAT still binds "
+          + "every user: what refuses is an operator naming a user whose session shape this host "
+          + "cannot run.";
+        fix = "Afford the feature that mode is run under, or bind a user that supports one of them.";
+      }
+    else if lib.length rich > 1 then
+      diag.stop {
+        inherit who;
+        problem = "more than one rich mode is available for ${showName subject}: ${showList rich} — ${show}";
+        why =
+          "Rich modes are incomparable by design — a phone and a desktop are not ordered against "
+          + "each other — so a host offering two of them has not said which session it means, and "
+          + "no ordering exists here to break the tie.";
+        fix = "Narrow the host's affordances, or the user's `contract.supports`, to one of them.";
+      }
+    else if rich != [ ] then
+      lib.head rich
+    else
+      floor;
+
   # The HOME MATRIX kernel (issue #58, reshaped by ADR-0032): narrow an upper bound of MODES to
   # what each system bakes, and guard the narrowing. `homeMatrixOver` takes the bound explicitly;
   # the public `mkHomeMatrix` below is this closed over the contract's own mode names, so no
@@ -265,12 +324,9 @@ let
   # REFERENCE in the module — the fold is identical either way.
   # The granted-feature-names projection — single-sourced from the injected grantLib (issue #28),
   # the same fold realization.nix and greeter.nix read grants through. Aliased to a local name here
-  # because the derivation logic below reads it heavily (the coupling guard, the tracer, the index
-  # projection, the turnkey bake selection).
+  # because the derivation logic below reads it heavily (the tracer, the index projection, the
+  # turnkey grant derivation).
   grantedNamesOf = grantLib.grantedNames;
-  # List subset test — `a ⊆ b`. Single-sourced so the coupling guard and the turnkey
-  # bake-selection (covering + maximal) all spell "is this grant-key covered?" one way.
-  subsetOf = a: b: lib.all (x: lib.elem x b) a;
   bridgeRequests =
     requests: grantedNames:
     lib.foldl' (
@@ -1218,44 +1274,55 @@ let
   # not IFD. The module references `pkgs` (the host's NixOS pkgs) to build the package-policy
   # profile when `custom.host.packagePolicy.allowedPrograms` is non-empty (ADR-0017, issue #17).
   # `hostFacts` has no role in the pre-built path (the home is already evaluated) and is omitted.
+  #
+  # `runs` is the modes THIS HOST runs, derived from its affordances by the caller — the coupling
+  # guard below is the only reader, and it takes the set rather than deriving it so this kernel
+  # stays a pure function of what it is handed (the same posture `grants` takes).
   bindContractPackage =
     {
       contractPackage,
       identity,
       grants ? { },
+      runs ? null,
     }:
     { config, pkgs, ... }:
     let
       username = identity.username;
       # Read the pinned manifest THROUGH the schema owner (the `manifest` module): it applies the
-      # v1→v2 compat (a v1 manifest's absent `granted`/`packages` normalize to `[ ]`), so this
-      # consumer never spells the field set or the filename itself.
+      # backward-compat read (an absent `mode` normalizes to `null`, absent `packages` to `[ ]`), so
+      # this consumer never spells the field set or the filename itself.
       parsed = manifest.readManifest "${contractPackage}/${manifest.manifestFileName}";
       requests = parsed.requests;
       allowedPrograms = config.custom.host.packagePolicy.allowedPrograms;
       userPackages = parsed.packages;
       approvedNames = lib.filter (n: lib.elem n allowedPrograms) userPackages;
       approvedPkgs = lib.filter (p: p != null) (map (n: pkgs.${n} or null) approvedNames);
-      # The coupling guard (ADR-0016, finally enforced by ADR-0025): a host may bind a bake
-      # only if it actually grants every feature the bake was BAKED with. The manifest's
-      # GRANT-KEY (the enabled feature names frozen into the home at bake time) MUST be a subset of
-      # the grant the host passes — otherwise the host would activate a home built for privileges it
-      # is not conferring (e.g. a home-affecting/secret-bearing bake it never granted). A v1
-      # manifest predates the field (`readManifest` normalizes it to `[ ]` ⇒ vacuously satisfied).
-      # Maximal-subset selection in `bindContractUser` satisfies this by construction; the check is
-      # defense-in-depth for the internal kernel.
-      bakedKey = parsed.grantKey;
-      ungranted = lib.subtractLists (grantedNamesOf grants) bakedKey;
+      # THE COUPLING GUARD (ADR-0016, restated by ADR-0032 §8): a host may activate a home only if
+      # it actually RUNS the mode that home was built for. One field instead of a list, and the
+      # same defense-in-depth posture — `bindContractUser`'s selection satisfies it by
+      # construction, so this covers the internal path where the kernel is called directly.
+      #
+      # It is the mode rather than the grant because that is what a bind cannot fix: a grant not
+      # conferred degrades silently by design (ADR-0002), whereas a home built for a graphical
+      # session, activated on a machine with no display, is a worse answer than an error naming the
+      # mismatch. `runs = null` skips the check outright (a caller with no host in sight), and a
+      # pre-v3 manifest reads back `mode = null` and says nothing to check — the same posture the
+      # v1 grant-key's `[ ]` took.
+      bakedMode = parsed.mode;
       guard = diag.must {
-        ok = subsetOf bakedKey (grantedNamesOf grants);
+        ok = runs == null || bakedMode == null || lib.elem bakedMode runs;
         who = "bindContractPackage";
         problem =
-          "the home selected for ${showName username} was built with grant(s) "
-          + "${showList ungranted} the host does not grant (granted: "
-          + "${showList (grantedNamesOf grants)})";
+          "the home selected for ${showName username} was built for mode "
+          + "${showName bakedMode}, which this host does not run (it runs "
+          + "${showList (if runs == null then [ ] else runs)})";
         why =
-          "The ADR-0016 coupling guard requires the manifest's grant-key ⊆ the host's grant — "
-          + "otherwise the host would activate a home built for privileges it is not conferring.";
+          "A mode is what the home IS, not something a bind confers, so activating it on a host "
+          + "that cannot run it degrades into a session the user cannot use — the one mismatch "
+          + "ADR-0002's silent degradation does not cover.";
+        fix =
+          "Afford the feature that mode is run under, or bind a user that supports a mode this "
+          + "host runs.";
       };
     in
     {
@@ -1319,27 +1386,30 @@ let
   # bindContractUser (ADR-0025, issue #25): the turnkey HOST-SIDE bind — the consumer twin of the
   # producer's `mkContractUser` (bind one contract-user ⇄ make one contract-user). A host declares
   # its `contract.affordances` ONCE and imports each user with `{ usersFlake; username }` — no
-  # per-user `grants`, no bake names, no identity paths (the host holds ZERO users-repo
+  # per-user `grants`, no mode names, no identity paths (the host holds ZERO users-repo
   # internals). It returns a NixOS module that:
   #   1. infers `system` from the host's own `pkgs`, and reads the user's binding index off the
   #      pinned `usersFlake` (`contractUsers.<sys>.<user>`, the pure data `mkContractUser` emitted);
-  #   2. derives the grant as `affordances ∩ offer` — the host's affordance is a NECESSARY
+  #   2. derives the MODES it runs from its affordances — the floor, plus every mode whose
+  #      associated grant it affords (ADR-0032 §4). Nobody declares a mode, so the disagreement
+  #      between "affords gui" and "runs gui" is unwriteable rather than guarded;
+  #   3. SELECTS the mode: `runs ∩ published`, a non-floor mode winning, the floor otherwise, and a
+  #      hard named error for an empty intersection or two rich modes (see `selectModeOver`);
+  #   4. derives the grant as `affordances ∩ offer` — the host's affordance is a NECESSARY
   #      condition (an absolute veto: a feature the host does not afford is never granted, whatever
   #      the user offers), and the user's offer completes it (ADR-0025 "the grant becomes a
   #      negotiation");
-  #   3. selects the MAXIMAL bake whose grant-key ⊆ the derived grant — `sudo`/`containers`
-  #      ride the bind and never multiply homes; no unique maximum (two incomparable baked
-  #      homes both ⊆ the grant) is a HARD eval error naming the available homes, never a
-  #      silent fallback;
-  #   4. delegates to the internal `bindContractPackage` kernel with the derived grant + the
-  #      index-supplied identity.
-  # Maximal-subset selection satisfies the coupling guard by construction (the selected bake's
-  # baked grants are ⊆ the derived grant). This is the sole PUBLIC consumer bind: the grant is
-  # always negotiated (affordances ∩ offer), never written unilaterally by the host (ADR-0026).
+  #   5. delegates to the internal `bindContractPackage` kernel with the selected home, the derived
+  #      grant, the index-supplied identity, and the run set its coupling guard checks against.
+  #
+  # Selection satisfies that guard by construction (the selected home's mode is in `runs`), which
+  # is what makes the guard defense-in-depth for the internal path rather than the enforcement
+  # point. This is the sole PUBLIC consumer bind: the grant is always negotiated
+  # (affordances ∩ offer), never written unilaterally by the host (ADR-0026).
   bindContractUser =
     { usersFlake, username }:
     # Apply the inner bindContractPackage module to the current module args and return its config,
-    # rather than returning it via `imports`: the selected bake depends on
+    # rather than returning it via `imports`: the selected home depends on
     # `config.contract.affordances`, and an `imports` list that depends on `config` is an infinite
     # recursion (imports must resolve before the config fixpoint). Splicing the inner module's
     # config in directly is legal because it defines only config (no options, no imports) and
@@ -1347,7 +1417,7 @@ let
     { config, pkgs, ... }:
     let
       # The host's platform, inferred from the host's own pkgs (ADR-0025). Everything this module
-      # selects from `system` (the binding index lookup, hence identity/bake/grant) lands in
+      # selects from `system` (the binding index lookup, hence identity/home/grant) lands in
       # config VALUES, never in this module's top-level option KEYS — so probing the module for an
       # unrelated option (`nixpkgs.*`, to build `pkgs` itself) never forces `system` and there is
       # no config↔pkgs cycle. The keys are the fixed `custom.users` / `users.users` / `systemd`
@@ -1360,36 +1430,30 @@ let
             "the users flake exposes no binding index for ${showName username} on " + "${showName system}";
           fix = "Does that flake call `contract.lib.mkContractUser(s)` for this system?";
         });
-      # grant = affordances ∩ offer (both necessary; the host's affordance is the veto).
-      grantNames = lib.intersectLists (grantedNamesOf config.contract.affordances) (
-        grantedNamesOf index.offer
-      );
+      affordedNames = grantedNamesOf config.contract.affordances;
+      # The modes this host runs, DERIVED (ADR-0032 §4) — the host declared affordances and nothing
+      # else, so there is no second declaration to disagree with this one.
+      runs = runsFor affordedNames;
+      # …and the mode it binds this user in. The published key set IS the user's `supports` as
+      # narrowed by the producer's matrix, so selection reads one value rather than intersecting
+      # two that must agree.
+      mode = selectModeOver {
+        who = "bindContractUser";
+        subject = username;
+        floor = floorMode;
+        inherit runs;
+        published = lib.attrNames index.contractPackages;
+      };
+      # grant = affordances ∩ offer (both necessary; the host's affordance is the veto). Derived
+      # INDEPENDENTLY of the mode: a host must still be able to confer gui's groups to a cli-mode
+      # user, and `wants.gui` stays vetoable, which is why the mode never implies its grant.
+      grantNames = lib.intersectLists affordedNames (grantedNamesOf index.offer);
       grants = lib.genAttrs grantNames (_: true);
-      # Maximal bake whose grant-key ⊆ the derived grant. A bake covers when every
-      # feature it was baked with is granted; the maximum covers every other cover. Zero or ≥2
-      # maxima (an uncovered or incomparable combo the producer never baked) is a hard error.
-      covering = lib.filter (v: subsetOf v.grantKey grantNames) index.contractPackages;
-      maxima = lib.filter (m: lib.all (c: subsetOf c.grantKey m.grantKey) covering) covering;
-      availableList = lib.concatMapStringsSep ", " (v: showList v.grantKey) index.contractPackages;
-      selected =
-        if lib.length maxima == 1 then
-          lib.head maxima
-        else
-          diag.stop {
-            who = "bindContractUser";
-            problem =
-              "no unique maximal home of ${showName username} covers the derived grant "
-              + "${showList grantNames} — the published grant-keys are: ${availableList}";
-            why =
-              "A home covers when every feature it was built with is granted; the maximum covers "
-              + "every other cover. Zero or two incomparable covers means the producer never built "
-              + "for this grant combination.";
-          };
     in
     (bindContractPackage {
-      contractPackage = selected.package;
+      contractPackage = index.contractPackages.${mode};
       inherit (index) identity;
-      inherit grants;
+      inherit grants runs;
     })
       { inherit config pkgs; };
 in
@@ -1400,6 +1464,7 @@ in
     floorOf
     floorMode
     runsFor
+    selectModeOver
     homeMatrixOver
     mkHomeMatrix
     ;

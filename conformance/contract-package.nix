@@ -139,15 +139,38 @@ let
     })
   ];
 
-  # --- coupling guard (ADR-0016 guard, enforced by ADR-0025) ---
-  # A v2 fixture that BAKES a grant-key of `["gui"]` — the field the guard checks. A plain
-  # repo path (no derivation, no IFD) so the accept/reject stay eval-level. bindContractPackage
-  # asserts the manifest's grantKey ⊆ grantedNamesOf grants:
-  #   - ACCEPT when the host grants gui (the baked feature is covered);
-  #   - REJECT (hard eval error, caught by tryEval) when it does not — you may never activate a
-  #     home baked with a feature you are not conferring.
+  # --- the MODE coupling guard (ADR-0016's guard as ADR-0032 §8 restates it) ---
+  # A v3 fixture whose manifest FREEZES `mode = "gui"` — the field the guard checks. A plain repo
+  # path (no derivation, no IFD) so accept/reject stay eval-level. `bindContractPackage` asserts
+  # the frozen mode is one the host RUNS:
+  #   - ACCEPT when the host runs gui;
+  #   - REJECT (hard eval error, caught by tryEval) when it does not — a home built for a graphical
+  #     session must never be activated on a machine that cannot run one.
+  # This is the INTERNAL path, which is the whole point of the guard: `bindContractUser`'s selection
+  # satisfies it by construction, so the only way to reach it is to call the kernel directly.
   guiFixture = ./fixtures/reference-contract-package-gui;
-  guardAccept = builtins.tryEval (
+  bindGuiFixtureOn =
+    runs:
+    builtins.tryEval (
+      (eval [
+        (bindContractPackage {
+          contractPackage = guiFixture;
+          identity = referenceIdentity;
+          inherit runs;
+          grants = {
+            gui = true;
+          };
+        })
+      ]).users.users.ada.isNormalUser
+    );
+  guardAccept = bindGuiFixtureOn [
+    "cli"
+    "gui"
+  ];
+  guardReject = bindGuiFixtureOn [ "cli" ];
+  # …and the SKIP: a caller with no host in sight (`runs` unpassed) has nothing to check against,
+  # which is how the kernel stays a pure function of what it is handed.
+  guardSkipped = builtins.tryEval (
     (eval [
       (bindContractPackage {
         contractPackage = guiFixture;
@@ -155,15 +178,6 @@ let
         grants = {
           gui = true;
         };
-      })
-    ]).users.users.ada.isNormalUser
-  );
-  guardReject = builtins.tryEval (
-    (eval [
-      (bindContractPackage {
-        contractPackage = guiFixture;
-        identity = referenceIdentity;
-        grants = { };
       })
     ]).users.users.ada.isNormalUser
   );
@@ -264,14 +278,18 @@ in
         !(svcConfig ? ExecStartPost);
     }
 
-    # coupling guard: accept when the baked grant is covered, reject when it is not
+    # the mode coupling guard: accept when the host runs the frozen mode, reject when it does not
     {
-      name = "coupling guard: manifest grantKey=[gui] ⊆ grant {gui} ⇒ accept (binds)";
+      name = "coupling guard: manifest mode=gui, host runs [cli, gui] ⇒ accept (binds)";
       ok = guardAccept.success && guardAccept.value;
     }
     {
-      name = "coupling guard: manifest grantKey=[gui] ⊄ grant {} ⇒ reject (hard eval error)";
+      name = "coupling guard: manifest mode=gui, host runs [cli] ⇒ reject (hard eval error)";
       ok = !guardReject.success;
+    }
+    {
+      name = "coupling guard: no `runs` handed ⇒ nothing to check against (skipped, not fired)";
+      ok = guardSkipped.success && guardSkipped.value;
     }
 
     # manifest schema owner: write->read round-trip recovers the original account fields
