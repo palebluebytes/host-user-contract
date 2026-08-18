@@ -15,7 +15,7 @@
 #
 # All five returned attributes are covered, because a returned value nobody pins is a rule nobody
 # holds. So are the traps that only exist at THIS rung, where the fold is: a member set with no
-# members, a matrix naming no system, a row that is not a list, a row that names no home, a
+# members, a matrix naming no system, a row that is not a list, a row that names no mode, a
 # `pkgsFor` that answers about the wrong system, and a `buildHome` that ignores one of the three
 # arguments it is handed.
 {
@@ -42,29 +42,15 @@ let
   };
 
   # ── The probe track ──────────────────────────────────────────────────────────────────────────
-  # The reference fleet's own shape, in miniature: an x86 tier that bakes everything and a headless
-  # arm tier that bakes `base` alone. Two systems and two labels is the smallest matrix that can
-  # tell "the row's grants" from "the fleet's grants" and "this system's pkgs" from "the pkgs".
-  guiGrants = {
-    gui = true;
-  };
+  # The reference fleet's own shape, in miniature: an x86 tier that runs every mode and a headless
+  # arm tier that runs `cli` alone. Two systems and two modes is the smallest matrix that can tell
+  # "the row's mode" from "the fleet's modes" and "this system's pkgs" from "the pkgs".
   probeMatrix = {
     x86_64-linux = [
-      {
-        grants = { };
-        label = "base";
-      }
-      {
-        grants = guiGrants;
-        label = "gui";
-      }
+      "cli"
+      "gui"
     ];
-    aarch64-linux = [
-      {
-        grants = { };
-        label = "base";
-      }
-    ];
+    aarch64-linux = [ "cli" ];
   };
 
   # A FAKE `pkgs`: the one attribute the producer reads (`stdenv.hostPlatform.system`, which is how
@@ -85,10 +71,31 @@ let
   };
 
   # The RECORDING builder: it returns what it was handed, so every claim about what the fold passes
-  # its injected closure is read off the result. It is deliberately NOT home-shaped — nothing on
-  # this track bakes, and a fold that quietly required home-shape from `buildHome` would be a
-  # contract the signature does not state.
-  recordingBuildHome = args: { recorded = args; };
+  # its injected closure is read off the result. It carries the minimum HOME shape the fold really
+  # requires and no more — the user's VOICE — because publication is driven by `supports`
+  # (ADR-0032 §6), so which homes a fleet publishes cannot be answered without reading them. It
+  # carries no `activationPackage` and no `home.*`: nothing on this track bakes, and a fold that
+  # quietly required MORE than the voice would be a contract the signature does not state.
+  recordingBuildHome = args: {
+    recorded = args;
+    config.contract = {
+      wants = probeWants;
+      supports = probeSupports;
+    };
+  };
+  # Every mode supported, so the probe track's claims are about the FOLD and not about the cut;
+  # the cut has its own claim on the output track below.
+  probeSupports = {
+    cli = true;
+    gui = true;
+  };
+  probeWants = {
+    gui = true;
+    sudo = false;
+    containers = false;
+    virtualization = false;
+    nix-daemon = false;
+  };
 
   probeFleet = mkContractFleet {
     inherit members;
@@ -97,20 +104,19 @@ let
     buildHome = recordingBuildHome;
   };
   recordedFor =
-    sys: user: label:
-    probeFleet.homes.${sys}.${user}.${label}.recorded;
+    sys: user: mode:
+    probeFleet.homes.${sys}.${user}.${mode}.recorded;
 
   # Every cell the matrix implies, listed independently of the fold so the cross-product claim is
   # not read out of the very value it is judging.
   expectedCells = lib.concatMap (
-    sys:
-    lib.concatMap (n: map (row: "${sys}/${n}/${row.label}") probeMatrix.${sys}) (lib.attrNames members)
+    sys: lib.concatMap (n: map (mode: "${sys}/${n}/${mode}") probeMatrix.${sys}) (lib.attrNames members)
   ) (lib.attrNames probeMatrix);
   actualCells = lib.concatMap (
     sys:
-    lib.concatMap (
-      n: map (label: "${sys}/${n}/${label}") (lib.attrNames probeFleet.homes.${sys}.${n})
-    ) (lib.attrNames probeFleet.homes.${sys})
+    lib.concatMap (n: map (mode: "${sys}/${n}/${mode}") (lib.attrNames probeFleet.homes.${sys}.${n})) (
+      lib.attrNames probeFleet.homes.${sys}
+    )
   ) (lib.attrNames probeFleet.homes);
 
   # Is this comparison a HOLDING equality? Comparing two separately built values that carry a
@@ -159,8 +165,7 @@ let
   unshapelyRow = brokenBy {
     homeMatrix = probeMatrix // {
       aarch64-linux = {
-        grants = { };
-        label = "base";
+        cli = true;
       };
     };
   };
@@ -193,17 +198,17 @@ let
     virtualization = false;
     nix-daemon = false;
   };
-  # …and the full support set: every registry mode present, one bool each. These members are
-  # ordinary desktop users, so they support gui.
+  # …and the full support set: every registry mode present, one bool each. These members run in
+  # both modes, so both are published; the gui-only member below is the case where the cut bites.
   syntheticSupports = {
-    cli = false;
+    cli = true;
     gui = true;
   };
-  # `stamp` is what `mkContractHome` attaches to its result (issue #56) — the grant-key the home was
-  # BUILT under. Taking it as an argument is what lets the cases below build a home that agrees with
-  # its row, one that does not, and one that carries no marker at all.
   mkSyntheticHome =
-    { username, stamp }:
+    {
+      username,
+      supports ? syntheticSupports,
+    }:
     {
       activationPackage = activationStub;
       config = {
@@ -211,68 +216,49 @@ let
           gui.desktop = "plasma";
         };
         contract.wants = syntheticWants;
-        contract.supports = syntheticSupports;
+        contract.supports = supports;
         home = {
           packages = [ pkgs.hello ];
           inherit username;
         };
       };
-    }
-    // lib.optionalAttrs (stamp != null) { contractBakedGrantKey = stamp; };
+    };
 
   outputMatrix.${system} = [
-    {
-      grants = { };
-      label = "base";
-    }
-    {
-      grants = guiGrants;
-      label = "gui";
-    }
+    "cli"
+    "gui"
   ];
-  # An HONEST builder: it stamps each home with the key of the grants it was actually handed, which
-  # is what `mkContractHome` does and what a producer's `{ grants; home }` pairing must survive.
-  honestBuildHome =
-    { member, grants, ... }:
-    mkSyntheticHome {
-      username = member.name;
-      stamp = lib.sort (a: b: a < b) (lib.filter (f: grants.${f} or false) (lib.attrNames grants));
-    };
+  buildSyntheticHome = { member, ... }: mkSyntheticHome { username = member.name; };
   outputFleet = mkContractFleet {
     inherit members;
     homeMatrix = outputMatrix;
     pkgsFor = _: pkgs;
-    buildHome = honestBuildHome;
+    buildHome = buildSyntheticHome;
   };
 
   # PARITY with the rung below: for one system, the fleet must emit exactly what `mkContractUsers`
-  # emits over the same filled rows. `mkContractFleet` adds the fold, never a second bake — so if
+  # emits over the same built rows. `mkContractFleet` adds the fold, never a second bake — so if
   # these ever differ, the fleet has grown an opinion of its own.
-  filledRows = lib.mapAttrs (
+  builtRows = lib.mapAttrs (
     _: member:
-    map (
-      row:
-      row
-      // {
-        home = honestBuildHome {
-          inherit member;
-          inherit (row) grants;
-          inherit pkgs;
-        };
+    lib.genAttrs outputMatrix.${system} (
+      mode:
+      buildSyntheticHome {
+        inherit member mode;
+        inherit pkgs;
       }
-    ) outputMatrix.${system}
+    )
   ) members;
   usersOut = mkContractUsers {
     inherit pkgs members;
-    homes = filledRows;
+    homes = builtRows;
   };
 
-  # A builder that IGNORES its `grants` argument while still stamping — the exact failure a fold
-  # between a matrix and a bake can introduce, and the one that used to be invisible: it publishes a
-  # `base` home under the `gui` grant-key, and every downstream guard reads that key rather than the
-  # home. The pairing guard (issue #56) must survive the new layer, so this is a hard eval error by
-  # BOTH routes out of the bake — the index's grant-key and the published package's name.
-  ignoresGrantsFleet = mkContractFleet {
+  # PUBLICATION IS DRIVEN BY `supports` (ADR-0032 §6): the matrix says what a SYSTEM builds and the
+  # user says which of those it can run in, so what is published is the intersection. A gui-only
+  # member on a two-mode system therefore publishes ONE home, and the cli home the fold built for
+  # it is simply never published.
+  guiOnlyFleet = mkContractFleet {
     inherit members;
     homeMatrix = outputMatrix;
     pkgsFor = _: pkgs;
@@ -280,33 +266,34 @@ let
       { member, ... }:
       mkSyntheticHome {
         username = member.name;
-        stamp = [ ];
+        supports = {
+          cli = false;
+          gui = true;
+        };
       };
   };
-  # `deepSeq` because the guard rides each bake RECORD: a bare `tryEval` over the mapped list would
-  # force only the list itself and report success while every element was still an unforced throw.
-  ignoredIndex = builtins.tryEval (
-    builtins.deepSeq (map (
-      b: b.grantKey
-    ) ignoresGrantsFleet.contractUsers.${system}.ada.contractPackages) true
+  # …and its refusal, one system over: a member whose supported modes are ALL subtracted by the
+  # system's row has nothing to publish there, which is a named error rather than an empty index
+  # entry a host would meet as silence.
+  nothingToPublish = builtins.tryEval (
+    builtins.deepSeq
+      (mkContractFleet {
+        inherit members;
+        homeMatrix.${system} = [ "cli" ];
+        pkgsFor = _: pkgs;
+        buildHome =
+          { member, ... }:
+          mkSyntheticHome {
+            username = member.name;
+            supports = {
+              cli = false;
+              gui = true;
+            };
+          };
+      }).homes
+      true
   );
-  ignoredPackageNames = builtins.tryEval (lib.attrNames ignoresGrantsFleet.packages.${system});
 
-  # …and its complement, which is ADR-0029's first-amendment guarantee held across this layer: a
-  # home built WITHOUT `mkContractHome` carries no marker, so the cross-check is SKIPPED rather than
-  # fired and the fleet bakes it exactly as before. The fold never learns which builder made a home,
-  # which is the whole reason `buildHome` is injected.
-  unmarkedFleet = mkContractFleet {
-    inherit members;
-    homeMatrix = outputMatrix;
-    pkgsFor = _: pkgs;
-    buildHome =
-      { member, ... }:
-      mkSyntheticHome {
-        username = member.name;
-        stamp = null;
-      };
-  };
 in
 {
   assertions = [
@@ -316,7 +303,7 @@ in
       ok = probeFleet.systems == lib.attrNames probeMatrix;
     }
     {
-      name = "mkContractFleet: `homes` is <system>.<user>.<label>, one entry per matrix row";
+      name = "mkContractFleet: `homes` is <system>.<user>.<mode>, one entry per matrix row";
       ok =
         lib.attrNames probeFleet.homes == [
           "aarch64-linux"
@@ -329,17 +316,18 @@ in
           ]
         &&
           lib.attrNames probeFleet.homes.x86_64-linux.ada == [
-            "base"
+            "cli"
             "gui"
           ]
-        # The headless tier's row bakes `base` alone — the matrix is honoured per system, not
-        # flattened into one set of labels.
-        && lib.attrNames probeFleet.homes.aarch64-linux.ada == [ "base" ];
+        # The headless tier's row runs `cli` alone — the matrix is honoured per system, not
+        # flattened into one set of modes.
+        && lib.attrNames probeFleet.homes.aarch64-linux.ada == [ "cli" ];
     }
     {
-      # The cross-product is HARD-WIRED: every member bakes every home in its system's row. This is
-      # also why the members and the matrix cannot disagree — there is no third list to drift.
-      name = "mkContractFleet: every member bakes every home in its system's row, and nothing else";
+      # The cross-product is HARD-WIRED: every member is built for every mode in its system's row.
+      # This is also why the members and the matrix cannot disagree — there is no third list to
+      # drift.
+      name = "mkContractFleet: every member is built for every mode in its row, and nothing else";
       ok = actualCells == expectedCells && expectedCells != [ ];
     }
     {
@@ -355,24 +343,24 @@ in
       # re-derives a path and the identity.json behind it is read once for the whole fleet.
       name = "mkContractFleet: buildHome is handed the MEMBER, identity and all";
       ok =
-        (recordedFor "x86_64-linux" "ben" "base").member == members.ben
-        && (recordedFor "x86_64-linux" "ben" "base").member.identity.username == "ben";
+        (recordedFor "x86_64-linux" "ben" "cli").member == members.ben
+        && (recordedFor "x86_64-linux" "ben" "cli").member.identity.username == "ben";
     }
     {
-      # The ROW's grants, per cell — a builder that ignored this would see one grant set for every
-      # home, and `base` and `gui` would be the same build under two names.
-      name = "mkContractFleet: buildHome is handed its OWN row's grants, per home";
+      # The cell's own MODE — a builder that ignored this would see one mode for every home, and
+      # `cli` and `gui` would be the same build under two names.
+      name = "mkContractFleet: buildHome is handed its OWN cell's mode, per home";
       ok =
-        (recordedFor "x86_64-linux" "ada" "base").grants == { }
-        && (recordedFor "x86_64-linux" "ada" "gui").grants == guiGrants
-        && (recordedFor "aarch64-linux" "ada" "base").grants == { };
+        (recordedFor "x86_64-linux" "ada" "cli").mode == "cli"
+        && (recordedFor "x86_64-linux" "ada" "gui").mode == "gui"
+        && (recordedFor "aarch64-linux" "ada" "cli").mode == "cli";
     }
     {
       # THAT system's pkgs — a builder handed one system's pkgs for every row would bake the arm
       # tier on x86 and nothing would say so.
       name = "mkContractFleet: buildHome is handed the pkgs of the system whose row it is building";
       ok =
-        (recordedFor "aarch64-linux" "ben" "base").pkgs.stdenv.hostPlatform.system == "aarch64-linux"
+        (recordedFor "aarch64-linux" "ben" "cli").pkgs.stdenv.hostPlatform.system == "aarch64-linux"
         && (recordedFor "x86_64-linux" "ben" "gui").pkgs.stdenv.hostPlatform.system == "x86_64-linux";
     }
 
@@ -382,10 +370,10 @@ in
       # rebuild of it. See `probePkgsFor` for why this comparison answers identity.
       name = "mkContractFleet: every home is handed the memo entry for its system, not a fresh application";
       ok =
-        sameValue (recordedFor "x86_64-linux" "ada" "base").pkgs probeFleet.pkgsBySystem.x86_64-linux
+        sameValue (recordedFor "x86_64-linux" "ada" "cli").pkgs probeFleet.pkgsBySystem.x86_64-linux
         && sameValue (recordedFor "x86_64-linux" "ada" "gui").pkgs probeFleet.pkgsBySystem.x86_64-linux
-        && sameValue (recordedFor "x86_64-linux" "ben" "base").pkgs probeFleet.pkgsBySystem.x86_64-linux
-        && sameValue (recordedFor "aarch64-linux" "ada" "base").pkgs probeFleet.pkgsBySystem.aarch64-linux;
+        && sameValue (recordedFor "x86_64-linux" "ben" "cli").pkgs probeFleet.pkgsBySystem.x86_64-linux
+        && sameValue (recordedFor "aarch64-linux" "ada" "cli").pkgs probeFleet.pkgsBySystem.aarch64-linux;
     }
     {
       # The NEGATIVE CONTROL, without which the claim above could pass by structural coincidence: a
@@ -424,7 +412,7 @@ in
       ok = !unshapelyRow.success;
     }
     {
-      name = "mkContractFleet: a row naming no home at all is a hard error";
+      name = "mkContractFleet: a row naming no mode at all is a hard error";
       ok = !emptyRow.success;
     }
     {
@@ -448,14 +436,14 @@ in
     # --- the published outputs, on the real bake path ---
     {
       # Nested by system, so `inherit (fleet) packages contractUsers;` is the flake outputs.
-      name = "mkContractFleet: `packages` is nested by system and names every user × home";
+      name = "mkContractFleet: `packages` is nested by system and names every user × published mode";
       ok =
         lib.attrNames outputFleet.packages == [ system ]
         &&
           lib.attrNames outputFleet.packages.${system} == [
-            "ada-contractPackage-base"
+            "ada-contractPackage-cli"
             "ada-contractPackage-gui"
-            "ben-contractPackage-base"
+            "ben-contractPackage-cli"
             "ben-contractPackage-gui"
           ];
     }
@@ -470,13 +458,13 @@ in
           ]
         &&
           # The index entry is the coin's own: the member's identity, the harvested offer, and one
-          # contractPackage per home carrying its grant-key.
+          # contractPackage per PUBLISHED mode, keyed by that mode.
           outputFleet.contractUsers.${system}.ada.identity == members.ada.identity
         && outputFleet.contractUsers.${system}.ada.offer == syntheticWants
         &&
-          map (b: b.grantKey) outputFleet.contractUsers.${system}.ada.contractPackages == [
-            [ ]
-            [ "gui" ]
+          lib.attrNames outputFleet.contractUsers.${system}.ada.contractPackages == [
+            "cli"
+            "gui"
           ];
     }
     {
@@ -488,26 +476,26 @@ in
         && outputFleet.contractUsers.${system} == usersOut.contractUsers.${system};
     }
 
-    # --- the bake pairing survives the new layer (issue #56) ---
+    # --- publication is driven by `supports` (ADR-0032 §6) ---
     {
-      name = "mkContractFleet: a buildHome that ignores its `grants` fails the bake by the index";
-      ok = !ignoredIndex.success;
-    }
-    {
-      name = "mkContractFleet: …and by the published package name — both routes out of the bake";
-      ok = !ignoredPackageNames.success;
-    }
-    {
-      # ADR-0029's first-amendment guarantee, held one layer up: the fold never learns which builder
-      # made a home, so an unmarked one still bakes.
-      name = "mkContractFleet: a home built WITHOUT mkContractHome carries no marker and still bakes";
+      # The system BUILDS both modes and the member runs in one, so one is published. `homes` is
+      # the published set, not the built one — a home nobody could bind is not a flake output.
+      name = "mkContractFleet: a gui-only member publishes its gui home alone, though the row built both";
       ok =
-        !(unmarkedFleet.homes.${system}.ada.gui ? contractBakedGrantKey)
+        lib.attrNames guiOnlyFleet.homes.${system}.ada == [ "gui" ]
+        && lib.attrNames guiOnlyFleet.contractUsers.${system}.ada.contractPackages == [ "gui" ]
         &&
-          map (b: b.grantKey) unmarkedFleet.contractUsers.${system}.ada.contractPackages == [
-            [ ]
-            [ "gui" ]
+          lib.attrNames guiOnlyFleet.packages.${system} == [
+            "ada-contractPackage-gui"
+            "ben-contractPackage-gui"
           ];
+    }
+    {
+      # …and the cut coming out EMPTY is a named error: a member whose supported modes are all
+      # subtracted by the system's row has nothing to publish there, which a host would otherwise
+      # meet as an empty index entry rather than a refusal.
+      name = "mkContractFleet: a member with nothing left to publish on a system is a hard error";
+      ok = !nothingToPublish.success;
     }
   ];
 }

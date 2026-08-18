@@ -1,1 +1,1 @@
-{"granted":["gui"],"packages":["hello"],"requests":{"gui":{"desktop":"plasma"}},"username":"ada","version":2}
+{"mode":"gui","packages":["hello"],"requests":{"gui":{"desktop":"plasma"}},"username":"ada","version":3}

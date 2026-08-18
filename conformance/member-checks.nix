@@ -57,21 +57,21 @@ let
     };
   };
 
-  # A synthetic baked home, carrying the attrpath the `force` hook below dereferences — the stand-in
-  # for a real `home.activationPackage.drvPath`, whose `.drv` suffix is what proves a bake was
-  # forced all the way to its derivation.
-  bakedHome = label: {
-    contract.requests.gui.desktop = "/nix/store/00000000000000000000000000000000-${label}.drv";
+  # A synthetic built home, carrying the attrpath the `force` hook below dereferences — the
+  # stand-in for a real `home.activationPackage.drvPath`, whose `.drv` suffix is what proves a home
+  # was forced all the way to its derivation.
+  builtHome = tag: {
+    contract.requests.gui.desktop = "/nix/store/00000000000000000000000000000000-${tag}.drv";
   };
   # The consumer's per-system homes, DERIVED from the members exactly as a real mapper derives them:
-  # two systems, one bake each. Built as a function of the members so the growth claim below changes
+  # two systems, one MODE each. Built as a function of the members so the growth claim below changes
   # the members and nothing else — the property under test.
   homesOver =
     r:
     lib.genAttrs [
       "x86_64-linux"
       "aarch64-linux"
-    ] (_: lib.mapAttrs (n: _: { base = bakedHome "${n}-base"; }) r);
+    ] (_: lib.mapAttrs (n: _: { cli = builtHome "${n}-cli"; }) r);
 
   # A module set that reopens a system channel (as in ./confinement.nix): a top-level freeform
   # accepts ANY key, so every out-of-universe probe becomes expressible while a legitimate home

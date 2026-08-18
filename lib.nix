@@ -271,17 +271,6 @@ let
   # List subset test — `a ⊆ b`. Single-sourced so the coupling guard and the turnkey
   # bake-selection (covering + maximal) all spell "is this grant-key covered?" one way.
   subsetOf = a: b: lib.all (x: lib.elem x b) a;
-  # The GRANT-KEY of a grant set: its enabled feature names, SORTED. The canonical,
-  # order-independent identity of a bake, and the one spelling of "which grant set is this?"
-  # that the bake label, the binding index's `granted`, and the bake-pairing guard (issue #56)
-  # all read through — so "the same grant set" cannot mean two things across them. The sort is
-  # what makes it a key rather than a list: `grantedNamesOf` happens to fold over `attrNames`
-  # (already sorted), but the key's order-independence must not rest on that.
-  grantKey = grants: lib.sort (a: b: a < b) (grantedNamesOf grants);
-  # The human label for a grant-key: empty ⇒ `base`, else the names joined. Split out of
-  # `homeLabel` (below) so the pairing guard can name a key it was HANDED — a recorded name
-  # list, with no grant attrset to project — in the same words the published package uses.
-  keyLabel = names: if names == [ ] then "base" else lib.concatStringsSep "-" names;
   bridgeRequests =
     requests: grantedNames:
     lib.foldl' (
@@ -329,17 +318,17 @@ let
   # as a flake input. `activationPackage` is the home-manager activation package (has
   # `$out/activate`); `requests` is the evaluated `contract.requests` attrset; `packages` is the
   # list of package derivations from `home.packages` — pname/name is extracted for the manifest
-  # (the host needs names, not store paths); `username` is the account name; `grants` is the grant
-  # set the home was BUILT with — its enabled feature names are baked into the manifest so a host
-  # `bindContractPackage` can prove its own grant matches the bake (the secret-bearing
-  # coupling, ADR-0016: "the grant baked into the home MUST match the grant the host passes").
+  # (the host needs names, not store paths); `username` is the account name; `mode` is the session
+  # shape the home was BUILT for — frozen into the manifest so a host `bindContractPackage` can
+  # prove it actually runs that mode (ADR-0016's coupling guard as ADR-0032 §8 restates it: the
+  # grant no longer changes a home, so the MODE is what a bind must not contradict).
   #
   # The manifest is serialized to a store path at EVAL TIME via the `manifest` module's `writeManifest`
   # (`builtins.toFile`, pure, no IFD), then copied into the derivation during the build. The manifest
   # module OWNS the schema (version, field set, filename); this producer only projects its inputs into
-  # that shape — package DERIVATIONS to package NAMES (the host needs names, not store paths), the grant
-  # attrset to the baked feature-name list. The derivation is content-addressed: the same home eval
-  # always produces the same store path, covering both activate and the requests.
+  # that shape — package DERIVATIONS to package NAMES (the host needs names, not store paths). The
+  # derivation is content-addressed: the same home eval always produces the same store path, covering
+  # both activate and the requests.
   mkContractPackage =
     {
       pkgs,
@@ -347,17 +336,13 @@ let
       requests,
       packages,
       username,
-      grants ? { },
+      mode ? null,
     }:
     let
       packageNames = map (p: p.pname or (builtins.parseDrvName p.name).name) packages;
       manifestFile = manifest.writeManifest {
-        inherit username requests;
+        inherit username requests mode;
         packages = packageNames;
-        # The GRANT-KEY the home was baked with (ADR-0016 coupling guard) — the same projection
-        # the binding index publishes and the bake-pairing guard compares, so the manifest cannot
-        # be a third spelling of "which grant set is this?".
-        grantKey = grantKey grants;
       };
     in
     pkgs.runCommand "contract-package-${username}" { } ''
@@ -366,65 +351,6 @@ let
       chmod +x $out/activate
       cp ${manifestFile} $out/${manifest.manifestFileName}
     '';
-
-  # THE BAKE PAIRING (issue #56) — the attribute a home built by `mkContractHome` CARRIES: the
-  # grant-key it was baked under. The contract owns both ends of a bake (`mkContractHome` evaluates
-  # one home under a grant set; the producer coin bakes an already-evaluated home) but not the JOIN
-  # between them — a producer builds each bake's home, then re-pairs `{ grants; home }` by label
-  # when it hands the list over. That pairing used to be trusted: `granted` — in the manifest, in the
-  # binding index, and so in every downstream guard (the ADR-0016 coupling guard, `bindContractUser`'s
-  # maximal-bake selection) — came from the grant attrset passed ALONGSIDE the home, never from
-  # what the home was actually built with. A mispairing therefore shipped a `base` home published
-  # under a `gui` grant-key, and nothing in the system could see it.
-  #
-  # So the grant set TRAVELS WITH THE HOME and the producer cross-checks it. The marker rides the
-  # RETURNED VALUE rather than a home option, for two reasons: `homeModules.default` must stay
-  # evaluable by bare `evalModules` with no home-manager (ADR-0004/0008), and `contract.*` in a home
-  # is the USER's voice — a producer-written key there would be a second, spoofable spelling of a
-  # fact the home already reads as `hostFacts.granted`. (It is a PUBLIC attribute either way: the
-  # builder's result is what a producer publishes as `homeConfigurations.<u>`, which is also what a
-  # greeter builds. Nothing reads it but this guard, and nothing may — it is a bake-time cross-check,
-  # not a channel.)
-  #
-  # This is the guard: `true` when the pairing holds, a named hard eval error when it does not, and
-  # `true` — SKIPPED, not fired — for a home built by hand rather than through `mkContractHome`.
-  # Not every producer uses the builder (a hand-rolled or future nix-darwin home bakes through the
-  # generic kernel), so the marker's absence must degrade to the old, trusting behaviour rather than
-  # making the builder a hard requirement.
-  #
-  # Compared as GRANT-KEYS (`grantKey`, the sorted enabled names), which is the whole observable
-  # content of a grant set and exactly what the index publishes — so `{ gui = true;
-  # sudo = false; }` and `{ gui = true; }` are the same key, as they are everywhere
-  # else here. The comparison is on the key AS PASSED to the builder, not on the narrowed one the
-  # home saw: the narrowing (ADR-0028) is deterministic, so key equality is the stronger claim, and
-  # the rule a producer has to hold is the simple one — hand the bake the SAME grant attrset you
-  # handed the builder.
-  assertHomePairing =
-    {
-      context,
-      username,
-      home,
-      grants,
-    }:
-    let
-      baked = home.contractBakedGrantKey or null;
-      passed = grantKey grants;
-      show = names: "${showName (keyLabel names)} (${showList names})";
-    in
-    baked == null
-    || diag.must {
-      ok = baked == passed;
-      who = context;
-      problem =
-        "mispaired build for ${showName username} — its home was BUILT under grant-key "
-        + "${show baked} but the producer paired it with ${show passed}";
-      why =
-        "The manifest's grant-key and the binding index's are taken from the grant passed "
-        + "alongside the home, so this would publish a home under a grant set it was never built "
-        + "with — and every downstream guard (the ADR-0016 coupling guard, maximal-home selection) "
-        + "would read the wrong one.";
-      fix = "Pass each home the SAME grant attrset you passed `mkContractHome`.";
-    };
 
   # assertNoVetoedRequests (issue #59): the second bake-time guard on a bake's home — the two
   # halves of the user's VOICE (ADR-0028) held to each other. `contract.wants` (which features) and
@@ -486,13 +412,19 @@ let
   # double evaluation: the homes are handed in already built (as thunks), and only their `config`
   # is forced here.
   #
-  # `homes` is a LIST of evaluated homes — this cares only about the voices, never about what each
-  # home was built as, so it takes the values and not the keys.
+  # PUBLICATION IS DRIVEN BY `supports`, so it is decided here too and returned as `published`: the
+  # handed homes cut to the modes the user actually supports. One owner of the rule, applied
+  # wherever the answer is needed (the producer coin, and the fleet's `homes` output).
+  #
+  # `homes` is `{ <mode> = home; }` — what the caller BUILT, which is its system's matrix row. The
+  # published set is that ∩ `supports`, so a mode the user supports but this system does not bake
+  # is simply absent, and a system that bakes none of a user's supported modes is a named error
+  # rather than a user with nothing published.
   harvestVoice =
     { username, homes }:
     let
       voiceOf = h: h.config.contract;
-      voices = map voiceOf homes;
+      voices = map voiceOf (lib.attrValues homes);
       # Each half compared as its enabled-NAME projection, which is the whole observable content of
       # a bool-per-key set and exactly what downstream consumes.
       offeredNames = map (v: grantedNamesOf v.wants) voices;
@@ -510,12 +442,13 @@ let
         g != null && !(first.wants.${g} or false)
       ) supported;
       allSame = names: lib.all (n: n == lib.head names) names;
+      published = lib.filterAttrs (m: _: lib.elem m supported) homes;
     in
     # Ordered so the emptiest mistake reports first: nothing to harvest at all, then each half's
     # invariance (a varying half makes every verdict below it a coin toss), then what the harvested
     # values SAY.
     assert diag.must {
-      ok = homes != [ ];
+      ok = homes != { };
       who = "mkContractUser";
       problem = "${showName username} declares no homes";
       why = "There is no evaluated home to harvest `contract.wants`/`contract.supports` from.";
@@ -568,8 +501,20 @@ let
         + "given the session it asked to be built for — a contradiction no host can rescue.";
       fix = "Want the grant, or drop the mode from `contract.supports`.";
     };
+    assert diag.must {
+      ok = published != { };
+      who = "mkContractUser";
+      problem =
+        "nothing to publish for ${showName username} — it supports ${showList supported}, and "
+        + "this system builds ${showList (lib.attrNames homes)}";
+      why =
+        "The published set is `supports` ∩ what this system builds, so an empty one leaves every "
+        + "host that binds this user here reading an empty index entry rather than meeting a "
+        + "refusal.";
+      fix = "Either support a mode this system's matrix row keeps, or drop the system from the matrix.";
+    };
     {
-      inherit supported;
+      inherit published;
       offer = first.wants;
     };
 
@@ -577,7 +522,7 @@ let
   # `bindContractPackage`'s turnkey-ness on the PRODUCER side — since ~every producer builds its
   # home with home-manager, each one otherwise hand-rolls the identical adapter that reads the four
   # disassembled primitives (`activationPackage`, `requests`, `packages`, `username`) off its home.
-  # This lifts that recurring wrapper into the contract so a producer calls `{ home; grants; pkgs; }`.
+  # This lifts that recurring wrapper into the contract so a producer calls `{ home; mode; pkgs; }`.
   #
   # It does NOT import home-manager (ADR-0004 package-free preserved): it only READS attributes off
   # an already-evaluated `home` (`activationPackage`, `config.contract.requests`,
@@ -586,36 +531,23 @@ let
   # this is a thin convenience over it. `pkgs` stays a parameter so one call emits multi-arch bakes.
   # INTERNAL: the public producer surface is `mkContractUser`/`mkContractUsers`, which bake through this.
   #
-  # This is where a home and a grant set JOIN into a published artifact, so it is where the bake
-  # pairing is verified (issue #56): a home that carries the key it was built under may only be
-  # baked under that key. `mkContractUser` guards its INDEX entry with the same predicate — the
-  # manifest and the index must agree with the home, and they are two separate reads of `grants`.
+  # `mode` is carried through to the manifest and nothing else. There is no pairing to verify here
+  # any more (ADR-0032): the coin publishes each home under the very key it was built for, so a
+  # producer has no `{ grants; home }` record left to re-pair wrongly and the marker+cross-check
+  # that guarded that pairing (issue #56) are both gone.
   mkContractPackageForHome =
     {
       home,
       pkgs,
-      grants ? { },
+      mode ? null,
     }:
-    let
-      username = home.config.home.username;
-    in
-    assert assertHomePairing {
-      context = "mkContractPackageForHome";
-      inherit username home grants;
-    };
     mkContractPackage {
-      inherit pkgs grants username;
+      inherit pkgs mode;
+      username = home.config.home.username;
       activationPackage = home.activationPackage;
       requests = home.config.contract.requests;
       packages = home.config.home.packages;
     };
-
-  # homeLabel (ADR-0025, issue #25): the canonical, ORDER-INDEPENDENT label for a baked
-  # bake — the sorted home-affecting grant-key feature names, empty ⇒ `base`. It names the
-  # published package (`<user>-contractPackage-<name>`) only; selection reads the machine-readable
-  # grant-key off the binding index, never this string, so the format is cosmetic — a label, not a
-  # parse target (ADR-0025 "Considered Options": name-parse selection rejected).
-  homeLabel = grants: keyLabel (grantKey grants);
 
   # THE ADR-0020 LAYOUT, spelled once (issue #57): a users directory holds one subdirectory per
   # user, and each holds that user's `identity.json` + `home.nix`. Every site that must name one of
@@ -775,16 +707,15 @@ let
 
   # mkContractUser (ADR-0025, issue #25): the SINGULAR turnkey PRODUCER — the producer twin of the
   # consumer's `bindContractUser` (make one contract-user ⇄ bind one contract-user). A single-user
-  # repo calls it once; `mkContractUsers` (below) is nothing but this mapped over the members. It bakes
-  # ONE user's declared bakes and emits the same flake-output shape a host consumes — ready to
+  # repo calls it once; `mkContractUsers` (below) is nothing but this mapped over the members. It
+  # bakes ONE user's homes and emits the same flake-output shape a host consumes — ready to
   # `inherit … packages contractUsers`:
-  #   - the named packages `<user>-contractPackage-<homeLabel>` (built via mkContractPackageForHome
+  #   - the named packages `<user>-contractPackage-<mode>` (built via mkContractPackageForHome
   #     — so this stays package-free, only READING attributes off an already-evaluated home, ADR-0004), and
-  #   - the pure `contractUsers.<sys>.<user>` BINDING INDEX entry `{ identity; offer; contractPackages = [{
-  #     granted; package }] }`. The index is plain data (`granted` is the bake's grant-key as a
-  #     NAME LIST; `package` is the built derivation), so a host's `bindContractUser` selects a bake
-  #     by reading it — never by building every bake to inspect a baked manifest (the ADR-0016
-  #     "can't read manifests cheaply" trap, sidestepped).
+  #   - the pure `contractUsers.<sys>.<user>` BINDING INDEX entry
+  #     `{ identity; offer; contractPackages = { <mode> = package; }; }`. The index is plain data,
+  #     so a host's `bindContractUser` selects by reading it — never by building every home to
+  #     inspect a baked manifest (the ADR-0016 "can't read manifests cheaply" trap, sidestepped).
   #
   # WHO this user is comes in one of two ways (issue #57), resolved by the shared `resolveMember`.
   # Preferred: a `member` — a `mkMembers` entry `{ name; dir; identity; }`, whose identity is
@@ -793,26 +724,24 @@ let
   # kit-injected `loadIdentity` (ADR-0009) — the shape a SINGLE-USER repo keeps, since one user is
   # not a member set, and constructing one to bake it would be ceremony.
   #
-  # `homes` is `[{ grants; home }]` — `grants` is the grant ATTRSET the bake is baked with (the
-  # same `{ <feature> = bool; }` shape, under the same name, that `mkContractHome` bakes the
-  # home under and `mkContractPackageForHome` consumes); it is projected to the index's `granted`
-  # NAME LIST by `grantedNamesOf`. `loadIdentity` is injected by the kit (like `homeModule` for
-  # `traceUser`) so the users flake calls this without wiring the loader itself. `pkgs` is a
-  # parameter so one call can emit multi-arch outputs, and the system the outputs are keyed by is
-  # read off it rather than passed a second time.
+  # `homes` is `{ <mode> = home; }` — the modes this system BUILT for this user, which is its
+  # matrix row. The KEY is the whole of what a home is published as, so nothing is re-paired here
+  # and there is no record to get wrong: the mode a home was built for and the mode it is published
+  # under are the same value by construction (ADR-0032 §6). `loadIdentity` is injected by the kit
+  # (like `homeModule` for `traceUser`) so the users flake calls this without wiring the loader
+  # itself. `pkgs` is a parameter so one call can emit multi-arch outputs, and the system the
+  # outputs are keyed by is read off it rather than passed a second time.
   #
-  # The `offer` is HARVESTED, never passed (ADR-0028): it is `contract.wants` read off the already-
-  # evaluated home, so the user's voice lives in the user's own home rather than in the producer's
-  # flake. Because the offer is what the grant is DERIVED from (`affordances ∩ offer`), a want that
-  # depends on `hostFacts.granted` is circular — the harvest would differ per bake and the
-  # published offer would be whichever bake happened to be first. That is a bake-time error here,
-  # not a subtle mis-negotiation later.
+  # WHAT IS PUBLISHED is `supports` ∩ what was built, not everything that was built (ADR-0032 §6):
+  # a producer's matrix says what a SYSTEM can bake and the user says which of those it can run in,
+  # and only the intersection is a home anybody could bind. `harvestVoice` owns that cut along with
+  # every guard over the voice it reads to make it — the harvested `offer`, its mode-invariance and
+  # `supports`', the at-least-one-mode rule, and the mode-without-its-grant contradiction.
   #
-  # Harvesting the offer is also where the user's TWO halves meet, so it is where they are held to
-  # each other (issue #59): a home carrying `contract.requests` data for a feature its own
-  # `contract.wants` vetoes fails the bake, because that is the one contradiction no host can
-  # rescue. Both halves are typed, but typed independently, so this is the only site that sees them
-  # together — see `assertNoVetoedRequests`.
+  # The remaining per-home guard is issue #59's: a home carrying `contract.requests` data for a
+  # feature its own `contract.wants` vetoes fails the bake, because that is the one contradiction no
+  # host can rescue. It stays per-home because a home's REQUESTS may legitimately differ across
+  # modes, where its `wants` may not — see `assertNoVetoedRequests`.
   mkContractUser =
     {
       loadIdentity,
@@ -846,64 +775,39 @@ let
       };
       inherit (who) identity;
       userName = who.name;
-      # Both guards ride the whole bake RECORD (issues #56, #59), so reading any of its three
-      # fields — the index's grant-key, the published package NAME, or the package itself — forces
-      # them. That is every route a mispaired bake could take out of this bake, not just the
-      # manifest `mkContractPackageForHome` guards on its own. (The user-level `identity` and `offer`
-      # sit OUTSIDE the record and stay readable: they are per-user facts a mispairing cannot
-      # corrupt.)
-      #
-      # The voice guard rides the record too, rather than the published `offer`, for two reasons: a
-      # home's REQUESTS may legitimately differ across bakes (only `wants` may not), so the check
-      # is per-bake; and the repo that must catch its own dead data is the USER's, whose flake
-      # check builds the packages and never reads the index a host binds through.
-      built = map (
-        v:
-        assert voiceHolds;
-        assert assertHomePairing {
-          context = "mkContractUser";
-          username = userName;
-          inherit (v) home grants;
-        };
-        assert assertNoVetoedRequests {
-          username = userName;
-          inherit (v) home;
-        };
-        {
-          # The index publishes the GRANT-KEY, under that name — the very projection the guard above
-          # compared the home's own recorded key against, so the two cannot be the same words for
-          # two things. It is a sorted NAME LIST, which is why it is not called `granted`: that word
-          # is reserved for the attrset-shaped option paths (ADR-0030).
-          grantKey = grantKey v.grants;
-          package = mkContractPackageForHome {
-            inherit pkgs;
-            home = v.home;
-            grants = v.grants;
-          };
-          label = homeLabel v.grants;
-        }
-      ) homes;
-      # The user's harvested VOICE and every guard over it — the offer this user publishes and the
-      # modes it supports, read off the homes and held to each other (see `harvestVoice`).
+      # The user's harvested VOICE, every guard over it, and the cut it decides: which of the built
+      # homes are PUBLISHED (see `harvestVoice`).
       voice = harvestVoice {
         username = userName;
-        homes = map (v: v.home) homes;
+        inherit homes;
       };
       inherit (voice) offer;
-      # …and the guards ride the whole bake RECORD as well as the published `offer`, for the same
+      # The voice guards ride the whole bake RECORD as well as the published `offer`, for the same
       # reason the request guard does: the repo that owns a self-contradictory voice is the USER's,
       # whose flake check builds the PACKAGES and never reads the index a host binds through. A
       # guard reachable only through `offer` would leave that repo green. `seq` forces the harvest
       # to weak head normal form, which is exactly far enough to run every assert inside it.
       voiceHolds = builtins.seq voice true;
+      # One package per PUBLISHED mode, keyed by that mode — so the key a host selects on, the name
+      # the package is published under, and the field frozen into its manifest are one value read
+      # three ways, and there is nothing to pair.
+      built = lib.mapAttrs (
+        mode: home:
+        assert voiceHolds;
+        assert assertNoVetoedRequests {
+          username = userName;
+          inherit home;
+        };
+        mkContractPackageForHome { inherit pkgs home mode; }
+      ) voice.published;
     in
     {
-      packages.${system} = lib.listToAttrs (
-        map (v: lib.nameValuePair "${userName}-contractPackage-${v.label}" v.package) built
-      );
+      packages.${system} = lib.mapAttrs' (
+        mode: package: lib.nameValuePair "${userName}-contractPackage-${mode}" package
+      ) built;
       contractUsers.${system}.${userName} = {
         inherit identity offer;
-        contractPackages = map (v: { inherit (v) grantKey package; }) built;
+        contractPackages = built;
       };
     };
 
@@ -911,8 +815,8 @@ let
   # whole multi-user repo and its outputs merged, so a `users` flake bakes its entire members in ONE
   # call and `inherit … packages contractUsers`. It is the turnkey producer for the multi-user shape
   # (ADR-0020) exactly as `bindContractUser` is the turnkey consumer; the singular `mkContractUser`
-  # is the true per-user partner underneath. Each input user is `{ bakes }`, forwarded to
-  # `mkContractUser` (the offer is harvested from each bake's home, ADR-0028 — a users entry
+  # is the true per-user partner underneath. Each input user is its `{ <mode> = home; }` map,
+  # forwarded to `mkContractUser` (the offer is harvested from each home, ADR-0028 — a users entry
   # carries no `offer` field). Adds no logic of its own beyond the members fold — the per-user bake,
   # naming, and index shape all live in `mkContractUser`.
   #
@@ -963,6 +867,27 @@ let
         }
       ) homes;
     in
+    # The ANTI-VACUITY guard its three siblings all carry and this one did not (issue #67):
+    # `mkContractUser` refuses a user that "declares no homes", `mkMemberChecks` refuses a member
+    # set that "would check NOTHING while every output stayed green", and `mkContractFleet` guards
+    # both of its inputs. `mkContractUsers { homes = { }; }` deep-forced to empty outputs and
+    # reported success — the exact shape of failure every one of those refusals exists to catch,
+    # in the one place nothing was looking.
+    assert diag.must {
+      ok = lib.isAttrs homes;
+      who = "mkContractUsers";
+      problem = "`homes` is not an attrset";
+      fix = "It is `{ <user> = { <mode> = home; }; }`, keyed by the member each home set belongs to.";
+    };
+    assert diag.must {
+      ok = homes != { };
+      who = "mkContractUsers";
+      problem = "`homes` names no user";
+      why = diag.vacuity { subject = "`homes`"; };
+      fix =
+        "Its key set is who this call bakes for — derive it from the member set, which "
+        + "`mkMembers` already refuses to leave empty.";
+    };
     {
       packages.${system} = lib.foldl' (acc: o: acc // o.packages.${system}) { } outs;
       contractUsers.${system} = lib.foldl' (acc: o: acc // o.contractUsers.${system}) { } outs;
@@ -977,13 +902,14 @@ let
   #   { homes; packages; contractUsers; systems; pkgsBySystem; }
   #
   # so `inherit (fleet) packages contractUsers;` IS the flake outputs, and `fleet.homes` is the
-  # `<system>.<user>.<label>` shape `mkMemberChecks` and a producer's own checks already consume.
+  # `<system>.<user>.<mode>` shape `mkMemberChecks` and a producer's own checks already consume —
+  # and, since ADR-0032, a flake output in its own right.
   #
   # ADR-0029 REJECTED a fatter producer, and that rejection was overturned by its own second
   # amendment: both of its grounds were answered by surface that shipped afterwards. What was left
   # repo-side was mechanics rather than choices — the per-home eval loop, the members × system ×
-  # home fold, the grants↔home re-pairing, the two output merges, and the `systems`/`pkgs`
-  # derivation — re-typed character-for-character in a second producer.
+  # mode fold, the two output merges, and the `systems`/`pkgs` derivation — re-typed
+  # character-for-character in a second producer.
   #
   # THE HOME ARRIVES BY INJECTED CLOSURE (ADR-0004). `buildHome` is the CONSUMER's, so this function
   # names neither `mkContractHome` nor `stateVersion`, `extraModules` or `extraSpecialArgs`, and
@@ -991,16 +917,16 @@ let
   # package-free by the same posture `mkConfinementCheck`'s `buildHome` takes; a producer threads its
   # own `extraSpecialArgs` (the ADR-0020 `inputs` convention) without the contract learning what
   # `inputs` is; and a home built WITHOUT `mkContractHome` still bakes through here, because nothing
-  # in this fold knows which builder made it (issue #56's guarantee, one layer up). Taking the
-  # builder's own arguments instead would re-fuse builder to bake — the very thing the overturned
-  # ground feared, and the thing this shape avoids.
+  # in this fold knows which builder made it. Taking the builder's own arguments instead would
+  # re-fuse builder to bake — the very thing the overturned ground feared, and the thing this shape
+  # avoids.
   #
-  # `buildHome` takes an ATTRSET, `{ member, grants, pkgs }`. That is a third `buildHome` spelling
+  # `buildHome` takes an ATTRSET, `{ member, mode, pkgs }`. That is a third `buildHome` spelling
   # beside `mkConfinementCheck`'s `extraModules: home` and `mkMemberChecks`' curried
   # `member: extraModules: home`, and the inconsistency is deliberate: three positional arguments in
-  # a fixed order is the worse footgun, since transposing `grants` and `pkgs` is a type error
-  # nowhere. `grants` is the attrset name the matrix, the builder and the pairing guard all use
-  # (ADR-0030) — `granted` is an option path and is never a parameter.
+  # a fixed order is the worse footgun, since transposing `mode` and `pkgs` is a type error nowhere.
+  # `mode` is the word the matrix, the builder, the published key and the manifest all use for one
+  # value (ADR-0030/0032).
   #
   # `pkgsFor` IS A FUNCTION, not an attrset, for two reasons that compound. The ordering one:
   # `systems` is derived from `homeMatrix`, so a consumer handing over a pre-built `pkgsBySystem`
@@ -1011,7 +937,11 @@ let
   # and `pkgsBySystem` is RETURNED so the rule is a value a caller can hold (and a suite can pin)
   # rather than a comment it has to trust.
   #
-  # THE CROSS-PRODUCT IS HARD-WIRED: every member bakes every home in its system's row. That is the
+  # THE CROSS-PRODUCT IS HARD-WIRED: every member is BUILT for every mode in its system's row —
+  # and then PUBLISHED for the ones it says it supports, which `mkContractUsers` decides one rung
+  # down (ADR-0032 §6). Building is per-system and publishing is per-user, so the two cannot be one
+  # step. This is also why `homes` is read back off the bindings below rather than re-filtered here:
+  # "what is published" has one owner, and it is not the fold. That is the
   # call `mkMemberChecks` already made, whose coverage rule is the same "every member on every
   # system". A producer whose bake is NOT a full cross-product drops to `mkContractUsers`, which
   # stays PUBLIC for exactly that reason — the contract is consumed at a URL, so internalizing it
@@ -1027,12 +957,12 @@ let
       loadIdentity,
       # WHO is in this repo — the `mkMembers` attrset (issue #57).
       members,
-      # WHAT each system bakes — `mkHomeMatrix`'s value, `{ <system> = [ { grants; label; } ]; }`
-      # (issue #58). Its key set is this fleet's `systems`, which is why neither is stated twice.
+      # WHAT each system bakes — `mkHomeMatrix`'s value, `{ <system> = [ <mode> ]; }` (issue #58).
+      # Its key set is this fleet's `systems`, which is why neither is stated twice.
       homeMatrix,
       # `system -> pkgs`. Applied once per system; see above.
       pkgsFor,
-      # `{ member, grants, pkgs } -> home` — the consumer's own builder (ADR-0004).
+      # `{ member, mode, pkgs } -> home` — the consumer's own builder (ADR-0004).
       buildHome,
     }:
     let
@@ -1075,33 +1005,28 @@ let
         p
       );
 
-      # THE JOIN, and the only place it happens: ONE shape filled in progressively (ADR-0030). The
-      # matrix hands out `{ grants; label; }` and this adds the `home` built under those very
-      # `grants`, so nothing is re-keyed and the grants a home was built UNDER and the grants it is
-      # published WITH are the same value by construction — which is the pairing `mkContractUser`'s
-      # guard then checks anyway (issue #56), because right-by-construction is a property of this
-      # file rather than of the shape being taught.
-      filledRows = lib.genAttrs systems (
+      # THE JOIN, and the only place it happens: the matrix hands out a MODE and this builds the
+      # home for it, keyed by that very mode. Nothing is re-keyed and there is no record to pair —
+      # the mode a home was built for and the mode it is published under are one key by
+      # construction (ADR-0032 §6), which is why the cross-check that used to guard the join is
+      # gone rather than moved.
+      builtRows = lib.genAttrs systems (
         sys:
         lib.mapAttrs (
           _: member:
-          map (
-            row:
-            row
-            // {
-              home = buildHome {
-                inherit member;
-                inherit (row) grants;
-                pkgs = pkgsBySystem.${sys};
-              };
+          lib.genAttrs (rowOf sys) (
+            mode:
+            buildHome {
+              inherit member mode;
+              pkgs = pkgsBySystem.${sys};
             }
-          ) (rowOf sys)
+          )
         ) members
       );
 
-      # The per-system bake, `mkContractUsers` handed the filled rows directly — its `homes`
-      # argument IS `{ <user> = [ { grants; label; home } ]; }`, so there is no reshaping between
-      # the two and no second spelling of the fold.
+      # The per-system bake, `mkContractUsers` handed the built rows directly — its `homes`
+      # argument IS `{ <user> = { <mode> = home; }; }`, so there is no reshaping between the two
+      # and no second spelling of the fold.
       bindings = lib.mapAttrs (
         sys: byMember:
         mkContractUsers {
@@ -1109,7 +1034,7 @@ let
           pkgs = pkgsBySystem.${sys};
           homes = byMember;
         }
-      ) filledRows;
+      ) builtRows;
     in
     # Grouped by SUBJECT — the member set, then the matrix, then its rows — and within each the same
     # order the rest of this file uses: a shape that cannot be read before anything is read off it,
@@ -1137,8 +1062,7 @@ let
       ok = lib.isAttrs homeMatrix;
       who = "mkContractFleet";
       problem = "`homeMatrix` is not an attrset";
-      fix =
-        "It is `mkHomeMatrix`'s own value, keyed by system: " + "`{ <system> = [ { grants; label; } ]; }`.";
+      fix = "It is `mkHomeMatrix`'s own value, keyed by system: `{ <system> = [ <mode> ]; }`.";
     };
     assert diag.must {
       ok = homeMatrix != { };
@@ -1151,7 +1075,7 @@ let
       ok = malformedRows == [ ];
       who = "mkContractFleet";
       problem = "the `homeMatrix` row(s) for ${showList malformedRows} are not lists";
-      fix = "Each system's row is a LIST of `{ grants; label; }` — one entry per home it bakes.";
+      fix = "Each system's row is a LIST of MODE names — one entry per home it builds.";
     };
     assert diag.must {
       ok = emptyRows == [ ];
@@ -1167,14 +1091,17 @@ let
     };
     {
       inherit systems pkgsBySystem;
-      # `<system>.<user>.<label>` — the shape a producer's checks and its `homeConfigurations`
-      # naming rule already read, so adopting this moves nothing downstream.
+      # `<system>.<user>.<mode>` — the PUBLISHED homes, and a flake output in its own right
+      # (ADR-0032 §6). Read back off the bindings rather than re-derived from `builtRows`: the
+      # index's key set IS the published mode set, so taking it from there keeps ONE owner of the
+      # `supports` cut. `attrNames` on the index forces no package, so this stays as lazy as the
+      # bindings themselves.
       homes = lib.mapAttrs (
-        _: byMember:
+        sys: b:
         lib.mapAttrs (
-          _: memberRows: lib.listToAttrs (map (row: lib.nameValuePair row.label row.home) memberRows)
-        ) byMember
-      ) filledRows;
+          user: entry: lib.getAttrs (lib.attrNames entry.contractPackages) builtRows.${sys}.${user}
+        ) b.contractUsers.${sys}
+      ) bindings;
       # Nested by system, so `inherit (fleet) packages contractUsers;` is the flake outputs. Each
       # system's bake already keys its own outputs by that system, so this only unwraps the key it
       # was going to be looked up under anyway — never a re-keying.

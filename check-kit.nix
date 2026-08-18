@@ -288,25 +288,24 @@ let
     };
     okWitness pkgs name;
 
-  # mkHomeEvalCheck (issue #49, decision #43): prove ONE user's every bake EVALUATES
-  # on every system the repo bakes it for — the members-generic replacement for the hand-written
+  # mkHomeEvalCheck (issue #49, decision #43): prove ONE user's every published home EVALUATES
+  # on every system the repo builds it for — the members-generic replacement for the hand-written
   # cross-arch eval checks each user's `checks.nix` used to carry. A consumer's mapper applies it
   # per user over the derived members (failure attribution rides the check name), so a typical
   # user ships no check file at all:
   #
   #     contract.lib.mkHomeEvalCheck {
   #       inherit pkgs;
-  #       homesFor = sys: memberHomes.${sys}.${user};   # sys → { <label> = home; }, ONE user's bake
+  #       homesFor = sys: memberHomes.${sys}.${user};   # sys → { <mode> = home; }, ONE user's homes
   #       systems = repoSystems;                        # every system this repo bakes (a fleet fact)
   #     }
   #
-  # Deliberately SHAPE-AGNOSTIC: "everything we bake, evaluates" is this helper's fact; WHICH
-  # bakes a fleet bakes per system is the consumer mapper's fact, guarded where its per-system
-  # filter lives (the contract's `powerset(homeAxes)` is only the upper bound a host could
-  # grant, never a per-system baking obligation). And it forces ALL handed systems, the native one
-  # included — redundant with `checks = packages` build-depending on the native homes, but "the
-  # whole handed matrix evaluates" is a simpler contract than "the complement of whatever else
-  # covers".
+  # Deliberately SHAPE-AGNOSTIC: "everything we publish, evaluates" is this helper's fact; WHICH
+  # modes a fleet bakes per system is the consumer mapper's fact, guarded where its per-system
+  # subtraction lives (the contract's mode set is only the upper bound, never a per-system baking
+  # obligation). And it forces ALL handed systems, the native one included — redundant with
+  # `checks = packages` build-depending on the native homes, but "the whole handed matrix
+  # evaluates" is a simpler contract than "the complement of whatever else covers".
   #
   # Deliberately NO `tryEval` around the force: an eval failure propagates RAW as a failing check.
   # `tryEval` cannot tell "no aarch64 build upstream" from a typo'd package name — both would
@@ -329,29 +328,33 @@ let
     }:
     let
       homesBySystem = lib.genAttrs systems homesFor;
-      # A bake that is not a non-empty attrset — an emptied home set, or a mapper handing
-      # something that is not a bake attrset at all.
-      vacuousSystems = lib.filter (
-        sys: !(lib.isAttrs homesBySystem.${sys}) || homesBySystem.${sys} == { }
-      ) systems;
-      # Every system × bake whose forced value is NOT a `.drv` path. A bake that does not
+      # SHAPE and EMPTINESS are two different mistakes, and folding them into one predicate made
+      # this check report the wrong one: a row holding a single malformed entry is not empty, yet
+      # it failed with "no homes for [x86_64-linux]". Split by PARTITION rather than two negated
+      # filters, for the reason `mkMemberChecks` states below — the emptiness verdict may only be
+      # asked of a row it can READ, so the two sets have to stay exact complements.
+      byRowShape = lib.partition (sys: lib.isAttrs homesBySystem.${sys}) systems;
+      malformedSystems = byRowShape.wrong;
+      emptySystems = lib.filter (sys: homesBySystem.${sys} == { }) byRowShape.right;
+      # Every system × home whose forced value is NOT a `.drv` path. A home that does not
       # evaluate never lands here — its error propagates raw out of `force` (no tryEval, above) —
       # so an entry in this list means `force` stopped short of the derivation.
       unforced = lib.concatMap (
         sys:
-        map (label: "${sys}/${label}") (
-          lib.filter (label: !lib.hasSuffix ".drv" (force homesBySystem.${sys}.${label})) (
+        map (mode: "${sys}/${mode}") (
+          lib.filter (mode: !lib.hasSuffix ".drv" (force homesBySystem.${sys}.${mode})) (
             lib.attrNames homesBySystem.${sys}
           )
         )
-      ) systems;
+      ) byRowShape.right;
     in
-    # Ordered deliberately, anti-vacuous BEFORE evaluability: a check that forced nothing must
-    # report the emptied bake, not read as "every bake evaluates".
+    # Ordered deliberately: a SHAPE that cannot be read before anything is read off it, then
+    # anti-vacuity, and only then evaluability — a check that forced nothing must report the
+    # emptied row, not read as "every home evaluates".
     #
-    # This first assert EXTENDS issue #49's anti-vacuous clause ("for every system in `systems`,
+    # The anti-vacuous assert EXTENDS issue #49's clause ("for every system in `systems`,
     # `homesFor sys` is a non-empty attrset") to the list itself, which that wording passes over:
-    # `systems = [ ]` satisfies it for-all-vacuously, so the same emptied-bake hazard one level up
+    # `systems = [ ]` satisfies it for-all-vacuously, so the same emptied-row hazard one level up
     # would read as green forever. Same species, same verdict — a derived system list that filters
     # down to nothing is a mapper bug, not a passing check.
     assert diag.must {
@@ -367,11 +370,21 @@ let
         + "hardcoded).";
     };
     assert diag.must {
-      ok = vacuousSystems == [ ];
+      ok = malformedSystems == [ ];
       who = name;
-      problem = "no homes for ${showList vacuousSystems}";
+      problem = "the homes for ${showList malformedSystems} are not attrsets";
       why =
-        "An accidentally-emptied row (a per-system filter gone wrong in the mapper) must fail "
+        "A row that cannot be read cannot be reported as EMPTY — which is what this check used to "
+        + "say about a row holding one malformed entry, naming the wrong mistake to whoever had to "
+        + "fix it.";
+      fix = "`homesFor` returns `{ <mode> = home; }` — this user's built homes for that system.";
+    };
+    assert diag.must {
+      ok = emptySystems == [ ];
+      who = name;
+      problem = "no homes for ${showList emptySystems}";
+      why =
+        "An accidentally-emptied row (a per-system subtraction gone wrong in the mapper) must fail "
         + "here, never read as a passing eval check.";
       fix =
         "`homesFor` must return a NON-EMPTY attrset of this user's built homes for every handed "
@@ -420,7 +433,7 @@ let
   #               exists; an EMPTY one is a hard error, since a check set over nobody is green
   #               forever.
   #   `homes`     the consumer's per-system homes AS IT ALREADY HOLDS THEM —
-  #               `{ <system>.<user>.<label> = home; }`. The systems checked are its own key set, so
+  #               `{ <system>.<user>.<mode> = home; }`. The systems checked are its own key set, so
   #               "which systems this fleet bakes" is read off the material rather than handed a
   #               second time and trusted to agree.
   #   `buildHome` `member: extraModules: home` — the consumer's own builder, curried per member.
@@ -505,7 +518,7 @@ let
       problem = "`homes` is not an attrset";
       fix =
         "It is the consumer's per-system homes, keyed by system: "
-        + "`{ <system> = { <user> = { <label> = home; }; }; }`.";
+        + "`{ <system> = { <user> = { <mode> = home; }; }; }`.";
     };
     assert diag.must {
       ok = homes != { };
@@ -522,7 +535,7 @@ let
       who = "mkMemberChecks";
       problem = "the `homes` row(s) for ${showList malformedRows} are not attrsets";
       fix =
-        "Each system's row must be `{ <user> = { <label> = home; }; }`, this repo's own built "
+        "Each system's row must be `{ <user> = { <mode> = home; }; }`, this repo's own built "
         + "homes for that system.";
     };
     assert diag.must {

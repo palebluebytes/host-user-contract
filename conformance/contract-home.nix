@@ -214,16 +214,16 @@ in
 
     # --- the specialArgs: hostFacts is contract-owned; the rest is opaque passthrough ---
     {
-      name = "mkContractHome: hostFacts is narrowed (bind-riding sudo dropped), platform read off pkgs";
+      # The whole of what a home is told: the MODE it was built for, the platform (read off the
+      # caller's own pkgs, never ambient), and the exposure fact. `granted` is deliberately absent —
+      # no grant can change a home, so showing one the grant set would be showing it something it
+      # must not use (ADR-0032 §7).
+      name = "mkContractHome: hostFacts is { mode; platform; exposed } — no grant reaches a home";
       ok =
         recorded.extraSpecialArgs.hostFacts == {
           exposed = false;
+          mode = "gui";
           platform = "riscv64-linux";
-          granted = {
-            gui = {
-              enable = true;
-            };
-          };
         };
     }
     {
@@ -237,39 +237,19 @@ in
       ok = recorded.pkgs == stubPkgs;
     }
 
-    # --- the bake key travels with the home (issue #56) ---
-    # The built home carries the grant-key it was baked under, so the producer coin can verify the
-    # pairing instead of trusting the grant handed alongside. Recorded AS PASSED (sorted enabled
-    # names) — deliberately NOT the narrowed hostFacts set, which drops the bind-riding sudo above:
-    # the rule a producer holds is "pass the bake the same grant attrset you passed here", and the
-    # narrowing is the contract's own downstream step.
     {
-      name = "mkContractHome: the built home carries the grant-key it was baked under";
-      ok =
-        recorded.contractBakedGrantKey == [
-          "gui"
-          "sudo"
-        ];
-    }
-    {
-      name = "mkContractHome: a grant-less bake carries the empty key (not a missing marker)";
-      ok = overridden.contractBakedGrantKey == [ ];
-    }
-    {
-      # The marker rides the RESULT and adds exactly one attribute: it must not reach the home's
-      # own eval, where it would be a second, spoofable spelling of `hostFacts.granted` — and where
-      # an undeclared option would throw. The recording stub returns its arguments verbatim, so the
-      # result's attribute set IS the builder's arguments plus whatever mkContractHome appended.
-      name = "mkContractHome: the bake key is one added result attribute; the home never sees it";
+      # NOTHING is appended to the builder's own result. The `contractBakedGrantKey` marker the
+      # producer coin used to cross-check is gone with the pairing it protected (ADR-0032): a home
+      # is published under the very mode it was built for, so there is no second record to disagree
+      # with. The recording stub returns its arguments verbatim, so the result's attribute set IS
+      # exactly what the builder composed.
+      name = "mkContractHome: the result is the builder's own arguments — no marker rides it";
       ok =
         lib.attrNames recorded == [
-          "contractBakedGrantKey"
           "extraSpecialArgs"
           "modules"
           "pkgs"
-        ]
-        && !(recorded.extraSpecialArgs ? contractBakedGrantKey)
-        && !(lib.any (m: lib.isAttrs m && m ? contractBakedGrantKey) recorded.modules);
+        ];
     }
 
     # --- the home baseline: hygiene is a PINNED POSTURE, per-option overridable ---

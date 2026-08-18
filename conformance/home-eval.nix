@@ -1,12 +1,12 @@
 # Conformance domain: the members-generic HOME EVAL check (issue #49, decision #43).
 #
-# `mkHomeEvalCheck` proves ONE user's every bake EVALUATES on every system the
-# repo bakes it for — the members-generic replacement for the hand-written cross-arch eval
+# `mkHomeEvalCheck` proves ONE user's every published home EVALUATES on every system the
+# repo builds it for — the members-generic replacement for the hand-written cross-arch eval
 # checks every user's `checks.nix` used to carry. A consumer's mapper applies it per user
 # over the derived members, so a typical user ships no check file at all; what this domain
-# proves is the helper's own logic — that it cannot pass vacuously (an emptied bake, an
-# empty system list, a force that stops short) and that it fails loudly when any handed
-# system × bake does not evaluate.
+# proves is the helper's own logic — that it cannot pass vacuously (an emptied row, an
+# empty system list, a force that stops short), that it fails loudly when any handed
+# system × home does not evaluate, and that each of those failures is reported as ITSELF.
 #
 # COVERAGE NOTE — like `./confinement.nix`, this drives the helper through SYNTHETIC homes
 # (plain attrsets shaped like the default force's attrpath): the contract has no home-manager
@@ -18,11 +18,11 @@
   mkHomeEvalCheck,
 }:
 let
-  # A synthetic baked home carrying exactly the attrpath the DEFAULT `force` dereferences
+  # A synthetic built home carrying exactly the attrpath the DEFAULT `force` dereferences
   # (`home.activationPackage.drvPath`), so this domain exercises the default hook's shape —
   # though not a real home-manager home; see the coverage note above.
-  home = label: {
-    activationPackage.drvPath = "/nix/store/00000000000000000000000000000000-${label}.drv";
+  home = mode: {
+    activationPackage.drvPath = "/nix/store/00000000000000000000000000000000-${mode}.drv";
   };
   # A home whose force THROWS — the stand-in for the real hazard (a typo'd package name, a
   # module error). The helper deliberately runs no `tryEval`, so this must surface as a
@@ -31,15 +31,15 @@ let
     activationPackage.drvPath = throw "package 'emacs-pgtk' missing on this system";
   };
 
-  # The decided reference shape (#43): a consumer's per-system bake-matrix rows, as HOMES —
-  # x86_64 {base, gui}, aarch64 {base}. The helper takes it as handed and asserts ALL of it.
+  # The decided reference shape (#43): a consumer's per-system rows, keyed by MODE —
+  # x86_64 {cli, gui}, aarch64 {cli}. The helper takes it as handed and asserts ALL of it.
   matrix = {
     "x86_64-linux" = {
-      base = home "base-x86";
+      cli = home "cli-x86";
       gui = home "gui-x86";
     };
     "aarch64-linux" = {
-      base = home "base-arm";
+      cli = home "cli-arm";
     };
   };
 
@@ -61,8 +61,26 @@ let
   # handed system is skipped (including the native one: the helper has no native/foreign
   # distinction, it forces the whole handed matrix).
   brokenOn =
-    badSys:
-    lib.mapAttrs (sys: bakes: if sys == badSys then bakes // { base = brokenHome; } else bakes) matrix;
+    badSys: lib.mapAttrs (sys: row: if sys == badSys then row // { cli = brokenHome; } else row) matrix;
+
+  # THE MISLEADING-MESSAGE CASE (issue #67, second guard defect). SHAPE and EMPTINESS were folded
+  # into one predicate, so a row that is not an attrset — a list holding one home, say — failed
+  # with *"no homes for [x86_64-linux]"*. The row is not empty; it holds a home in the wrong shape,
+  # and the message named the wrong mistake to whoever had to fix it. The two predicates are split
+  # now, and the two rows below drive them SEPARATELY: an unreadable row and an emptied one are
+  # different mistakes with different diagnoses.
+  #
+  # What cannot be asserted here is the message TEXT — `tryEval` discards it, as this suite records
+  # wherever it drives a named error. So the split is pinned the only way eval allows: each shape
+  # is refused on its own, and the emptiness verdict is structurally unreachable for a row the
+  # check could not read (the partition makes the two sets exact complements rather than two
+  # hand-written predicates that have to keep agreeing).
+  rowHoldingAHomeInTheWrongShape = {
+    homesFor = sys: if sys == "x86_64-linux" then [ (home "cli-x86") ] else matrix.${sys};
+  };
+  emptiedRow = {
+    homesFor = sys: if sys == "x86_64-linux" then { } else matrix.${sys};
+  };
 in
 {
   assertions = [
@@ -71,10 +89,10 @@ in
       ok = passes { };
     }
     {
-      # The anti-vacuous claim: an accidentally-emptied bake (a filter gone wrong in the
+      # The anti-vacuous claim: an accidentally-emptied row (a subtraction gone wrong in the
       # consumer's mapper) must never read as a passing eval check.
       name = "mkHomeEvalCheck: fails when a system's home set is empty (no vacuous pass)";
-      ok = !(passes { homesFor = sys: if sys == "aarch64-linux" then { } else matrix.${sys}; });
+      ok = !(passes emptiedRow);
     }
     {
       # Same trap one level up: a check over ZERO systems would pass vacuously forever.
@@ -82,10 +100,11 @@ in
       ok = !(passes { systems = [ ]; });
     }
     {
-      # A mapper handing something that is not a bake attrset at all is a broken harness,
-      # reported as such rather than iterated over.
-      name = "mkHomeEvalCheck: fails when homesFor returns a non-attrset (broken harness, not a pass)";
-      ok = !(passes { homesFor = _: [ "not-an-attrset" ]; });
+      # THE MISLEADING-MESSAGE CASE (issue #67): a row that HOLDS a home but is not an attrset is
+      # a broken harness, and must be reported as one rather than as "no homes" — it is not empty.
+      # Paired with the emptiness claim above, this is the split: two shapes, two refusals.
+      name = "mkHomeEvalCheck: a row holding a home in the wrong shape is refused as a SHAPE error, not as empty";
+      ok = !(passes rowHoldingAHomeInTheWrongShape);
     }
     {
       # The claim the helper exists to make: a bake that does not evaluate on a handed

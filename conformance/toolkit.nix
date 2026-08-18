@@ -66,9 +66,11 @@ rec {
   # never the reverse. referenceIdentity has username "ada", name "Ada Reference".
   referenceHome = import ../examples/users/users/ada/home.nix;
   referenceIdentity = loadIdentity ../examples/users/users/ada/identity.json;
+  # What a producer hands a home (ADR-0032 §7): the mode it was built for, its platform, and the
+  # exposure fact — and no grant set, because no grant can change a home.
   referenceHostFacts = {
     exposed = false;
+    mode = "gui";
     platform = system;
-    granted = { };
   };
 }

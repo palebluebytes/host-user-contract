@@ -1,30 +1,27 @@
 # The manifest module (issue #27): the SINGLE owner of the `contract-requests.json` schema — the
 # seam between the producer (`mkContractPackage`) and the consumer (`bindContractPackage`). It owns
-# the manifest VERSION, its FIELD SET (`version`, `username`, `requests`, `packages`, `granted`),
-# the seam FILENAME, and the v1→v2 compatibility read. `writeManifest` serializes a manifest to a
+# the manifest VERSION, its FIELD SET (`version`, `username`, `requests`, `packages`, `mode`), the
+# seam FILENAME, and the backward-compatibility read. `writeManifest` serializes a manifest to a
 # store path at EVAL TIME via `builtins.toFile` (pure, no IFD); `readManifest` parses a pinned store
 # path back into the canonical field set. The producer writes THROUGH `writeManifest` and the
 # consumer reads THROUGH `readManifest`, so neither re-encodes the shape independently (ADR-0016).
 #
-# THE WIRE NAME AND THE NIX NAME DIFFER, deliberately (ADR-0030). On the wire the coupling-guard
-# field is `granted`, because that is what v2 shipped and a JSON key is a format commitment. In Nix
-# it is `grantKey` on BOTH sides of this module — the argument `writeManifest` takes and the field
-# `readManifest` returns — because the value is a sorted NAME LIST, and `granted` everywhere else in
-# this repo means an attrset-shaped option path. This module is therefore the one place the two
-# spellings meet, which is exactly what a schema owner is for: the translation lives here, once,
-# instead of every reader having to remember that this particular `granted` is not like the others.
+# WHAT THE MANIFEST FREEZES is the MODE the home was built for (ADR-0032 §8) — one field, not the
+# list of grants v2 carried. That is the direct translation of ADR-0016's coupling guard: a grant
+# can no longer change a home, so there is nothing about a grant to freeze, while the mode is
+# precisely the thing a bind cannot change and so precisely the thing worth asserting about.
 { lib }:
 let
-  # The current manifest version. v2 added the wire field `granted` (the enabled feature names baked
-  # into the home — the ADR-0016 coupling-guard field, surfaced in Nix as `grantKey`) to v1's
-  # `{ version, username, requests, packages }`. `writeManifest` emits this by default;
-  # `readManifest` accepts EITHER (a v1 manifest predates the field, so it reads back as `[ ]` — the
-  # v1→v2 compat).
-  currentVersion = 2;
+  # The current manifest version. v3 replaced v2's `granted` (the enabled feature names baked into
+  # the home) with `mode` (the session shape it was built for) — the ADR-0032 restructuring on the
+  # wire. v2 in turn added `granted` to v1's `{ version, username, requests, packages }`.
+  # `writeManifest` emits the current version; `readManifest` accepts any of the three (a pre-v3
+  # manifest predates `mode`, so it reads back as `null` — see below).
+  currentVersion = 3;
 
-  # The wire spelling of the coupling-guard field, named once so the write and read sides below
-  # cannot drift on it — and so a future version bump that renames it on the wire is one edit.
-  grantKeyWireField = "granted";
+  # The wire spelling of the mode field, named once so the write and read sides below cannot drift
+  # on it — and so a future version bump that renames it on the wire is one edit.
+  modeWireField = "mode";
 
   # The seam filename inside a contractPackage — single-sourced so the producer writes and the
   # consumer reads the SAME name (`mkContractPackage` copies to it; `bindContractPackage` reads it).
@@ -37,18 +34,19 @@ in
   manifestFileName = fileName;
 
   # writeManifest: serialize the manifest field set to a store path at eval time (`builtins.toFile`,
-  # no IFD). `version` defaults to the current (v2); passing `version = 1` emits the LEGACY shape
-  # (no `granted`) — used only to author the v1 fixture and the v1→v2 compat proof, never by the
-  # live producer (which always bakes the current version). Returns the JSON file's store path,
-  # which the producer copies into the contractPackage under `manifestFileName`.
+  # no IFD). `version` defaults to the current (v3); passing an older one emits that LEGACY shape —
+  # used only to author the compat fixtures and their proofs, never by the live producer (which
+  # always bakes the current version). Returns the JSON file's store path, which the producer copies
+  # into the contractPackage under `manifestFileName`.
   writeManifest =
     {
       username,
       requests,
       packages,
-      # The bake's GRANT-KEY (sorted enabled feature names). Named for what it is; it lands
-      # on the wire under `grantKeyWireField` — see the header.
-      grantKey ? [ ],
+      # The MODE this home was built for (ADR-0032 §8) — the one thing about a home that a bind
+      # cannot change, and so the one thing worth freezing. It lands on the wire under
+      # `modeWireField`; `null` emits the pre-v3 shape's silence about it.
+      mode ? null,
       version ? currentVersion,
     }:
     builtins.toFile "contract-requests-${username}.json" (
@@ -61,18 +59,22 @@ in
             packages
             ;
         }
-        # The field exists only from v2 on — a v1 manifest omits it (the read side defaults it to []).
-        // lib.optionalAttrs (version >= 2) { ${grantKeyWireField} = grantKey; }
+        # The field exists only from v3 on — an older manifest omits it (the read side reads it
+        # back as `null`).
+        // lib.optionalAttrs (version >= 3) { ${modeWireField} = mode; }
       )
     );
 
   # readManifest: parse a pinned manifest file (`${contractPackage}/${manifestFileName}`, already in
-  # the store) into the canonical field set. Applies the v1→v2 compat read: the grant-key field
-  # (absent in v1) normalizes to `[ ]`, and `packages` (defensively) too. A plain `importJSON` — the
+  # the store) into the canonical field set. Applies the backward-compat read: `mode` (absent before
+  # v3) normalizes to `null`, and `packages` (absent in v1) to `[ ]`. A plain `importJSON` — the
   # file is pre-built and pinned (a realized store path), so this is not IFD.
   #
-  # The wire field is translated to `grantKey` here, so every reader downstream holds a name that
-  # says "sorted list", not one that reads like the attrset-shaped `granted` option paths.
+  # A `null` mode is the honest reading of a manifest that predates the field: it says nothing about
+  # what it was built for, so the coupling guard has nothing to check rather than something to
+  # refuse. That is the same posture v1's absent grant-key took, and it is confined to the same
+  # place — a home reached through `bindContractUser` is selected BY mode off the index and can
+  # never be pre-v3.
   readManifest =
     manifestFile:
     let
@@ -81,6 +83,6 @@ in
     {
       inherit (raw) version username requests;
       packages = raw.packages or [ ];
-      grantKey = raw.${grantKeyWireField} or [ ];
+      mode = raw.${modeWireField} or null;
     };
 }
