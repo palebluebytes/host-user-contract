@@ -393,8 +393,8 @@ let
   # making the builder a hard requirement.
   #
   # Compared as GRANT-KEYS (`grantKey`, the sorted enabled names), which is the whole observable
-  # content of a grant set and exactly what the index publishes — so `{ gui.enable = true;
-  # sudo.enable = false; }` and `{ gui.enable = true; }` are the same key, as they are everywhere
+  # content of a grant set and exactly what the index publishes — so `{ gui = true;
+  # sudo = false; }` and `{ gui = true; }` are the same key, as they are everywhere
   # else here. The comparison is on the key AS PASSED to the builder, not on the narrowed one the
   # home saw: the narrowing (ADR-0028) is deterministic, so key equality is the stronger claim, and
   # the rule a producer has to hold is the simple one — hand the bake the SAME grant attrset you
@@ -449,9 +449,7 @@ let
     { username, home }:
     let
       wants = home.config.contract.wants;
-      vetoed = lib.filter (f: !(wants.${f}.enable or false)) (
-        requestingFeatures home.config.contract.requests
-      );
+      vetoed = lib.filter (f: !(wants.${f} or false)) (requestingFeatures home.config.contract.requests);
     in
     diag.must {
       ok = vetoed == [ ];
@@ -466,6 +464,113 @@ let
         + "home. (A request for a feature the user DOES want but a HOST does not grant is inert by "
         + "design, ADR-0002; this is the other case.)";
       fix = "Want the feature, or drop its requests.";
+    };
+
+  # harvestVoice (ADR-0028/0032): the user's WHOLE voice, read off the homes it was built as, and
+  # held to itself. Both halves live in the user's own home, and both are read here because this is
+  # the only place every one of a user's homes is in scope at once:
+  #
+  #   offer      `contract.wants` — WHICH features this user asks a host for. Published in the
+  #              binding index; `bindContractUser` derives the grant as `affordances ∩ offer`.
+  #   supported  `contract.supports` — WHICH MODES this home can run in. It is the PUBLICATION set:
+  #              a producer publishes one home per supported mode, and a host binds the mode it
+  #              runs.
+  #
+  # Both must be MODE-INVARIANT, and for the same reason in two directions. An offer that varied by
+  # mode would be circular — the grant is derived FROM the offer, so it cannot also depend on what
+  # the host afforded. A `supports` that varied by mode would make the published set depend on
+  # which mode happened to be evaluated first, which is a coin toss dressed as a declaration.
+  #
+  # Reading `supports` forces the module FIXPOINT but not `activationPackage`, so the published set
+  # is decided before any derivation is instantiated. Stated because otherwise it quietly becomes a
+  # double evaluation: the homes are handed in already built (as thunks), and only their `config`
+  # is forced here.
+  #
+  # `homes` is a LIST of evaluated homes — this cares only about the voices, never about what each
+  # home was built as, so it takes the values and not the keys.
+  harvestVoice =
+    { username, homes }:
+    let
+      voiceOf = h: h.config.contract;
+      voices = map voiceOf homes;
+      # Each half compared as its enabled-NAME projection, which is the whole observable content of
+      # a bool-per-key set and exactly what downstream consumes.
+      offeredNames = map (v: grantedNamesOf v.wants) voices;
+      supportedNames = map (v: lib.filter (m: v.supports.${m} or false) modeNames) voices;
+      first = lib.head voices;
+      supported = lib.head supportedNames;
+      # Supporting a mode while vetoing the grant that mode is associated with: issue #59's rule
+      # one layer up. The user has asked to be built for a session shape and refused the very
+      # feature a host confers to run it, so no host can rescue it.
+      contradictory = lib.filter (
+        m:
+        let
+          g = grantOfMode m;
+        in
+        g != null && !(first.wants.${g} or false)
+      ) supported;
+      allSame = names: lib.all (n: n == lib.head names) names;
+    in
+    # Ordered so the emptiest mistake reports first: nothing to harvest at all, then each half's
+    # invariance (a varying half makes every verdict below it a coin toss), then what the harvested
+    # values SAY.
+    assert diag.must {
+      ok = homes != [ ];
+      who = "mkContractUser";
+      problem = "${showName username} declares no homes";
+      why = "There is no evaluated home to harvest `contract.wants`/`contract.supports` from.";
+      fix = "A user must build at least one home.";
+    };
+    assert diag.must {
+      ok = allSame offeredNames;
+      who = "mkContractUser";
+      problem =
+        "mode-varying offer for ${showName username} — its `contract.wants` differs across "
+        + "its homes: ${lib.concatMapStringsSep ", " showList offeredNames}";
+      why =
+        "An offer that depends on `hostFacts` is circular: the grant is DERIVED from the offer "
+        + "(affordances ∩ offer), so it cannot also be an input to it.";
+      fix = "Declare `contract.wants` the same way in every home this user builds.";
+    };
+    assert diag.must {
+      ok = allSame supportedNames;
+      who = "mkContractUser";
+      problem =
+        "mode-varying `supports` for ${showName username} — it differs across its homes: "
+        + "${lib.concatMapStringsSep ", " showList supportedNames}";
+      why =
+        "`supports` decides WHICH homes are published, so one that varies by mode would make the "
+        + "published set depend on which mode happened to be evaluated first.";
+      fix = "Declare `contract.supports` the same way in every home this user builds.";
+    };
+    assert diag.must {
+      ok = supported != [ ];
+      who = "mkContractUser";
+      problem = "${showName username} supports no mode";
+      why =
+        "A user that can run in no session shape is uninstallable: nothing is published for it, so "
+        + "every host that tried to bind it would find an empty index entry rather than a refusal. "
+        + "There is no default, deliberately — a default would set a user's essential nature "
+        + "without the user having said anything.";
+      fix =
+        "Declare at least one, e.g. `contract.supports.gui = true;` for an ordinary desktop user "
+        + "(the modes are ${showList modeNames}).";
+    };
+    assert diag.must {
+      ok = contradictory == [ ];
+      who = "mkContractUser";
+      problem =
+        "self-contradictory voice for ${showName username} — it supports "
+        + "${showList contradictory} while its `contract.wants` refuses the grant each of those "
+        + "modes is run under";
+      why =
+        "A host confers that grant in order to run that mode, so a user vetoing it can never be "
+        + "given the session it asked to be built for — a contradiction no host can rescue.";
+      fix = "Want the grant, or drop the mode from `contract.supports`.";
+    };
+    {
+      inherit supported;
+      offer = first.wants;
     };
 
   # mkContractPackageForHome (ADR-0016, issue #23): the OPTIONAL home-manager producer adapter. It mirrors
@@ -689,7 +794,7 @@ let
   # not a member set, and constructing one to bake it would be ceremony.
   #
   # `homes` is `[{ grants; home }]` — `grants` is the grant ATTRSET the bake is baked with (the
-  # same `{ <feature>.enable = bool; }` shape, under the same name, that `mkContractHome` bakes the
+  # same `{ <feature> = bool; }` shape, under the same name, that `mkContractHome` bakes the
   # home under and `mkContractPackageForHome` consumes); it is projected to the index's `granted`
   # NAME LIST by `grantedNamesOf`. `loadIdentity` is injected by the kit (like `homeModule` for
   # `traceUser`) so the users flake calls this without wiring the loader itself. `pkgs` is a
@@ -754,6 +859,7 @@ let
       # check builds the packages and never reads the index a host binds through.
       built = map (
         v:
+        assert voiceHolds;
         assert assertHomePairing {
           context = "mkContractUser";
           username = userName;
@@ -777,32 +883,19 @@ let
           label = homeLabel v.grants;
         }
       ) homes;
-      # The harvested offer + its bake-invariance guard. Compared as the enabled-name PROJECTION
-      # (what the index publishes and `bindContractUser` intersects), which is the whole observable
-      # content of a want set.
-      harvestedWants = map (v: v.home.config.contract.wants) homes;
-      offeredNames = map grantedNamesOf harvestedWants;
-      offer =
-        if homes == [ ] then
-          diag.stop {
-            who = "mkContractUser";
-            problem = "${showName userName} declares no homes";
-            why = "There is no evaluated home to harvest `contract.wants` from.";
-            fix = "A user must build at least one home.";
-          }
-        else if lib.all (o: o == lib.head offeredNames) offeredNames then
-          lib.head harvestedWants
-        else
-          diag.stop {
-            who = "mkContractUser";
-            problem =
-              "home-varying offer for ${showName userName} — its `contract.wants` differs across "
-              + "its homes: ${lib.concatMapStringsSep ", " showList offeredNames}";
-            why =
-              "An offer that depends on `hostFacts.granted` is circular: the grant is DERIVED from "
-              + "the offer (affordances ∩ offer), so it cannot also be an input to it.";
-            fix = "Declare `contract.wants` the same way in every home this user builds.";
-          };
+      # The user's harvested VOICE and every guard over it — the offer this user publishes and the
+      # modes it supports, read off the homes and held to each other (see `harvestVoice`).
+      voice = harvestVoice {
+        username = userName;
+        homes = map (v: v.home) homes;
+      };
+      inherit (voice) offer;
+      # …and the guards ride the whole bake RECORD as well as the published `offer`, for the same
+      # reason the request guard does: the repo that owns a self-contradictory voice is the USER's,
+      # whose flake check builds the PACKAGES and never reads the index a host binds through. A
+      # guard reachable only through `offer` would leave that repo green. `seq` forces the harvest
+      # to weak head normal form, which is exactly far enough to run every assert inside it.
+      voiceHolds = builtins.seq voice true;
     in
     {
       packages.${system} = lib.listToAttrs (
@@ -1344,9 +1437,7 @@ let
       grantNames = lib.intersectLists (grantedNamesOf config.contract.affordances) (
         grantedNamesOf index.offer
       );
-      grants = lib.genAttrs grantNames (_: {
-        enable = true;
-      });
+      grants = lib.genAttrs grantNames (_: true);
       # Maximal bake whose grant-key ⊆ the derived grant. A bake covers when every
       # feature it was baked with is granted; the maximum covers every other cover. Zero or ≥2
       # maxima (an uncovered or incomparable combo the producer never baked) is a hard error.
@@ -1392,11 +1483,9 @@ in
   # privileged-group features by construction. This is the canonical, conformance-checked grant
   # value the greeter provisions with (`contract-greeter-provision` realizes AT MOST the safe set);
   # single-sourcing it here is exactly ADR-0008's conformance condition (3): a greeter grants AT
-  # MOST the safe set. `grants` is shaped `{ <feature>.enable = bool; }` (the registry's
+  # MOST the safe set. `grants` is shaped `{ <feature> = bool; }` (the registry's
   # grantedOptions), so this lifts the safe-set NAME LIST into that grant attrset.
-  greeterGrants = lib.genAttrs safeSet (_: {
-    enable = true;
-  });
+  greeterGrants = lib.genAttrs safeSet (_: true);
 
   # The Tier-1 restricted-eval posture (ADR-0014): the canonical Nix settings under which the
   # greeter EVALUATES and BUILDS a host-signed (semi-trusted) user home (step 5/6). Tier 1 is

@@ -87,6 +87,7 @@ let
         toolkit
         homeModule
         homeGreeterDesktopModule
+        modes
         safeSet
         ;
     })

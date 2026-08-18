@@ -46,7 +46,7 @@ let
   # arm tier that bakes `base` alone. Two systems and two labels is the smallest matrix that can
   # tell "the row's grants" from "the fleet's grants" and "this system's pkgs" from "the pkgs".
   guiGrants = {
-    gui.enable = true;
+    gui = true;
   };
   probeMatrix = {
     x86_64-linux = [
@@ -185,13 +185,19 @@ let
     printf '#!/bin/sh\necho activated\n' > $out/activate
     chmod +x $out/activate
   '';
-  # The full want set a real home eval yields: every registry feature present, `.enable` a bool.
+  # The full want set a real home eval yields: every registry feature present, one bool each.
   syntheticWants = {
-    gui.enable = true;
-    sudo.enable = false;
-    containers.enable = false;
-    virtualization.enable = false;
-    nix-daemon.enable = false;
+    gui = true;
+    sudo = false;
+    containers = false;
+    virtualization = false;
+    nix-daemon = false;
+  };
+  # …and the full support set: every registry mode present, one bool each. These members are
+  # ordinary desktop users, so they support gui.
+  syntheticSupports = {
+    cli = false;
+    gui = true;
   };
   # `stamp` is what `mkContractHome` attaches to its result (issue #56) — the grant-key the home was
   # BUILT under. Taking it as an argument is what lets the cases below build a home that agrees with
@@ -205,6 +211,7 @@ let
           gui.desktop = "plasma";
         };
         contract.wants = syntheticWants;
+        contract.supports = syntheticSupports;
         home = {
           packages = [ pkgs.hello ];
           inherit username;
@@ -229,7 +236,7 @@ let
     { member, grants, ... }:
     mkSyntheticHome {
       username = member.name;
-      stamp = lib.sort (a: b: a < b) (lib.filter (f: grants.${f}.enable or false) (lib.attrNames grants));
+      stamp = lib.sort (a: b: a < b) (lib.filter (f: grants.${f} or false) (lib.attrNames grants));
     };
   outputFleet = mkContractFleet {
     inherit members;

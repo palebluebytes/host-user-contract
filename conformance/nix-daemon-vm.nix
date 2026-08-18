@@ -32,7 +32,7 @@ mkSeatVM {
         email = "alice@example.invalid";
         username = "alice";
       };
-      granted.nix-daemon.enable = true;
+      granted.nix-daemon = true;
     };
 
     # bob: no grant → not in nix-users → daemon-restricted.

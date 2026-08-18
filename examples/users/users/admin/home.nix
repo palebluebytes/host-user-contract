@@ -14,5 +14,5 @@
   # What admin ASKS a host for (ADR-0028): `sudo` is privileged, so it must be asked for
   # explicitly. It stays an ask — wheel arrives solely where a host also affords sudo
   # (grant = affordances ∩ offer), and the producer harvests this as admin's published offer.
-  contract.wants.sudo.enable = true;
+  contract.wants.sudo = true;
 }

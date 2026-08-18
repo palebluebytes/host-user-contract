@@ -15,6 +15,6 @@
   # flake — the producer harvests it as her published offer. `containers` is privileged, so it is
   # never a default: a privileged feature is asked for deliberately or not at all. gui rides the
   # safe-set default, so it needs no line here.
-  contract.wants.containers.enable = true;
+  contract.wants.containers = true;
   contract.requests.gui.desktop = "gnome";
 }

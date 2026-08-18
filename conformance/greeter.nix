@@ -181,7 +181,7 @@ in
       name = "greeterGrants: enables exactly the safe set (default-open, nothing beyond it)";
       ok =
         (lib.sort (a: b: a < b) (lib.attrNames greeterGrants) == lib.sort (a: b: a < b) safeSet)
-        && lib.all (n: greeterGrants.${n}.enable) (lib.attrNames greeterGrants);
+        && lib.all (n: greeterGrants.${n}) (lib.attrNames greeterGrants);
     }
     {
       # ADR-0008 conformance condition (3): a greeter grants AT MOST the safe set, so a

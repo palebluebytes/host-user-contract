@@ -18,7 +18,7 @@
 # The clamp and the grant→groups fold both come from the injected grantLib (issue #28) — the
 # single owner of the security-critical privileged-group clamp — so this plan cannot drift from
 # the greeter's runtime `provision`, which reproduces the same rule shell-side. `grants` is a
-# grant attrset (`{ <feature>.enable = bool; }`, i.e. `custom.users.<u>.granted`); `identity` is
+# grant attrset (`{ <feature> = bool; }`, i.e. `custom.users.<u>.granted`); `identity` is
 # the resolved identity record. Pure: no `config`, no module args, no packages (ADR-0004).
 {
   lib,

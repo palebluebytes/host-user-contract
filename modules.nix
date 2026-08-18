@@ -9,6 +9,7 @@
   homeProfileOptions,
   grantedOptions,
   wantedOptions,
+  supportsOptions,
   featureConfigOptions,
 }:
 {
@@ -35,19 +36,24 @@
         default = { };
         description = "Per-user identity, grants, and feature configuration.";
       };
-      # contract.affordances (ADR-0025, issue #25): the HOST's voice — the features this host is
-      # willing to grant to users who offer them, declared ONCE per host. Same `{ <feature>.enable
-      # = bool; }` shape as a grant set (grantedOptions). It is the symmetric counterpart of the
-      # user's `contract.requests` and a generalisation of the greeter's safe set (the safe set is
-      # simply the greeter's affordance). Consumed by `bindContractUser` — the sole public consumer
-      # bind (ADR-0026) — which derives each user's grant as `affordances ∩ offer`: a NECESSARY
-      # condition, the host's absolute veto — a feature not afforded is never granted, whatever a
-      # user offers. There is no unilateral direct-grant path: the public grant model is always
-      # negotiated.
+      # contract.affordances (ADR-0025, issue #25): the HOST's voice, and the ONLY thing a host
+      # declares — the features it is willing to grant to users who offer them, stated ONCE. Same
+      # `{ <feature> = bool; }` shape as a grant set (grantedOptions). It is the symmetric
+      # counterpart of the user's `contract.requests` and a generalisation of the greeter's safe
+      # set (the safe set is simply the greeter's affordance). Consumed by `bindContractUser` — the
+      # sole public consumer bind (ADR-0026) — which derives each user's grant as
+      # `affordances ∩ offer`: a NECESSARY condition, the host's absolute veto — a feature not
+      # afforded is never granted, whatever a user offers. There is no unilateral direct-grant
+      # path: the public grant model is always negotiated.
+      #
+      # The MODES a host runs are DERIVED from this and nothing else (ADR-0032 §4): the floor, plus
+      # every mode whose associated grant is afforded. There is deliberately no second host-side
+      # namespace — two declarations that must agree, with nothing forcing them to, is the defect
+      # class ADR-0032 removes, so the disagreement is made unwriteable rather than guarded.
       options.contract.affordances = lib.mkOption {
         type = lib.types.submodule { options = grantedOptions; };
         default = { };
-        description = "Features this host affords to users who offer them (ADR-0025); bindContractUser derives each grant as affordances ∩ offer. Same shape as a grant set; the host's absolute veto.";
+        description = "Features this host affords to users who offer them (ADR-0025); bindContractUser derives each grant as affordances ∩ offer, and the modes this host runs from the same declaration (ADR-0032). Same shape as a grant set; the host's absolute veto.";
       };
       options.custom.host.exposed = lib.mkEnableOption "an exposed/agent-facing host — a plain fact a user's home may read (via hostFacts) and adapt to; the contract enforces nothing on it";
       # Package policy inclusion list (ADR-0017, issue #17): after contractPackage activation,
@@ -80,21 +86,44 @@
     # `offer`, so the user's voice lives in ONE place (the home) rather than split between the home
     # and the producer's flake. `bindContractUser` then derives the grant as `affordances ∩ offer`.
     #
-    # Same `{ <feature>.enable = bool; }` shape as a grant set (wantedOptions is DERIVED from
+    # Same `{ <feature> = bool; }` shape as a grant set (wantedOptions is DERIVED from
     # grantedOptions) — one shape across wants/affordances/granted/offer, so the grant algebra
     # needs no normalising shim. NO freeformType: a want for a feature the contract does not
     # declare is a typo in the user's own repo, and typos must not silently become "offers nothing".
     # It defaults to the SAFE SET (the runtime-eligible, non-privileged features): a privileged
     # feature is only ever offered deliberately, and a user wanting no desktop writes
-    # `contract.wants.gui.enable = false`.
+    # `contract.wants.gui = false`.
     #
-    # It must be HOME-INVARIANT: `contract.wants` may not depend on `hostFacts.granted`, because
-    # the grant is derived FROM the offer — mkContractUser fails the bake if the harvest differs
-    # across a user's bakes.
+    # It must be MODE-INVARIANT: `contract.wants` may not depend on `hostFacts`, because the grant
+    # is derived FROM the offer — mkContractUser fails the bake if the harvest differs across a
+    # user's homes.
     options.contract.wants = lib.mkOption {
       type = lib.types.submodule { options = wantedOptions; };
       default = { };
       description = "Features this user asks a host for (ADR-0028); mkContractUser harvests it as the binding index's offer and bindContractUser derives the grant as affordances ∩ offer. Same shape as a grant set; defaults to the safe set.";
+    };
+
+    # contract.supports (ADR-0032 §3): the user's OTHER voice — which MODES this home can run in.
+    # It is the publication set: a producer builds one home per supported mode, and a host binds
+    # the mode it runs. `contract.supports.gui = true` is the teaching convention for an ordinary
+    # user (ADR-0006's "gui by default"), but nothing writes it for anyone.
+    #
+    # AT LEAST ONE MODE IS REQUIRED, and no default supplies it. A user supporting nothing is
+    # uninstallable, so that is a NAMED bake error rather than an empty published set — and a
+    # default satisfying "at least one" would set a user's essential nature by inheritance. The
+    # per-mode default is `false` only so the module system has a value to merge; it never
+    # satisfies the rule.
+    #
+    # It must be MODE-INVARIANT, guarded exactly as the offer's is: a `supports` that varied by
+    # mode would make the published set depend on which mode happened to be evaluated first.
+    #
+    # Distinct from `custom.home.profiles.*`: `supports` is what this home CAN run in — the user
+    # speaking outward — while a profile is the mode it IS running in, a fact handed to the home
+    # and derived from `hostFacts.mode` (ADR-0032 §7). One is a claim, the other an answer.
+    options.contract.supports = lib.mkOption {
+      type = lib.types.submodule { options = supportsOptions; };
+      default = { };
+      description = "Modes this user's home can run in (ADR-0032). At least one is required — a user supporting no mode is uninstallable, and the bake says so by name. The producer builds one home per supported mode; the host binds the mode it runs.";
     };
 
     # contract.requests (ADR-0002/0007, issue #5): the typed, read-only namespace a user's

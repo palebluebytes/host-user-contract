@@ -33,8 +33,8 @@ let
   grantLib =
     let
       # Granted-feature-names projection: the enabled feature names in a grant attrset
-      # `{ <feature>.enable = bool; }` (the registry's grantedOptions shape).
-      grantedNames = grants: lib.filter (f: grants.${f}.enable or false) (lib.attrNames grants);
+      # `{ <feature> = bool; }` (the registry's grantedOptions shape).
+      grantedNames = grants: lib.filter (f: grants.${f} or false) (lib.attrNames grants);
     in
     {
       inherit grantedNames;
@@ -45,23 +45,48 @@ let
       # input — a user can never escalate by listing a privileged group in its own identity).
       safeDeclared = declared: lib.filter (g: !lib.elem g privilegedGroups) declared;
     };
-  grantedOptions = lib.mapAttrs (_: f: { enable = lib.mkEnableOption f.grant; }) registry;
+  # The grant option fragment: ONE BOOL PER FEATURE, `{ <feature> = bool; }`. The `.enable` suffix
+  # it used to carry is gone (ADR-0032 §3) — it existed so four namespaces
+  # (wants/affordances/granted/offer) shared one shape, not because a feature ever carried a second
+  # flag. Parameters have their own namespace (`contract.requests.gui.desktop`), and ADR-0024 split
+  # coarse roles into ATOMIC features rather than adding flags to one, so a word that never varied
+  # across five features and four namespaces was ceremony. The four namespaces still share one
+  # shape; the shape is simply a bool.
+  grantedOptions = lib.mapAttrs (_: f: lib.mkEnableOption f.grant) registry;
   # The `contract.wants` option fragment (ADR-0028): the USER's voice, home-side — which features
-  # this user asks a host for. DERIVED from grantedOptions so the two shapes can never drift (the
-  # grant algebra is written against `.enable`, and one shape spans wants/affordances/granted/offer),
-  # with one change: each SAFE-SET feature defaults to WANTED. Non-privileged features are wanted by
-  # default; privileged ones must be asked for — ADR-0002's "one mechanism, opposite defaults" read
-  # from the user's side, and a future non-privileged feature inherits it with no new special case.
+  # this user asks a host for. DERIVED from grantedOptions so the two shapes can never drift (one
+  # shape spans wants/affordances/granted/offer), with one change: each SAFE-SET feature defaults
+  # to WANTED. Non-privileged features are wanted by default; privileged ones must be asked for —
+  # ADR-0002's "one mechanism, opposite defaults" read from the user's side, and a future
+  # non-privileged feature inherits it with no new special case.
   # The default is per-FEATURE, not a whole-submodule default: a home asking for `sudo` must not
   # thereby discard the safe-set default (a submodule default is replaced by any definition).
   # The description is re-worded rather than inherited: `grant`'s text names a HOST GRANT, and a
   # want is only ever an ASK (CONTEXT.md keeps the two words distinct).
-  wantedOptions = lib.mapAttrs (name: opts: {
-    enable = opts.enable // {
+  wantedOptions = lib.mapAttrs (
+    name: opt:
+    opt
+    // {
       default = lib.elem name contractLib.safeSet;
       description = "Whether this user asks a host for the ${name} feature. An ask, never a grant: it is enabled only where the host also affords it (grant = affordances ∩ offer).";
-    };
-  }) grantedOptions;
+    }
+  ) grantedOptions;
+  # The `contract.supports` option fragment (ADR-0032 §3): the user's OTHER voice — which MODES
+  # this home can run in. One bool per mode, projected off the mode registry exactly as
+  # grantedOptions is off the feature one, so a registry that gains a mode gains the option with no
+  # edit here.
+  #
+  # NO DEFAULT SATISFIES THE RULE. Each mode defaults to `false` — the module system needs a value
+  # to merge, and an undefined option would surface as a raw Nix error rather than one of the
+  # contract's own — but nothing defaults to TRUE, so "supports at least one mode" is never
+  # satisfied by inheritance. A user that says nothing supports nothing, and the bake refuses it by
+  # name (`harvestVoice` in lib.nix). That is deliberate: a default that satisfied the rule would
+  # set a user's essential nature without the user having said anything, and ADR-0006's "gui by
+  # default" is a TEACHING convention (`supports.gui = true` in an ordinary home), not a value
+  # written for anyone.
+  supportsOptions = lib.mapAttrs (
+    _: m: lib.mkEnableOption "${m.description} — whether this user's home can run in it"
+  ) modeRegistry;
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (
     map (f: f.config or { }) (lib.attrValues registry)
   );
@@ -108,6 +133,7 @@ let
       homeProfileOptions
       grantedOptions
       wantedOptions
+      supportsOptions
       featureConfigOptions
       ;
   };

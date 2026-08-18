@@ -41,7 +41,7 @@ let
   # NOT decide the session type (wayland vs x11) — that is wholly the SEAT's concern (its display
   # binding and, at a greeter, each desktop's launch command). The contract carries only the grant
   # and the user's free-form desktop NAME (ADR-0021, superseding ADR-0018's session-type derivation).
-  guiUsers = lib.filter (u: u.granted.gui.enable or false) (lib.attrValues users);
+  guiUsers = lib.filter (u: u.granted.gui or false) (lib.attrValues users);
   anyGuiGranted = guiUsers != [ ];
 in
 {

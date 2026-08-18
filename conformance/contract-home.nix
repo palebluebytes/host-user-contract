@@ -34,8 +34,8 @@ let
     # sudo is a bind-riding grant (not a bake axis): the narrowing must drop it before a home
     # can ever see it (ADR-0028).
     grants = {
-      gui.enable = true;
-      sudo.enable = true;
+      gui = true;
+      sudo = true;
     };
     stateVersion = "25.11";
     extraModules = [ probe ];

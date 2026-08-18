@@ -109,7 +109,7 @@ let
   # home-manager and this suite has none (ADR-0004/0022).
   markedHome = key: syntheticHome // { contractBakedGrantKey = key; };
   guiGrants = {
-    gui.enable = true;
+    gui = true;
   };
   # MATCHING: a home baked under [gui], published under { gui } — bakes, and lands on the very same
   # store path as the undecorated call with the same grants, so the marker changes no artifact.
@@ -191,7 +191,7 @@ let
         contractPackage = guiFixture;
         identity = referenceIdentity;
         grants = {
-          gui.enable = true;
+          gui = true;
         };
       })
     ]).users.users.ada.isNormalUser

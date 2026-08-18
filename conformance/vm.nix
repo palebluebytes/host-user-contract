@@ -73,7 +73,7 @@ mkSeatVM {
           email = "aurelia@example.invalid";
           username = "aurelia";
         };
-        granted.gui.enable = true;
+        granted.gui = true;
         gui.desktop = "plasma";
       };
     };

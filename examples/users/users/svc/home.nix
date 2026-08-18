@@ -25,5 +25,5 @@
   # It is also why this home carries NO `contract.requests.gui.*`: gui parameters beside a gui veto
   # could never bridge on any host, so they are dead data and the bake rejects them (issue #59). The
   # ADR-0002 case is the other one — a request the HOST does not grant stays silently inert.
-  contract.wants.gui.enable = false;
+  contract.wants.gui = false;
 }

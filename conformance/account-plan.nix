@@ -31,10 +31,10 @@ let
 
   noGrant = { };
   gui = {
-    gui.enable = true;
+    gui = true;
   };
   containers = {
-    containers.enable = true;
+    containers = true;
   };
 in
 {

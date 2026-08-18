@@ -211,7 +211,7 @@ in
     };
 
     grants = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.attrsOf lib.types.bool);
+      type = lib.types.attrsOf lib.types.bool;
       readOnly = true;
       default = greeterGrants;
       description = ''

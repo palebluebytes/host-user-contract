@@ -45,7 +45,7 @@ let
   foreignHome = {
     contract.requests.gui.desktop = "plasma";
     contract.requests.timeMachine.era = "1885";
-    contract.wants.timeMachine.enable = true;
+    contract.wants.timeMachine = true;
   };
   traceForeign =
     args:
@@ -86,7 +86,7 @@ in
     }
     {
       name = "traceUser: the home's contract.wants is harvested (the offer a producer bakes)";
-      ok = boundRuntime.wants.gui.enable && !boundRuntime.wants.sudo.enable;
+      ok = boundRuntime.wants.gui && !boundRuntime.wants.sudo;
     }
 
     # --- permissive inspector mode (ADR-0028) ---

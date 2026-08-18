@@ -1,12 +1,14 @@
 # Conformance domain: the user's home-side VOICE — `contract.wants` (WHICH features this user asks
-# for, ADR-0028) and `contract.requests` (their PARAMETERS, ADR-0002/0007) — plus the desktop-choice
-# home helper (ADR-0013) that surfaces a request to ~/.contract-desktop. All home-side, proven with
-# bare evalModules — no home-manager (ADR-0004).
+# for, ADR-0028), `contract.supports` (WHICH MODES its home can run in, ADR-0032) and
+# `contract.requests` (their PARAMETERS, ADR-0002/0007) — plus the desktop-choice home helper
+# (ADR-0013) that surfaces a request to ~/.contract-desktop. All home-side, proven with bare
+# evalModules — no home-manager (ADR-0004).
 {
   lib,
   toolkit,
   homeModule,
   homeGreeterDesktopModule,
+  modes,
   safeSet,
 }:
 let
@@ -31,20 +33,38 @@ let
   );
 
   # --- contract.wants: the user's feature selection, typed, in the home (ADR-0028) ---
-  # The enabled feature names of a want/grant set — the same `.enable` fold the grant algebra uses
+  # The enabled feature names of a want/grant set — the same one-bool-per-feature fold the algebra uses
   # (grantLib.grantedNames), spelled here so the domain asserts against the SHAPE it claims.
-  wantedNames = w: lib.attrNames (lib.filterAttrs (_: f: f.enable) w);
+  wantedNames = w: lib.attrNames (lib.filterAttrs (_: v: v) w);
   defaultWants = (evalHome [ ]).contract.wants;
-  privilegedWant = evalHome [ { contract.wants.sudo.enable = true; } ];
-  optedOut = evalHome [ { contract.wants.gui.enable = false; } ];
+  privilegedWant = evalHome [ { contract.wants.sudo = true; } ];
+  optedOut = evalHome [ { contract.wants.gui = false; } ];
   # No freeform here either: a want for a feature this contract has no registry entry for errors.
   unknownWant = builtins.tryEval (
-    builtins.deepSeq (evalHome [ { contract.wants.bogusFeature.enable = true; } ]).contract.wants true
+    builtins.deepSeq (evalHome [ { contract.wants.bogusFeature = true; } ]).contract.wants true
   );
-  # The shape MIRRORS grantedOptions (`{ <feature>.enable = bool; }`), so a bare boolean is a type
-  # error rather than a silently-accepted second shape.
-  bareBoolWant = builtins.tryEval (
-    builtins.deepSeq (evalHome [ { contract.wants.gui = true; } ]).contract.wants true
+  # The shape is ONE BOOL PER FEATURE (`{ <feature> = bool; }`, ADR-0032 §3), so the `.enable`
+  # suffix it used to carry is now a type error rather than a silently-accepted second shape — the
+  # dialect a home written against the old vocabulary speaks.
+  dotEnableWant = builtins.tryEval (
+    builtins.deepSeq (evalHome [ { contract.wants.gui.enable = true; } ]).contract.wants true
+  );
+
+  # --- contract.supports: which MODES this home can run in (ADR-0032) ---
+  supportedNames = sup: lib.attrNames (lib.filterAttrs (_: v: v) sup);
+  defaultSupports = (evalHome [ ]).contract.supports;
+  guiOnly = evalHome [ { contract.supports.gui = true; } ];
+  bothModes = evalHome [
+    {
+      contract.supports.cli = true;
+      contract.supports.gui = true;
+    }
+  ];
+  # Typed off the mode registry and nothing else: a typo'd mode is an eval error in the user's own
+  # repo, never a user nothing can bind that a host operator discovers (ADR-0032, rejected
+  # free-form mode names).
+  unknownMode = builtins.tryEval (
+    builtins.deepSeq (evalHome [ { contract.supports.desktop = true; } ]).contract.supports true
   );
 
   # The desktop helper sets `home.file`, a home-manager option the tracer-pure umbrella does not
@@ -101,24 +121,60 @@ in
       ok = wantedNames defaultWants == safeSet;
     }
     {
-      name = "wants: the shape mirrors grantedOptions (<feature>.enable), a bare boolean errors";
-      ok =
-        lib.isBool defaultWants.gui.enable && lib.isBool defaultWants.sudo.enable && !bareBoolWant.success;
+      name = "wants: the shape mirrors grantedOptions (<feature> = bool); the old `.enable` errors";
+      ok = lib.isBool defaultWants.gui && lib.isBool defaultWants.sudo && !dotEnableWant.success;
     }
     {
       # Asking for a privileged feature must not discard the safe-set default (the default is
       # per-feature, not a whole-submodule default a single definition would replace).
       name = "wants: asking for a privileged feature keeps the safe-set default (gui still wanted)";
-      ok = privilegedWant.contract.wants.sudo.enable && privilegedWant.contract.wants.gui.enable;
+      ok = privilegedWant.contract.wants.sudo && privilegedWant.contract.wants.gui;
     }
     {
-      name = "wants: a user wanting no desktop opts out explicitly (gui.enable = false)";
+      name = "wants: a user wanting no desktop opts out explicitly (gui = false)";
       ok = wantedNames optedOut.contract.wants == [ ];
     }
     {
       name = "wants: an unknown feature key is an eval error (no freeform)";
       ok = !unknownWant.success;
     }
+
+    # --- contract.supports (ADR-0032): which modes this home can run in ---
+    {
+      # NO DEFAULT SUPPLIES THE RULE. Every mode defaults to false — the module system needs a
+      # value to merge — so a home that says nothing supports NOTHING, and the bake refuses it by
+      # name rather than publishing an empty set (see turnkey-bind's "supports no mode"). A default
+      # of "every mode" would set a user's essential nature by inheritance.
+      name = "supports: nothing is supported by default — no default satisfies the at-least-one rule";
+      ok = supportedNames defaultSupports == [ ];
+    }
+    {
+      # …and the option is declared for EVERY mode the registry names, so a contract that gains a
+      # mode gains the option with no edit to the umbrella.
+      name = "supports: one option per registry mode, all bools";
+      ok =
+        lib.attrNames defaultSupports == lib.attrNames modes
+        && lib.all (m: lib.isBool defaultSupports.${m}) (lib.attrNames defaultSupports);
+    }
+    {
+      # A gui-only user is expressible: it says gui and nothing else, and a headless host then
+      # cannot bind it — a REFUSAL, not a silently lesser home (ADR-0032's narrowing of ADR-0002).
+      name = "supports: a user may support one mode alone (gui-only is expressible)";
+      ok = supportedNames guiOnly.contract.supports == [ "gui" ];
+    }
+    {
+      name = "supports: a user may support several modes";
+      ok =
+        supportedNames bothModes.contract.supports == [
+          "cli"
+          "gui"
+        ];
+    }
+    {
+      name = "supports: a mode name the registry does not declare is an eval error (no freeform)";
+      ok = !unknownMode.success;
+    }
+
     {
       # ADR-0013 helper: a requested desktop is auto-surfaced to ~/.contract-desktop verbatim, so the
       # greeter's launcher (which runs before the home Nix) reads the user's choice with no manual step.

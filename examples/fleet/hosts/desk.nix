@@ -40,9 +40,9 @@
   ];
 
   contract.affordances = {
-    gui.enable = true;
-    containers.enable = true;
-    sudo.enable = true;
+    gui = true;
+    containers = true;
+    sudo = true;
   };
 
   networking.hostName = "desk";

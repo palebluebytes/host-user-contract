@@ -46,15 +46,15 @@ let
       # gui users carry a gui.desktop (mkUser sets it only when gui); cli users don't.
       if users.${n}.custom.users.${n} ? gui then
         {
-          gui.enable = true;
-          containers.enable = true;
+          gui = true;
+          containers = true;
         }
       else
-        { containers.enable = true; };
+        { containers = true; };
   };
   agentArch = mkArchetype {
     exposed = true;
-    grantsFor = _: { containers.enable = true; };
+    grantsFor = _: { containers = true; };
   };
   headlessArch = mkArchetype {
     exposed = false;

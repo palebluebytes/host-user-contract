@@ -50,7 +50,7 @@ mkSeatVM {
       inherit contractPackage;
       identity = testIdentity;
       grants = {
-        gui.enable = true;
+        gui = true;
       };
     })
   ];

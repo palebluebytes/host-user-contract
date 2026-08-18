@@ -21,7 +21,7 @@ let
   # --- grant / deny ---
   granted = eval [
     (mkUser "alice" { })
-    (grant "alice" { gui.enable = true; })
+    (grant "alice" { gui = true; })
   ];
   denied = eval [ (mkUser "alice" { }) ];
 
@@ -37,7 +37,7 @@ let
   ];
   clampWithGrant = eval [
     (mkUser "alice" { })
-    (grant "alice" { containers.enable = true; })
+    (grant "alice" { containers = true; })
     { custom.users.alice.identity.extraGroups = [ "docker" ]; }
   ];
 
@@ -73,7 +73,7 @@ let
   ];
   sudoGranted = eval [
     (mkUser "alice" { })
-    (grant "alice" { sudo.enable = true; })
+    (grant "alice" { sudo = true; })
     # self-declare wheel too, so this proves the full clamp→grant→RESTORE cycle in one eval
     # (as the containers grant's clampWithGrant does), not merely a conferral.
     { custom.users.alice.identity.extraGroups = [ "wheel" ]; }
@@ -132,13 +132,13 @@ let
     (mkUser "bob" { })
     (mkUser "carol" { gui = false; })
     (grant "alice" {
-      gui.enable = true;
-      containers.enable = true;
-      sudo.enable = true;
-      virtualization.enable = true;
+      gui = true;
+      containers = true;
+      sudo = true;
+      virtualization = true;
     })
-    (grant "bob" { gui.enable = true; })
-    (grant "carol" { sudo.enable = true; })
+    (grant "bob" { gui = true; })
+    (grant "carol" { sudo = true; })
     {
       # two co-residents self-declare wheel: alice (restored by her sudo grant) and bob (no grant ⇒ clamped)
       custom.users.alice.identity.extraGroups = [ "wheel" ];
@@ -309,7 +309,7 @@ in
         let
           grantedDaemon = eval [
             (mkUser "alice" { })
-            (grant "alice" { nix-daemon.enable = true; })
+            (grant "alice" { nix-daemon = true; })
           ];
         in
         lib.elem "nix-users" grantedDaemon.users.users.alice.extraGroups;

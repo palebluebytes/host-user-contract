@@ -73,8 +73,8 @@ let
   adaGuiSudoOffer = mkIndex {
     identity = adaIdentity;
     offer = {
-      gui.enable = true;
-      sudo.enable = true;
+      gui = true;
+      sudo = true;
     };
     grantKeys = [
       [ ] # base
@@ -83,7 +83,7 @@ let
   vetoBind = bindTurnkey {
     index = adaGuiSudoOffer;
     affordances = {
-      gui.enable = true;
+      gui = true;
     };
   };
   vetoGrant = vetoBind.custom.users.ada.granted;
@@ -104,20 +104,20 @@ let
     };
   selGui = bindTurnkey {
     index = twoHomes {
-      gui.enable = true;
-      sudo.enable = true;
+      gui = true;
+      sudo = true;
     };
     affordances = {
-      gui.enable = true;
-      sudo.enable = true;
+      gui = true;
+      sudo = true;
     };
   };
   selBase = bindTurnkey {
     index = twoHomes {
-      sudo.enable = true;
+      sudo = true;
     };
     affordances = {
-      sudo.enable = true;
+      sudo = true;
     };
   };
 
@@ -126,8 +126,8 @@ let
   incomparableIndex = mkIndex {
     identity = adaIdentity;
     offer = {
-      gui.enable = true;
-      sudo.enable = true;
+      gui = true;
+      sudo = true;
     };
     grantKeys = [
       [ "gui" ]
@@ -138,8 +138,8 @@ let
     (bindTurnkey {
       index = incomparableIndex;
       affordances = {
-        gui.enable = true;
-        sudo.enable = true;
+        gui = true;
+        sudo = true;
       };
     }).custom.users.ada.granted
   );
@@ -155,7 +155,7 @@ let
   onlyGuiIndex = mkIndex {
     identity = adaIdentity;
     offer = {
-      gui.enable = true;
+      gui = true;
     };
     grantKeys = [
       [ "gui" ]
@@ -175,7 +175,7 @@ let
   malloryIndex = mkIndex {
     identity = wheelClaimant;
     offer = {
-      sudo.enable = true;
+      sudo = true;
     };
     grantKeys = [
       [ ]
@@ -184,7 +184,7 @@ let
   malloryBind = eval [
     {
       contract.affordances = {
-        gui.enable = true;
+        gui = true;
       };
     }
     (bindContractUser {
@@ -207,12 +207,17 @@ let
     chmod +x $out/activate
   '';
   mkSyntheticHomeWith =
-    { wants, requests }:
+    {
+      wants,
+      requests,
+      supports ? adaSupports,
+    }:
     {
       activationPackage = activationStub;
       config = {
         contract.requests = requests;
         contract.wants = wants;
+        contract.supports = supports;
         home = {
           packages = [ pkgs.hello ];
           username = "ada";
@@ -228,13 +233,19 @@ let
         gui.desktop = "plasma";
       };
     };
-  # The full want set a real home eval yields: every registry feature present, `.enable` a bool.
+  # The full support set a real home eval yields: every registry mode present, one bool each. ada
+  # is an ordinary desktop user — she supports gui, and says so.
+  adaSupports = {
+    cli = false;
+    gui = true;
+  };
+  # The full want set a real home eval yields: every registry feature present, one bool each.
   adaWants = {
-    gui.enable = true;
-    sudo.enable = false;
-    containers.enable = false;
-    virtualization.enable = false;
-    nix-daemon.enable = false;
+    gui = true;
+    sudo = false;
+    containers = false;
+    virtualization = false;
+    nix-daemon = false;
   };
   syntheticHome = mkSyntheticHome adaWants;
   adaHomes = [
@@ -305,7 +316,7 @@ let
   pairedBake = bakeUnder {
     key = [ "gui" ];
     grants = {
-      gui.enable = true;
+      gui = true;
     };
   };
   mispairedIndex = builtins.tryEval (
@@ -321,7 +332,7 @@ let
       (bakeUnder {
         key = [ ];
         grants = {
-          gui.enable = true;
+          gui = true;
         };
       }).packages.${system}
   );
@@ -385,6 +396,82 @@ let
       homes.ben = adaHomes;
     }).contractUsers.${system}.ben.identity
   );
+  # --- (f3) the SUPPORTS half of the voice, and its three named errors (ADR-0032 §3, issue #66) ---
+  # `contract.supports` is harvested exactly as the offer is, and guarded in three directions. Each
+  # is driven through the published package NAMES, one of the two routes out of a bake, because a
+  # guard that only fired on the index would leave the user's own `checks = packages` green.
+  supportsBake =
+    {
+      supports,
+      wants ? adaWants,
+    }:
+    builtins.tryEval (
+      builtins.deepSeq (readPackageNames (mkContractUser {
+        inherit pkgs;
+        usersDir = ../examples/users/users;
+        name = "ada";
+        homes = [
+          {
+            grants = { };
+            home = mkSyntheticHomeWith {
+              inherit supports wants;
+              requests = {
+                gui.desktop = "";
+              };
+            };
+          }
+        ];
+      })) true
+    );
+  # A user supporting NO mode is uninstallable: nothing would be published for it, and a host that
+  # tried to bind it would find an empty index entry rather than a refusal.
+  noSupportedMode = supportsBake {
+    supports = {
+      cli = false;
+      gui = false;
+    };
+  };
+  # Supporting a mode while VETOING the grant that mode is run under — issue #59's rule one layer
+  # up. No host can rescue it: it confers the gui grant in order to run the gui mode.
+  modeWithoutItsGrant = supportsBake {
+    supports = adaSupports;
+    wants = adaWants // {
+      gui = false;
+    };
+  };
+  # A `supports` that VARIED by mode would make the published set depend on which mode happened to
+  # be evaluated first — the same circularity the offer guard refuses, on the other half.
+  varyingSupports = builtins.tryEval (
+    builtins.deepSeq (readPackageNames (mkContractUser {
+      inherit pkgs;
+      usersDir = ../examples/users/users;
+      name = "ada";
+      homes = [
+        {
+          grants = { };
+          home = mkSyntheticHomeWith {
+            supports = adaSupports;
+            wants = adaWants;
+            requests = {
+              gui.desktop = "plasma";
+            };
+          };
+        }
+        {
+          grants = { };
+          home = mkSyntheticHomeWith {
+            supports = adaSupports // {
+              cli = true;
+            };
+            wants = adaWants;
+            requests = {
+              gui.desktop = "plasma";
+            };
+          };
+        }
+      ];
+    })) true
+  );
   varyingUser = builtins.tryEval (
     (mkContractUser {
       inherit pkgs;
@@ -397,9 +484,9 @@ let
         }
         {
           grants = {
-            gui.enable = true;
+            gui = true;
           };
-          home = mkSyntheticHome (adaWants // { containers.enable = true; });
+          home = mkSyntheticHome (adaWants // { containers = true; });
         }
       ];
     }).contractUsers.${system}.ada.offer
@@ -424,7 +511,13 @@ let
           grants = { };
           home = mkSyntheticHomeWith {
             wants = adaWants // {
-              gui.enable = false;
+              gui = false;
+            };
+            # The svc posture entire (ADR-0032): a user vetoing gui drops the gui MODE with it, or
+            # the voice guard one section up refuses the pair before this one is reached.
+            supports = {
+              cli = true;
+              gui = false;
             };
             inherit requests;
           };
@@ -445,11 +538,11 @@ in
     # (a) affordances ∩ offer, with the host veto
     {
       name = "affordances ∩ offer: gui is granted (offered ∧ afforded)";
-      ok = vetoGrant.gui.enable;
+      ok = vetoGrant.gui;
     }
     {
       name = "host veto: sudo is offered but not afforded ⇒ not granted (absolute veto)";
-      ok = !(vetoGrant.sudo.enable or false);
+      ok = !(vetoGrant.sudo or false);
     }
 
     # (b) maximal-subset selection
@@ -483,7 +576,7 @@ in
     }
     {
       name = "untrusted safety: sudo offered-but-unafforded is not granted (grant is empty)";
-      ok = !(malloryBind.custom.users.mallory.granted.sudo.enable or false);
+      ok = !(malloryBind.custom.users.mallory.granted.sudo or false);
     }
 
     # (e) mkContractUsers shape + no-IFD selection
@@ -513,13 +606,29 @@ in
       ok = !noHomeUser.success;
     }
 
+    # (f3) the supports half of the voice (ADR-0032 §3)
+    {
+      name = "mkContractUser: a user supporting NO mode is a hard bake error, not an empty publish";
+      ok = !noSupportedMode.success;
+    }
+    {
+      # Its positive control is the svc case below — the same gui veto with the gui MODE dropped
+      # too bakes — so this guard is about the CONTRADICTION and not about vetoing gui.
+      name = "mkContractUser: supporting a mode while vetoing its grant is a hard bake error";
+      ok = !modeWithoutItsGrant.success;
+    }
+    {
+      name = "mkContractUser: `supports` that varies across a user's homes is a hard bake error";
+      ok = !varyingSupports.success;
+    }
+
     # (f2) the user's own veto vs its request data (issue #59)
     {
       name = "mkContractUser: request data for a feature the USER vetoed is a hard bake error";
       ok = !vetoedRequestPackage.success && !vetoedRequestIndex.success;
     }
     {
-      name = "mkContractUser: the same veto with the request namespace at its default bakes (svc)";
+      name = "mkContractUser: the whole svc posture — gui vetoed, gui mode dropped, no gui request — bakes";
       ok = vetoNoRequestUser.success;
     }
     {
@@ -529,7 +638,7 @@ in
       # silent degradation, never a defect. That the request is then not BRIDGED is the other half,
       # proven where the bridge is (./bind.nix's "an ungranted request is inert").
       name = "mkContractUser: a request no bake grants stays inert — the bake stands (ADR-0002)";
-      ok = emittedIndex.offer.gui.enable && (lib.head emittedIndex.contractPackages).grantKey == [ ];
+      ok = emittedIndex.offer.gui && (lib.head emittedIndex.contractPackages).grantKey == [ ];
     }
 
     # (h) the member as the coin's input
@@ -612,7 +721,7 @@ in
           == bindings.packages.${system}."ada-contractPackage-base".outPath
         )
         && singleUser.contractUsers.${system}.ada.identity.username == "ada"
-        && singleUser.contractUsers.${system}.ada.offer.gui.enable;
+        && singleUser.contractUsers.${system}.ada.offer.gui;
     }
 
     # gui XDG fold
