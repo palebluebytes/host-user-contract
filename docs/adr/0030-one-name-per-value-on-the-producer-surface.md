@@ -6,7 +6,7 @@ public surface), [ADR-0029](0029-producer-home-builder-and-home-baseline.md) (`m
 changes **argument names and argument counts only** — no behaviour, no published data shape, no
 option path. It settles three naming and shape rules that future surface must follow, including the
 signature of the not-yet-built `mkContractFleet` ([ADR-0029](0029-producer-home-builder-and-home-baseline.md)'s
-2026-08-17 amendment, issue #61).
+2026-08-17 amendment, issue #61). **Amended in place (2026-08-18)** — two corrections to this record's claims about itself: the "only one exception" sentence, and the account of `variant`'s deletion. No decision changes; see the amendment at the end.
 
 ADR-0026 fixed *which* functions the surface carries and re-levelled them onto one concept seam. It
 did not look at what those functions **call their arguments**. An architecture review focused on
@@ -265,6 +265,68 @@ and [ADR-0029](0029-producer-home-builder-and-home-baseline.md) are dated, accep
 **not rewritten**. They say "variant" and "roster" because that is what they decided, and editing
 them would make the record claim it always said otherwise. Each carries a dated pointer to this
 amendment. `CONTEXT.md` is the live vocabulary and has moved.
+
+## Amendment (2026-08-18) — two corrections to this record's claims about itself
+
+Two things this ADR states are not true of it. Recorded rather than quietly fixed, on the principle
+the rule section already applies to its own superseded draft: *"the reasoning should not be
+reconstructed as if it were always this."* **No decision below changes.**
+
+### 1. "It is the only one" is contradicted by this ADR's own amendment
+
+The rule section says of the manifest's wire key:
+
+> This is a deliberate, bounded violation of "one word, one type", and it is the **only** one… Do not
+> treat it as precedent for a second exception.
+
+The 2026-08-17 amendment then says `homes` names two shapes and "that is deliberate". Both cannot
+stand.
+
+The claim is narrowed here to what it can carry: the wire key is the only violation this ADR
+deliberately **keeps**. It was never a surface-wide census — no such audit was performed. `homes` is
+a second instance, blessed in the same document on the same day.
+
+Worse, it was blessed with reasoning this ADR elsewhere rejects. The amendment defends `homes`
+because "each is named for the argument its consumer takes". The rule section states that "the rule
+is about **types**, not about which side of a signature a name sits on", and rejects an earlier draft
+of itself precisely for unifying sites by role rather than by type. The amendment overturned the
+document's own criterion without saying it was doing so.
+
+Two lessons worth keeping: a completeness claim about a surface needs an audit behind it, and an
+amendment that overturns its document's criterion has to say so out loud.
+
+### 2. `variant` was not deleted cleanly — one collision of three was removed
+
+The amendment's indictment is that `variant` denoted `{ grants; label }`, `{ grants; home }`, and the
+published `{ grantKey; package }`. Its claim is that "the outcome is better than a rename: one of
+them turned out to be unnecessary."
+
+What actually happened:
+
+| the three `variant` shapes | after |
+| --- | --- |
+| `{ grantKey; package }` | → `contractPackages`. **Genuinely fixed** — a contractPackage is not a home |
+| `{ grants; label }` | → `homes` |
+| `{ grants; home }` | → `homes` |
+
+The two shapes that motivated the indictment both survived under the new word, redescribed as "one
+shape, filled progressively". That is a reclassification, not a fix, and it is not free:
+`contract.homes` is a **public output** shaped `[ { grants; label; } ]` while `mkContractUser`'s
+parameter is `[ { grants; home; } ]` — same container, one field apart. Crossing them fails with
+`error: attribute 'home' missing`, raw and undiagnosed.
+
+### The third correction, deliberately not made
+
+A third fix was considered and is **declined**: writing "one shape, filled progressively" into the
+rule statement, where [`lib.nix`](../../lib.nix) cites this ADR for it and [`CONTEXT.md`](../../CONTEXT.md)
+defines it, but this ADR does not contain it. Work in progress removes the shape the doctrine
+describes — grants stop reaching home content, so a home no longer travels paired with a grant set —
+and writing a rule for a shape being deleted would date the moment it landed.
+
+### What stands
+
+Every decision. The `grants`/`grantKey`/`granted` split, reading `system` off `pkgs`, and the
+one-resolver rule are untouched by both corrections, and the code conforms to all three.
 
 ## Considered Options
 
