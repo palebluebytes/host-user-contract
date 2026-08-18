@@ -312,10 +312,10 @@ in
       ];
     }
     {
-      # `bakes` is what a producer bakes from, so its SHAPE is load-bearing: one entry per
+      # `homes` is what a producer bakes from, so its SHAPE is load-bearing: one entry per
       # subset of the axes. Asserted generically (2^n entries, unique labels, exactly one
       # grant-less `base`) so a second axis is covered the day it lands, with no new case here.
-      name = "bakes: one labelled entry per combination of the axes";
+      name = "homes: one labelled entry per combination of the axes";
       ok =
         let
           expected = lib.foldl' (acc: _: acc * 2) 1 homeAxes;
@@ -330,7 +330,7 @@ in
     {
       # Nothing that rides the bind may appear as a baked grant: a bake keyed on a bind-riding
       # feature would multiply every user's bake for a grant the home cannot even see.
-      name = "bakes: every baked grant is a bake axis";
+      name = "homes: every baked grant is a bake axis";
       ok = lib.all (v: lib.all (f: lib.elem f homeAxes) (lib.attrNames v.grants)) homes;
     }
     {

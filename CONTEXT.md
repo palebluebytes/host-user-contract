@@ -18,7 +18,7 @@ the term is stable, the code is pending (see the cited issue).
 - **the contract** — the shared schema + host-invariant realization + derivation logic both
   sides agree on. Ships as `nixosModules.default` / `homeModules.default` (the umbrella),
   `lib` (the functions), and a data surface (`features`, `featureGroups`,
-  `privilegedGroups`, `safeSet`, [[homeAffecting]]). Neither host nor user. (ADR-0001, ADR-0004)
+  `privilegedGroups`, `safeSet`, `homes`). Neither host nor user. (ADR-0001, ADR-0004)
 - **host** — a machine config that imports the contract, materializes user accounts,
   **grants** features, and supplies **bindings**. Sovereign: it runs only what it grants.
 - **user** — a public identity + home config + the features it *offers*; host-agnostic (it
@@ -41,7 +41,7 @@ the term is stable, the code is pending (see the cited issue).
   `privilegedGroups`, `config`. (`features.nix`)
 - **registry** — `features.nix`, the **single source of truth** for the feature vocabulary.
 - **projection** — any surface *derived* from the registry (`featureGroups`,
-  `grantedOptions`, `wantedOptions`, `featureConfigOptions`, `safeSet`, [[homeAffecting]]). Keys
+  `grantedOptions`, `wantedOptions`, `featureConfigOptions`, `safeSet`, [[homeAxes]]). Keys
   can't drift across projections because there is one set of keys. (`kit.nix`)
 - **grantLib** — the grant-projection **helper set** computed once in the kit and *injected* into
   the realization and greeter modules and the derivation logic (`lib.nix`), the same way the
@@ -56,14 +56,16 @@ the term is stable, the code is pending (see the cited issue).
   [[mkContractUser]] — the producer passes no `offer`. A grant is derived as host [[affordance]] ∩
   offer; the home-affecting subset of the offer is what the producer builds [[home]]s for.
   (ADR-0002, ADR-0025, ADR-0028)
-- **homeAffecting** — the contract's public name list of features whose grant may reach HOME
-  content, so a home may legitimately fan out on them (`{gui}` today; the per-feature
-  `homeAffecting` registry flag, **declared**, not derived from the group lists). It is the upper
-  bound on what a home may even see: a producer NARROWS [[hostFacts]]`.granted` with it (so a home
-  reading a bind-riding grant like `sudo` structurally gets `false` forever) and
-  `powerset(homeAffecting)` bounds its baked set (the per-system subset it actually bakes is the
-  consumer's fleet fact — see [[home matrix]]). One surface, so no producer re-implements the rule in prose.
-  (ADR-0028; `lib.nix`)
+- **homeAxes** — the name list of features whose grant may reach HOME content, so a home may
+  legitimately fan out on them (`{gui}` today; the per-feature `needsOwnHome` registry flag,
+  **declared**, not derived from the group lists). It is the upper bound on what a home may even
+  see. **Internal** (`kit.internal`) — both things a producer used the raw list for now ship
+  whole, which is what keeps them from drifting apart in a producer's hands: `hostFactsFor`
+  NARROWS [[hostFacts]]`.granted` with it (so a home reading a bind-riding grant like `sudo`
+  structurally gets `false` forever), and `powerset(homeAxes)` ships as the public `homes`, which
+  bounds the baked set (the per-system subset a fleet actually bakes is the consumer's fleet
+  fact — see [[home matrix]]). One surface, so no producer re-implements the rule in prose.
+  (Was the public `homeAffecting`; renamed by ADR-0030. ADR-0028; `lib.nix`)
 
 ## Grants and confinement
 
@@ -235,7 +237,7 @@ the term is stable, the code is pending (see the cited issue).
   surface takes) and the field is `granted` (the option path a home reads it back on); see
   [[grant vocabulary]]. Deliberately excludes
   `hostName` so adaptation keys on *semantic* facts, not host identity. `granted` is **narrowed to
-  [[homeAffecting]]** (ADR-0028) — a home may only see the grants something bakes for, so it cannot
+  [[homeAxes]]** (ADR-0028) — a home may only see the grants something bakes for, so it cannot
   become grant-sensitive on a bind-riding feature. The value is supplied by
   whoever builds the home (the producer builds it per home, hand-built inline — there is no host
   `config` at bake time). The `mkHostFacts` config-projector was **deleted** as caller-less (the
@@ -456,10 +458,10 @@ the term is stable, the code is pending (see the cited issue).
   freezes `activationPackage`, so a grant that *changes the baked home* (a **home-affecting**
   grant — one the user's `home.nix` fans out on, e.g. `gui` → emacs/ai) must be its own home,
   while a grant conferring only host-side effects (a privileged group) rides the bind and needs
-  no home of its own. Which grants a home *may* branch on is contract data since ADR-0028 ([[homeAffecting]],
-  the upper bound `hostFacts.granted` is narrowed to, so `powerset(homeAffecting)` bounds the
+  no home of its own. Which grants a home *may* branch on is contract data since ADR-0028 ([[homeAxes]],
+  the upper bound `hostFacts.granted` is narrowed to, so `powerset(homeAxes)` bounds the
   baked set); whether *that* repo's home actually branches stays the producer's
-  call, so a repo whose homes read no grant still builds a single `base` home. `powerset(homeAffecting)`
+  call, so a repo whose homes read no grant still builds a single `base` home. `powerset(homeAxes)`
   is the upper bound on what a host could grant, **not** a per-system baking obligation: *which*
   homes a fleet builds per system is its [[home matrix]], the **consumer's fleet fact**
   (decision #43). The contract keeps answering "what could a host grant"; the
@@ -762,6 +764,6 @@ the term is stable, the code is pending (see the cited issue).
   are declared in the user's own home and carry no freeform, so a typo is an eval error; the
   producer passes neither. The one tolerant reader is the `traceUser` inspector. (ADR-0028)
 - **A user can only see what it may vary on** — `hostFacts.granted` is narrowed to
-  [[homeAffecting]], and an offer that varies across bakes fails the bake. (ADR-0028)
+  [[homeAxes]], and an offer that varies across bakes fails the bake. (ADR-0028)
 - **A request names a host effect but never performs it** — the host writes, only on grant.
 - **Data before code** — authenticate on `identity.json` before evaluating any user Nix.

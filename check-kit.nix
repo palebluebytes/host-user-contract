@@ -302,7 +302,7 @@ let
   #
   # Deliberately SHAPE-AGNOSTIC: "everything we bake, evaluates" is this helper's fact; WHICH
   # bakes a fleet bakes per system is the consumer mapper's fact, guarded where its per-system
-  # filter lives (the contract's `powerset(homeAffecting)` is only the upper bound a host could
+  # filter lives (the contract's `powerset(homeAxes)` is only the upper bound a host could
   # grant, never a per-system baking obligation). And it forces ALL handed systems, the native one
   # included — redundant with `checks = packages` build-depending on the native homes, but "the
   # whole handed matrix evaluates" is a simpler contract than "the complement of whatever else

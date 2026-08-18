@@ -268,12 +268,12 @@ in
     # Re-exposing an entry publicly stays a one-line move to `lib` above, plus an ADR amendment
     # (ADR-0026's posture).
     #
-    # The home-axis projection behind the public `bakes`/`hostFactsFor` (ADR-0028). Internal
+    # The home-axis projection behind the public `homes`/`hostFactsFor` (ADR-0028). Internal
     # because no consumer needs the raw list once both derived forms ship; exposed here so the
     # conformance suite can prove the taxonomy itself (which features ride the bind) in isolation.
     inherit (contractLib) homeAxes;
     # The bake-matrix kernel behind the public `mkHomeMatrix` (issue #58), taking the upper bound to
-    # narrow instead of closing over `bakes`. Internal for the same reason `homeAxes` is: no
+    # narrow instead of closing over `homes`. Internal for the same reason `homeAxes` is: no
     # consumer needs it, and the suite cannot otherwise prove that a contract which GAINS an axis
     # extends every system's bake — the registry has one axis, so the second is synthetic.
     inherit (contractLib) homeMatrixOver;

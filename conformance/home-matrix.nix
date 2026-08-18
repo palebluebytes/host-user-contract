@@ -1,6 +1,6 @@
 # Conformance domain: the HOME MATRIX and its guards (issue #58).
 #
-# `bakes` gives a producer the UPPER BOUND — one entry per combination of the bake axes.
+# `homes` gives a producer the UPPER BOUND — one entry per combination of the bake axes.
 # WHICH of that set a system actually bakes stays the consuming fleet's topology (decision #43),
 # and the matrix does not touch that: it takes the fleet's declaration and applies it. What the
 # contract owns is the SHAPE of that declaration, because the failure mode is silent —
@@ -15,12 +15,12 @@
 # system list, an unclassified system, a claim of unrestrictedness contradicting the rule), so what
 # remains to prove is the narrowing itself plus the four guards the type cannot make for us.
 #
-# The public `mkHomeMatrix` closes over the contract's own `bakes`; `homeMatrixOver` is the
+# The public `mkHomeMatrix` closes over the contract's own `homes`; `homeMatrixOver` is the
 # kernel taking the bound explicitly (kit.internal, the posture `homeAxes` is exposed under).
 # Both are driven here: the kernel for everything about the narrowing, the public entry point for
 # the one claim only it can make — that the bound it narrows is the contract's own.
 #
-# Package-free and build-free: the matrix is plain eval-time data over `bakes`, so every claim
+# Package-free and build-free: the matrix is plain eval-time data over `homes`, so every claim
 # below is a `tryEval` over a value.
 {
   lib,
@@ -29,13 +29,13 @@
   mkHomeMatrix,
 }:
 let
-  # A synthetic bake entry, shaped exactly like a `bakes` one (`{ grants; label; }`). Written
+  # A synthetic bake entry, shaped exactly like a `homes` one (`{ grants; label; }`). Written
   # out here rather than borrowed so this domain can hand the kernel an upper bound the REGISTRY
   # does not have — a second axis — and prove the propagation the fleet cannot demonstrate until
   # some future feature sets `needsOwnHome`.
   #
   # The label mirrors the contract's own rule — the SORTED grant names, empty ⇒ `base` — so a
-  # multi-axis fixture entry is labelled the way a real `bakes` entry would be. The matrix itself
+  # multi-axis fixture entry is labelled the way a real `homes` entry would be. The matrix itself
   # never reads `label`; the fidelity is so these claims quote the labels a producer would publish.
   homeOf = names: {
     grants = lib.genAttrs names (_: {

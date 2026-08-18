@@ -36,10 +36,10 @@ let
 
   # The HOME AXES (ADR-0028): the features whose grant cannot be applied to an already-built
   # home (`needsOwnHome` in the registry). Each is one axis of the home matrix a producer builds,
-  # which is what makes `bakes` below its powerset; everything else rides the bind.
+  # which is what makes `homes` below its powerset; everything else rides the bind.
   #
   # INTERNAL. This was the public `homeAffecting`, and every consumer used it for exactly two
-  # things — both now shipped whole, as `bakes` and `hostFactsFor` below. With the derived
+  # things — both now shipped whole, as `homes` and `hostFactsFor` below. With the derived
   # forms exported there is no consumer for the raw list, and keeping it in means the two
   # derivations can no longer drift apart in a producer's hands.
   homeAxes = lib.filter (f: registry.${f}.needsOwnHome or false) (lib.attrNames registry);
@@ -68,7 +68,7 @@ let
 
   # The HOME MATRIX kernel (issue #58): narrow an upper bound to what each system bakes, and guard
   # the narrowing. `homeMatrixOver` takes the bound explicitly; the public `mkHomeMatrix` below is
-  # this closed over the contract's own `bakes`, so no consumer-facing argument exists for the
+  # this closed over the contract's own `homes`, so no consumer-facing argument exists for the
   # suite's sake. INTERNAL, exposed only so the conformance suite can drive a synthetic TWO-axis
   # bound — the propagation this design exists for cannot otherwise be shown until some future
   # feature sets `needsOwnHome` (the posture `homeAxes` above is exposed under).
@@ -102,7 +102,7 @@ let
       # contract names and `{ gui = false; }` is a headless tier. A system absent from the matrix is
       # not baked at all.
       systems,
-      # The bound to narrow — `bakes` for the public entry point.
+      # The bound to narrow — `homes` for the public entry point.
       upperBound,
     }:
     let
@@ -184,9 +184,9 @@ let
     matrix;
 
   # mkHomeMatrix (issue #58): the PUBLIC per-system home matrix — `homeMatrixOver` closed over the
-  # contract's own `bakes`, which is what makes a registry that gains an axis reach every
+  # contract's own `homes`, which is what makes a registry that gains an axis reach every
   # consumer's bake with no edit. Returns `{ <system> = [ <bake> ]; }`, each entry the same
-  # `{ grants; label; }` value `bakes` hands out, so a producer maps over a row exactly as it
+  # `{ grants; label; }` value `homes` hands out, so a producer maps over a row exactly as it
   # would over the whole set. See `homeMatrixOver` above for the declaration shape and the guards.
   mkHomeMatrix =
     { systems }:
@@ -659,7 +659,7 @@ let
   # kit-injected `loadIdentity` (ADR-0009) — the shape a SINGLE-USER repo keeps, since one user is
   # not a member set, and constructing one to bake it would be ceremony.
   #
-  # `bakes` is `[{ grants; home }]` — `grants` is the grant ATTRSET the bake is baked with (the
+  # `homes` is `[{ grants; home }]` — `grants` is the grant ATTRSET the bake is baked with (the
   # same `{ <feature>.enable = bool; }` shape, under the same name, that `mkContractHome` bakes the
   # home under and `mkContractPackageForHome` consumes); it is projected to the index's `granted`
   # NAME LIST by `grantedNamesOf`. `loadIdentity` is injected by the kit (like `homeModule` for

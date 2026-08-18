@@ -40,7 +40,7 @@
 #                      Declared, not derived: "does this change the build?" is a property of the
 #                      feature, not of its group list — a privileged feature could one day ship
 #                      home content, and a group-conferring one need not. lib.nix projects these
-#                      into `homeAxes`, and `bakes` from that.
+#                      into `homeAxes`, and `homes` from that.
 { lib }:
 {
   # gui: desktop environment. Its host effects are two contract-neutral things only —
