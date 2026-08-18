@@ -42,7 +42,11 @@ let
   # build the user's home THROUGH their flake and print the activation package path. The REAL-SEAT form
   # is the one-liner below; a real seat runs it under the greeter's restricted-eval NIX_CONFIG (ADR-0014):
   #
-  #   nix build "$src#homeConfigurations.$user.activationPackage" --no-link --print-out-paths --offline
+  #   nix build "$src#homes.$system.$user.$mode.activationPackage" --no-link --print-out-paths --offline
+  #
+  # A greeter binds an ORDINARY home. There is no greeter-specific artifact to reach for since grants
+  # stopped reaching homes (ADR-0032), so this is a plain `nix build` against the nested `homes` output
+  # — the seat picks a mode it runs, and the home it gets is the one a declarative bind would get.
   #
   # THE ONE CONCESSION (and only here): a *nested test VM* cannot realize a fresh sandboxed `nix build`
   # (its store overlay can't mount build inputs, and the contract pins sandbox=true) — so this test binds
@@ -85,10 +89,14 @@ let
       homeCmd
     ];
   };
+  # The published output the builder reaches into, in the shape a real users flake publishes it:
+  # `homes.<system>.<user>.<mode>`. `cli` because a bind-loop fixture is a marker-dropping activate
+  # script and nothing graphical — the mode is the home's own, not the test harness's.
+  fixtureMode = "cli";
   fixtureFlake = pkgs.writeText "flake.nix" ''
     {
       outputs = { self }: {
-        homeConfigurations.${username}.activationPackage = derivation {
+        homes.${system}.${username}.${fixtureMode}.activationPackage = derivation {
           name = "bind-loop-home";
           system = "${system}";
           builder = "${busybox}";

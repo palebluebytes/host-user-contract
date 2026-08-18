@@ -1179,6 +1179,13 @@ let
   # record and nothing for the producer to re-pair afterwards — the `contractBakedGrantKey` marker
   # and its `assertHomePairing` cross-check are gone with the pairing they existed to protect.
   #
+  # THE GREETER-DESKTOP HELPER IS COMPOSED BY DEFAULT (ADR-0032). It writes `~/.contract-desktop`
+  # from `contract.requests.gui.desktop` and is `mkIf (… != "")`, so it is inert when no desktop is
+  # requested and costs a cli home nothing. It cannot move host-side: the greeter reads that dotfile
+  # BEFORE evaluating the home's Nix, so the file must be in the home. It was opt-in only while a
+  # separate greeter-granted home existed to opt it into; with grants no longer reaching homes there
+  # is no such home, and composing it always is what retires `<u>-greeter` entirely.
+  #
   # What stays consumer-side BY DESIGN: `pkgs` (each home layers its own overlays/config, and the
   # platform is read off it), `stateVersion` (a consumer fact — real repos differ — so no contract
   # default), and everything threaded through the two open seams: `extraModules` (confinement
@@ -1188,10 +1195,11 @@ let
   # different one by spelling the specialArg itself.
   mkContractHome =
     {
-      # Kit-injected (a caller never passes these): the home umbrella, the baseline hygiene
-      # module composed by default, and the identity.json loader behind `identity`'s default.
+      # Kit-injected (a caller never passes these): the home umbrella, the two home-manager-aware
+      # helpers composed by default, and the identity.json loader behind `identity`'s default.
       homeModule,
       homeBaselineModule,
+      homeGreeterDesktopModule,
       loadIdentity,
       # THE INJECTION SURFACE: home-manager's own builder, passed verbatim (ADR-0004).
       homeManagerConfiguration,
@@ -1243,6 +1251,7 @@ let
       modules = [
         homeModule
         homeBaselineModule
+        homeGreeterDesktopModule
         (homeFileIn who.dir)
         {
           identity = who.identity;

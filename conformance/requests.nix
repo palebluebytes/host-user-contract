@@ -67,6 +67,40 @@ let
     builtins.deepSeq (evalHome [ { contract.supports.desktop = true; } ]).contract.supports true
   );
 
+  # --- the MODE, derived into the home's own switches (ADR-0032 §7) ---
+  # `hostFacts.mode` is the single source, and the umbrella turns it into exactly one true
+  # `custom.home.profiles.<mode>.enable`. Evaluated with the specialArg present, which `evalHome`
+  # deliberately does not supply — the umbrella must stay evaluable with NO facts at all, and the
+  # all-false claim below is that case.
+  evalHomeIn =
+    mode:
+    (lib.evalModules {
+      modules = [ homeModule ];
+      specialArgs.hostFacts = {
+        inherit mode;
+        exposed = false;
+        platform = "x86_64-linux";
+      };
+    }).config;
+  enabledProfiles = c: lib.attrNames (lib.filterAttrs (_: p: p.enable) c.custom.home.profiles);
+  # A home writing its own profile is a CONFLICT, not an override: the mode is a fact handed to the
+  # home, not a choice the home makes, so `home-profiles.nix`'s earlier rule is reversed.
+  homeWritesItsOwnMode = builtins.tryEval (
+    builtins.deepSeq
+      (lib.evalModules {
+        modules = [
+          homeModule
+          { custom.home.profiles.gui.enable = true; }
+        ];
+        specialArgs.hostFacts = {
+          mode = "cli";
+          exposed = false;
+          platform = "x86_64-linux";
+        };
+      }).config.custom.home.profiles
+      true
+  );
+
   # The desktop helper sets `home.file`, a home-manager option the tracer-pure umbrella does not
   # declare, so — exactly as bind.nix's hmStub stands in for `home-manager.users` — a tiny stub
   # declares `home.file` so the helper's logic is provable with no home-manager.
@@ -173,6 +207,30 @@ in
     {
       name = "supports: a mode name the registry does not declare is an eval error (no freeform)";
       ok = !unknownMode.success;
+    }
+
+    # --- the mode, derived into the home's switches (ADR-0032 §7) ---
+    {
+      # EXACTLY ONE TRUE, whichever mode the home was built for. The home writes no wire: the
+      # translation line every grant-sensitive home used to carry
+      # (`profiles.gui.enable = hostFacts.granted.gui.enable or false`) has nothing left to
+      # translate, because no grant reaches a home.
+      name = "profiles: hostFacts.mode derives exactly one true profile";
+      ok =
+        enabledProfiles (evalHomeIn "gui") == [ "gui" ] && enabledProfiles (evalHomeIn "cli") == [ "cli" ];
+    }
+    {
+      # …and with NO facts at all — a bare tracer eval — every profile is false, which is the right
+      # answer for a home nothing is running. This is what keeps the umbrella evaluable by bare
+      # `evalModules` with no specialArgs (ADR-0004/0008).
+      name = "profiles: a home evaluated with no hostFacts has no mode, so no profile is enabled";
+      ok = enabledProfiles (evalHome [ ]) == [ ];
+    }
+    {
+      # The reversal, made observable: a home writing its own profile CONFLICTS with the contract's
+      # definition rather than overriding it. The mode is an answer, not a claim.
+      name = "profiles: a home writing its own mode conflicts — the contract owns the switch";
+      ok = !homeWritesItsOwnMode.success;
     }
 
     {

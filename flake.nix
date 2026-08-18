@@ -24,10 +24,13 @@
       nixosModules.default = kit.nixosModule;
       nixosModules.greeter = kit.greeterModule;
       homeModules.default = kit.homeModule;
-      # Opt-in home helper (ADR-0013): materialises ~/.contract-desktop from the home's
-      # contract.requests.gui.desktop, so the greeter's launcher reads the user's desktop choice.
-      # Separate from default because it touches home-manager's `home.file` (default stays
-      # tracer-pure — evaluable with no home-manager, ADR-0008).
+      # The desktop-choice helper (ADR-0013): materialises ~/.contract-desktop from the home's
+      # contract.requests.gui.desktop, so the greeter's launcher reads the user's desktop choice
+      # before any of the home's Nix is evaluated. `lib.mkContractHome` composes it by DEFAULT
+      # (ADR-0032) — it is inert when no desktop is requested, so it costs a cli home nothing;
+      # exposed here for a consumer building homes by hand. Separate from `default` because it
+      # touches home-manager's `home.file` (default stays tracer-pure — evaluable with no
+      # home-manager, ADR-0008).
       homeModules.greeterDesktop = kit.homeGreeterDesktopModule;
       # The home baseline (ADR-0029, issue #42): the standing home-manager hygiene every produced
       # home starts from — every line mkDefault, so a user's plain definition wins per-option.

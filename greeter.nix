@@ -168,13 +168,16 @@ in
       description = ''
         Host BINDING (ADR-0008 "the host supplies only bindings"): a command invoked as
         `homeBuilder <src> <username>` that builds the user's OWN home output through the contract
-        umbrella (typically `nix build "<src>#homeConfigurations.<username>.activationPackage"`)
-        under the tier's restricted-eval posture and prints the built home-activation package path.
-        It is null by default because building a real home needs home-manager, which the contract
-        does not depend on (ADR-0004); the host
-        supplies it, exactly as it supplies the platform and display bindings. The reference greeter
-        ships everything else — greetd wiring, the eval-free auth ordering, the runtime
-        provisioning helper, and session selection — package-free at the flake level.
+        umbrella (typically
+        `nix build "<src>#homes.<system>.<username>.<mode>.activationPackage"`) under the tier's
+        restricted-eval posture and prints the built home-activation package path. A greeter binds
+        an ORDINARY home — there is no greeter-specific artifact to reach for since grants stopped
+        reaching homes (ADR-0032), so this is a plain `nix build` against the nested `homes` output
+        with no flat name involved. It is null by default because building a real home needs
+        home-manager, which the contract does not depend on (ADR-0004); the host supplies it,
+        exactly as it supplies the platform and display bindings. The reference greeter ships
+        everything else — greetd wiring, the eval-free auth ordering, the runtime provisioning
+        helper, and session selection — package-free at the flake level.
       '';
     };
 

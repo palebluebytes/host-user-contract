@@ -44,10 +44,11 @@ let
     };
   };
 
-  # The one owner of "where the inline identity/home.* module sits" (slot 3, after umbrella /
-  # baseline / home.nix) — the composition-order assertion below pins the other slots, so a
-  # reorder in mkContractHome fails there loudly rather than silently shifting what this reads.
-  inlineOf = r: lib.elemAt r.modules 3;
+  # The one owner of "where the inline identity/home.* module sits" (slot 4, after umbrella /
+  # baseline / greeterDesktop / home.nix) — the composition-order assertion below pins the other
+  # slots, so a reorder in mkContractHome fails there loudly rather than silently shifting what
+  # this reads.
+  inlineOf = r: lib.elemAt r.modules 4;
   inlineModule = inlineOf recorded;
 
   # Nix functions are incomparable (`==` on two lambdas is always false), so module identity is
@@ -116,7 +117,7 @@ let
         mode = "cli";
         stateVersion = "25.11";
       }).modules
-      2
+      3
   );
 
   # --- the home baseline's mkDefault posture, in a merged eval ---
@@ -162,13 +163,13 @@ in
   assertions = [
     # --- composition: the module list mkContractHome hands the injected builder ---
     {
-      name = "mkContractHome: composes umbrella → baseline → home.nix → inline, then extraModules";
+      name = "mkContractHome: composes umbrella → baseline → greeterDesktop → home.nix → inline, then extraModules";
       ok =
-        lib.length recorded.modules == 5
+        lib.length recorded.modules == 6
         && composedUmbrella.options.contract ? wants
         && composedUmbrella.options.contract ? requests
         && slotOneIsBaseline
-        && lib.elemAt recorded.modules 2 == ../examples/users/users/ada/home.nix
+        && lib.elemAt recorded.modules 3 == ../examples/users/users/ada/home.nix
         && lib.last recorded.modules == probe;
     }
     {
@@ -180,14 +181,18 @@ in
         && inlineModule.home.stateVersion == "25.11";
     }
     {
-      name = "mkContractHome: baseline IS composed by default; greeterDesktop is NOT (opt-in via extraModules)";
-      # The baseline is position 1 by content (its mkDefault wrappers are plain data). The
-      # greeterDesktop's absence is a negative-space probe with its positive control: the
-      # recogniser MUST fire on the real greeterDesktop module, and must fire on nothing composed.
+      # BOTH home-manager-aware helpers are composed by default now (ADR-0032). greeterDesktop
+      # joined the baseline because the separate greeter-granted home it used to be opted into no
+      # longer exists — grants stopped reaching homes, so there is nothing for a `<u>-greeter`
+      # artifact to differ in. It is `mkIf (… != "")`, so a cli home pays nothing for it.
+      #
+      # The recogniser keeps the positive control it had when this claim was inverted: it MUST fire
+      # on the real greeterDesktop module, or "it is composed" would be a probe recognising anything.
+      name = "mkContractHome: baseline AND greeterDesktop are both composed by default";
       ok =
         slotOneIsBaseline
         && surfacesDesktopChoice homeGreeterDesktopModule
-        && !(lib.any surfacesDesktopChoice recorded.modules);
+        && lib.any surfacesDesktopChoice recorded.modules;
     }
     {
       name = "mkContractHome: an explicit identity overrides the memberDir loader; home.* follow it";
@@ -202,7 +207,7 @@ in
     {
       name = "mkContractHome: a member supplies the memberDir AND the already-resolved identity";
       ok =
-        lib.elemAt memberBuilt.modules 2 == ../examples/users/users/ada/home.nix
+        lib.elemAt memberBuilt.modules 3 == ../examples/users/users/ada/home.nix
         && memberInline.identity.username == "rosa"
         && memberInline.home.username == "rosa"
         && memberInline.home.homeDirectory == "/home/rosa";

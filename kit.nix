@@ -101,7 +101,13 @@ let
   realization = import ./realization.nix { inherit accountPlan; };
   identityOptions = import ./identity.nix { inherit lib; };
   identityJson = import ./identity-json.nix { inherit lib identityOptions; };
-  homeProfileOptions = import ./home-profiles.nix { inherit lib; };
+  homeProfileOptions = import ./home-profiles.nix { inherit lib modeRegistry; };
+  # The per-mode profile SWITCHES a home is handed, given the mode it was built for: exactly one
+  # true (ADR-0032 §7). Derived from the same registry the options are, so the two cannot drift,
+  # and computed here beside them rather than inside the umbrella — the umbrella states the rule,
+  # this states the vocabulary. A `null` mode (a tracer with no `hostFacts`) yields all-false,
+  # which is the right answer for a home nothing is running.
+  homeProfilesFor = mode: lib.mapAttrs (name: _: { enable = name == mode; }) modeRegistry;
 
   # The manifest module (ADR-0016, issue #27): the single owner of the `contract-requests.json`
   # schema — the seam `mkContractPackage` writes through and `bindContractPackage` reads through.
@@ -131,6 +137,7 @@ let
       realization
       identityOptions
       homeProfileOptions
+      homeProfilesFor
       grantedOptions
       wantedOptions
       supportsOptions
@@ -237,21 +244,25 @@ in
       args: contractLib.mkContractFleet (args // { inherit (identityJson) loadIdentity; });
     inherit (contractLib) bindContractUser;
     # mkContractHome (ADR-0029, issue #40): the producer HOME builder — the contract-owned mkHome
-    # composition (umbrella + baseline + the user's home.nix + the identity/home.* inline module +
-    # the narrowed hostFacts specialArg). Package-free by INJECTION: the consumer passes
+    # composition (umbrella + baseline + greeterDesktop + the user's home.nix + the identity/home.*
+    # inline module + the hostFacts specialArg). Package-free by INJECTION: the consumer passes
     # `home-manager.lib.homeManagerConfiguration` verbatim (ADR-0004, the buildHome trick). The
-    # umbrella, the baseline hygiene module, and the identity loader are injected here (exactly as
-    # homeModule is for traceUser and loadIdentity for the producer coin), so a caller passes only
-    # its own side: { homeManagerConfiguration; pkgs; member (or memberDir); grants; stateVersion; … }.
-    # `grants` is the same word the producer coin and the home matrix use for a grant attrset, so one
-    # value keeps one name from the matrix through the builder to the pairing guard.
+    # umbrella, the two home-manager-aware helpers, and the identity loader are injected here
+    # (exactly as homeModule is for traceUser and loadIdentity for the producer coin), so a caller
+    # passes only its own side: { homeManagerConfiguration; pkgs; member (or memberDir); mode;
+    # stateVersion; … }. `mode` is the same word the matrix, the published key and the manifest
+    # use, so one value keeps one name from the matrix through the builder to the bind.
     mkContractHome =
       args:
       contractLib.mkContractHome (
         args
         // {
           inherit (identityJson) loadIdentity;
-          inherit (modules) homeModule homeBaselineModule;
+          inherit (modules)
+            homeModule
+            homeBaselineModule
+            homeGreeterDesktopModule
+            ;
         }
       );
     # The CHECK KIT (issues #35, #49) — the proofs only a consumer can run, over material only it

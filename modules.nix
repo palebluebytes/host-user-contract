@@ -7,6 +7,7 @@
   realization,
   identityOptions,
   homeProfileOptions,
+  homeProfilesFor,
   grantedOptions,
   wantedOptions,
   supportsOptions,
@@ -75,9 +76,24 @@
   # Home kit: the identity + home-profile vocabulary + the user's two-part VOICE — which features
   # it wants (contract.wants) and their parameters (contract.requests). The home identity value is
   # populated from the system identity by the host.
-  homeModule = _: {
+  homeModule = args: {
     options.identity = identityOptions;
     options.custom.home.profiles = homeProfileOptions;
+
+    # THE MODE, derived (ADR-0032 §7). `hostFacts.mode` is the single source a home learns its
+    # session shape from, and this turns it into exactly one true `custom.home.profiles.<mode>`
+    # — so a leaf module keeps gating on the familiar `lib.mkIf profiles.gui.enable` and no home
+    # writes the wire itself. It REVERSES `home-profiles.nix`'s earlier rule that the contract
+    # declared these and never wrote them: the mode is a fact handed to the home, not a choice
+    # the home makes, so a home defining one is a conflict rather than an override.
+    #
+    # `args.hostFacts or null` because the umbrella must stay evaluable by BARE `evalModules`
+    # with no specialArgs at all (ADR-0004/0008 — the headless tracer, and this suite's own
+    # `evalHome`). With no facts there is no mode, and every profile is false: the right answer
+    # for a home nothing is running.
+    config.custom.home.profiles = homeProfilesFor (
+      if args ? hostFacts then args.hostFacts.mode or null else null
+    );
 
     # contract.wants (ADR-0028, issue #34): the user's ASK, declared in its own home — WHICH
     # features this user wants of a host, the counterpart of the host's `contract.affordances`
@@ -150,7 +166,7 @@
 
   # The HOME BASELINE (issue #42): the standing, uniform-across-users home-manager hygiene every
   # produced home starts from — `mkContractHome` composes it by default, and it is also exposed as
-  # the opt-in `homeModules.baseline` (the greeterDesktop exposure pattern). It lives OUTSIDE
+  # `homeModules.baseline` for a consumer building homes by hand. It lives OUTSIDE
   # `homeModules.default` because it sets home-manager options: the default umbrella must stay
   # tracer-pure — evaluable by bare evalModules with no home-manager (ADR-0004/0008).
   #
@@ -174,11 +190,13 @@
   # launcher can read it. The greeter runs the session BEFORE evaluating the home's Nix, so it
   # reads the choice from a dotfile (`~/.contract-desktop`, see contract-greeter-session); this
   # materialises that file from the home's `contract.requests.gui.desktop`, so the portable-user
-  # choice travels with the home and needs NO manual step. It is SEPARATE from `homeModule` (which
-  # is pure schema the headless tracer evaluates with NO home-manager): this sets `home.file`, a
-  # home-manager option, so a real home imports it ALONGSIDE the umbrella inside home-manager. Inert
-  # when no desktop is requested ⇒ the greeter falls back to the seat default. Package-free: it only
-  # references the `home.file` option path (home-manager declares it), never imports home-manager.
+  # choice travels with the home and needs NO manual step — which is also why it cannot move
+  # host-side. It is SEPARATE from `homeModule` (which is pure schema the headless tracer evaluates
+  # with NO home-manager): this sets `home.file`, a home-manager option, so a real home imports it
+  # ALONGSIDE the umbrella inside home-manager. `mkContractHome` composes it by DEFAULT (ADR-0032):
+  # it is `mkIf (… != "")`, so a home requesting no desktop gets nothing and a cli home pays
+  # nothing. Package-free: it only references the `home.file` option path (home-manager declares
+  # it), never imports home-manager.
   homeGreeterDesktopModule =
     { config, ... }:
     # gui.desktop is a declared request option (always present, defaulting to ""), so read it
