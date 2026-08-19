@@ -1,6 +1,6 @@
 # The published bake set is the matrix: unclassified and unpruned
 
-**Status:** Accepted (2026-08-18). Records a **negative result** — it changes no code and adds no
+**Status:** Accepted (2026-08-18). **Amended by [ADR-0032](0032-grants-ride-the-bind-modes-build-homes.md) (2026-08-19)** — both conclusions stand, the pruning half's *measurement* is moot, and the mechanism this record reasons over is gone: `needsOwnHome`, `homeAxes`, the grant powerset, `assertHomePairing` and `hostFacts.granted.gui.enable` no longer exist. The redundancy the pruning half measured — six of seven reference users publishing byte-identical bakes — arose *because* every user was baked per grant combination whether or not any grant reached its home; per-mode baking makes identical bakes unproducible, so there is nothing left to prune and the 0.013% figure has no referent. The classification half is untouched and is the half that still binds: the contract still cannot derive whether home content is graphical, which is why a user *says* so with `contract.supports`. Read the body as a record of why the question was closed, not as a description of live structures. Records a **negative result** — it changes no code and adds no
 surface. It answers [issue #63](https://github.com/palebluebytes/host-user-contract/issues/63) and
 the design question behind it, and exists so that neither half is re-proposed without new evidence.
 Confirms [ADR-0002](0002-user-confinement-manifest-greeter.md)'s rejection of the curated-catalog
