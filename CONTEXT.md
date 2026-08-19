@@ -795,8 +795,13 @@ the term is stable, the code is pending (see the cited issue).
   per-system *declaration*, `{ <mode> = bool; }`, written by a fleet; an **entry** is the per-system
   value of `homes`, `{ <user> = { <mode> = home; }; }`, produced by one. The mapper that turns the
   first into the second holds both a line apart, so they do not share a word: the check kit and its
-  diagnostics say *entry*, `mkHomeMatrix` and its guards say *row*. A third sense — the
-  `{ grants; label; home; }` record — died with the record (ADR-0032) and is not to be revived.
+  diagnostics say *entry*, `mkHomeMatrix` and its guards say *row*. Between them sits a third,
+  live value with its own word: what `mkHomeMatrix` **returns**, `{ <system> = [ <mode> ]; }`,
+  whose per-system value is that system's **modes** — `modesOf` in `mkContractFleet`, never
+  `rowOf`. Row and modes sit either side of one function, and a consumer never writes what
+  `modesOf` reads, so sharing a word would be sharing it across the exact seam that converts one
+  into the other. A fourth sense — the `{ grants; label; home; }` record — died with the record
+  (ADR-0032) and is not to be revived.
 - **bake is a verb, and only a verb** (ADR-0030) — "fails the bake", "the bake pairing", "baked
   under". The object is a **[[home]]** (or, once published, a **[[contractPackage]]**); "a bake"
   tells a reader that an operation happened, not what the thing is. `bake`-as-a-noun-for-the-object

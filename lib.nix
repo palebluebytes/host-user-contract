@@ -278,8 +278,9 @@ let
 
   # mkHomeMatrix (issue #58): the PUBLIC per-system home matrix — `homeMatrixOver` closed over the
   # contract's own mode names, which is what makes a registry that gains a mode reach every
-  # consumer's published homes with no edit. Returns `{ <system> = [ <mode> ]; }`, so a producer maps over a row
-  # exactly as it would over the whole mode set. See `homeMatrixOver` above for the declaration shape
+  # consumer's published homes with no edit. Returns `{ <system> = [ <mode> ]; }` — a system's
+  # MODES, not a row: a row is the `{ <mode> = bool; }` a fleet declares INTO this, so a producer
+  # maps over the modes exactly as it would over the whole mode set. See `homeMatrixOver` above for the declaration shape
   # and the guards.
   mkHomeMatrix =
     { systems }:
@@ -447,7 +448,7 @@ let
   # handed homes cut to the modes the user actually supports. One owner of the rule, applied
   # wherever the answer is needed (the producer coin, and the fleet's `homes` output).
   #
-  # `homes` is `{ <mode> = home; }` — what the caller BUILT, which is its system's matrix row. The
+  # `homes` is `{ <mode> = home; }` — what the caller BUILT, which is its system's matrix modes. The
   # published set is that ∩ `supports`, so a mode the user supports but this system does not bake
   # is simply absent — and a system that builds NONE of them publishes nothing for that user there,
   # which is not an error here. The matrix is fail-OPEN on coverage (ADR-0032 §6) and the refusal
@@ -748,8 +749,8 @@ let
   # kit-injected `loadIdentity` (ADR-0009) — the shape a SINGLE-USER repo keeps, since one user is
   # not a member set, and constructing one to bake it would be ceremony.
   #
-  # `homes` is `{ <mode> = home; }` — the modes this system BUILT for this user, which is its
-  # matrix row. The KEY is the whole of what a home is published as, so nothing is re-paired here
+  # `homes` is `{ <mode> = home; }` — the modes this system BUILT for this user, which is what its
+  # matrix answers for that system. The KEY is the whole of what a home is published as, so nothing is re-paired here
   # and there is no record to get wrong: the mode a home was built for and the mode it is published
   # under are the same value by construction (ADR-0032 §6). `loadIdentity` is injected by the kit
   # (like `homeModule` for `traceUser`) so the users flake calls this without wiring the loader
@@ -961,7 +962,7 @@ let
   # and `pkgsBySystem` is RETURNED so the rule is a value a caller can hold (and a suite can pin)
   # rather than a comment it has to trust.
   #
-  # THE CROSS-PRODUCT IS HARD-WIRED: every member is BUILT for every mode in its system's row —
+  # THE CROSS-PRODUCT IS HARD-WIRED: every member is BUILT for every mode its system's matrix names —
   # and then PUBLISHED for the ones it says it supports, which `mkContractUsers` decides one rung
   # down (ADR-0032 §6). Building is per-system and publishing is per-user, so the two cannot be one
   # step. This is also why `homes` is read back off the bindings below rather than re-filtered here:
@@ -991,15 +992,19 @@ let
     }:
     let
       systems = lib.attrNames homeMatrix;
-      rowOf = sys: homeMatrix.${sys};
+      # `modesOf`, not `rowOf`: a ROW is what a fleet DECLARES to `mkHomeMatrix`
+      # (`{ <mode> = bool; }`), and this reads what `mkHomeMatrix` RETURNS — a plain list of the
+      # mode names this system builds. They sit either side of one function, so one word for both
+      # would be one word for two types (ADR-0030), and the consumer never writes what this reads.
+      modesOf = sys: homeMatrix.${sys};
       # Split by PARTITION rather than by two negated filters, for the reason `mkMemberChecks`
-      # states one file over: the emptiness verdict below may only be asked of a row it can read,
-      # and reporting a MALFORMED row as "names no home" would name the wrong mistake — so the two
-      # sets have to stay exact complements, which a partition makes structural instead of a rule
-      # two hand-written predicates have to keep agreeing on.
-      byRowShape = lib.partition (sys: lib.isList (rowOf sys)) systems;
-      malformedRows = byRowShape.wrong;
-      emptyRows = lib.filter (sys: rowOf sys == [ ]) byRowShape.right;
+      # states one file over: the emptiness verdict below may only be asked of a system it can
+      # read, and reporting a MALFORMED entry as "names no home" would name the wrong mistake — so
+      # the two sets have to stay exact complements, which a partition makes structural instead of
+      # a rule two hand-written predicates have to keep agreeing on.
+      byModesShape = lib.partition (sys: lib.isList (modesOf sys)) systems;
+      malformedModes = byModesShape.wrong;
+      emptyModes = lib.filter (sys: modesOf sys == [ ]) byModesShape.right;
 
       # THE MEMO. One application of `pkgsFor` per system, and the guard that the answer is about
       # the system it was asked for rides each entry — so it fires when that system's homes are
@@ -1034,11 +1039,11 @@ let
       # the mode a home was built for and the mode it is published under are one key by
       # construction (ADR-0032 §6), which is why the cross-check that used to guard the join is
       # gone rather than moved.
-      builtRows = lib.genAttrs systems (
+      builtEntries = lib.genAttrs systems (
         sys:
         lib.mapAttrs (
           _: member:
-          lib.genAttrs (rowOf sys) (
+          lib.genAttrs (modesOf sys) (
             mode:
             buildHome {
               inherit member mode;
@@ -1048,7 +1053,7 @@ let
         ) members
       );
 
-      # The per-system bake, `mkContractUsers` handed the built rows directly — its `homes`
+      # The per-system bake, `mkContractUsers` handed the built entries directly — its `homes`
       # argument IS `{ <user> = { <mode> = home; }; }`, so there is no reshaping between the two
       # and no second spelling of the fold.
       bindings = lib.mapAttrs (
@@ -1058,7 +1063,7 @@ let
           pkgs = pkgsBySystem.${sys};
           homes = byMember;
         }
-      ) builtRows;
+      ) builtEntries;
     in
     # Grouped by SUBJECT — the member set, then the matrix, then its rows — and within each the same
     # order the rest of this file uses: a shape that cannot be read before anything is read off it,
@@ -1096,34 +1101,34 @@ let
       fix = "Its key set is the systems this fleet bakes for.";
     };
     assert diag.must {
-      ok = malformedRows == [ ];
+      ok = malformedModes == [ ];
       who = "mkContractFleet";
-      problem = "the `homeMatrix` row(s) for ${showList malformedRows} are not lists";
-      fix = "Each system's row is a LIST of MODE names — one entry per home it builds.";
+      problem = "the `homeMatrix` modes for ${showList malformedModes} are not lists";
+      fix = "`mkHomeMatrix` answers each system with a LIST of MODE names — one per home it builds.";
     };
     assert diag.must {
-      ok = emptyRows == [ ];
+      ok = emptyModes == [ ];
       who = "mkContractFleet";
-      problem = "system(s) ${showList emptyRows} name no home at all";
+      problem = "system(s) ${showList emptyModes} name no home at all";
       why = diag.vacuity {
-        subject = "row";
+        subject = "system";
         verbs = "build, publish and check";
       };
       fix =
         "Leave a system out of the matrix entirely if this fleet does not bake for it. "
-        + "`mkHomeMatrix` refuses an emptied row at the source.";
+        + "`mkHomeMatrix` refuses a row emptied by declaration at the source.";
     };
     {
       inherit systems pkgsBySystem;
       # `<system>.<user>.<mode>` — the PUBLISHED homes, and a flake output in its own right
-      # (ADR-0032 §6). Read back off the bindings rather than re-derived from `builtRows`: the
+      # (ADR-0032 §6). Read back off the bindings rather than re-derived from `builtEntries`: the
       # index's key set IS the published mode set, so taking it from there keeps ONE owner of the
       # `supports` cut. `attrNames` on the index forces no package, so this stays as lazy as the
       # bindings themselves.
       homes = lib.mapAttrs (
         sys: b:
         lib.mapAttrs (
-          user: entry: lib.getAttrs (lib.attrNames entry.contractPackages) builtRows.${sys}.${user}
+          user: entry: lib.getAttrs (lib.attrNames entry.contractPackages) builtEntries.${sys}.${user}
         ) b.contractUsers.${sys}
       ) bindings;
       # Nested by system, so `inherit (fleet) packages contractUsers;` is the flake outputs. Each
@@ -1187,9 +1192,9 @@ let
       identity ? null,
       # THE SESSION SHAPE this home is built for (ADR-0032) — the one mode, handed to the home as
       # `hostFacts.mode` and derived by the umbrella into `custom.home.profiles.<mode>.enable`.
-      # REQUIRED and unvalidated against the registry here: the producer's matrix row is where a
+      # REQUIRED and unvalidated against the registry here: the producer's matrix is where a
       # mode name is checked (`mkHomeMatrix`), and re-checking it would be a second owner of the
-      # rule. Named `mode` throughout — the matrix row, the builder, the published key and the
+      # rule. Named `mode` throughout — the matrix, the builder, the published key and the
       # manifest field are one word for one value (ADR-0030).
       mode,
       # REQUIRED consumer fact — the real repos differ, so the contract carries no default.
