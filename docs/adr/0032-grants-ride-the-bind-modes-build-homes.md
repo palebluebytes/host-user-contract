@@ -96,6 +96,19 @@ ever carried a second flag — parameters have their own namespace (`contract.re
 and ADR-0024 split coarse roles into atomic features rather than adding flags to one. A word that
 never varied across five features and four namespaces is ceremony.
 
+**`custom.home.profiles.<mode>.enable` keeps its suffix, and the asymmetry is deliberate.** The
+rule above, read literally, applies to it too: that namespace has exactly one key and always will.
+It is held still for two reasons the grant vocabulary does not share. First, the leaf is an **error
+anchor**: the contract writes these switches (§7), so a home that writes one gets a conflicting
+definition from the module system, and that report prints the option path and its description and
+nothing else — it is the only surface where "the contract writes this, you do not" can reach an
+author who has already got it wrong. Second, the namespace is the **home's**, not the contract's
+grant vocabulary: it sits in `custom.home.*` beside ordinary home-manager options, is consumed by
+leaf modules in repos this contract cannot see or migrate, and `foo.enable` is the idiom every one
+of those authors reaches for. `contract.supports.gui` is a claim a user makes outward;
+`profiles.gui.enable` is a switch content hangs off. The shapes differ because the things differ,
+which is the opposite of the defect this rule clears.
+
 ### 4. The host declares affordances; its modes are derived
 
 A host declares `contract.affordances.<feature> = true` and nothing else. The modes it runs follow:

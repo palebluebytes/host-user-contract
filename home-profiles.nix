@@ -27,6 +27,15 @@ lib.mapAttrs (_: m: {
   # moment they get it wrong — a home that writes one gets a CONFLICTING DEFINITION from the
   # module system, and that report names the option and nothing else — so it is the only place
   # the rule can be stated where the error will find it.
+  #
+  # THE `.enable` SUFFIX SURVIVES HERE, and only here (ADR-0032 §3). It was dropped across the
+  # grant vocabulary — `wants.sudo = true`, `affordances.gui = true` — as a word that never varied,
+  # and read literally that argument covers this option too. It is held still because this leaf is
+  # the ERROR ANCHOR described above (a conflicting-definition report prints the option path and
+  # nothing else), and because this namespace is the HOME's rather than the contract's: it sits in
+  # `custom.home.*` beside ordinary home-manager options, gated by leaf modules in repos the
+  # contract cannot migrate, where `foo.enable` is the idiom every author reaches for.
+  # `contract.supports.gui` is a claim a user makes OUTWARD; this is a switch content hangs off.
   enable = lib.mkOption {
     type = lib.types.bool;
     default = false;
