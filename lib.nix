@@ -997,14 +997,12 @@ let
       # mode names this system builds. They sit either side of one function, so one word for both
       # would be one word for two types (ADR-0030), and the consumer never writes what this reads.
       modesOf = sys: homeMatrix.${sys};
-      # Split by PARTITION rather than by two negated filters, for the reason `mkMemberChecks`
-      # states one file over: the emptiness verdict below may only be asked of a system it can
-      # read, and reporting a MALFORMED entry as "names no home" would name the wrong mistake — so
-      # the two sets have to stay exact complements, which a partition makes structural instead of
-      # a rule two hand-written predicates have to keep agreeing on.
-      byModesShape = lib.partition (sys: lib.isList (modesOf sys)) systems;
-      malformedModes = byModesShape.wrong;
-      emptyModes = lib.filter (sys: modesOf sys == [ ]) byModesShape.right;
+      # Shape before emptiness, via the shared partition (`diag.byShape`): the emptiness verdict
+      # below may only be asked of a system it can READ, and reporting a MALFORMED entry as "names
+      # no home" would name the wrong mistake. The rationale lives at the helper.
+      byModesShape = diag.byShape (sys: lib.isList (modesOf sys)) systems;
+      malformedModes = byModesShape.malformed;
+      emptyModes = lib.filter (sys: modesOf sys == [ ]) byModesShape.readable;
 
       # THE MEMO. One application of `pkgsFor` per system, and the guard that the answer is about
       # the system it was asked for rides each entry — so it fires when that system's homes are

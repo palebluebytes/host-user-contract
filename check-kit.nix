@@ -328,18 +328,16 @@ let
     }:
     let
       homesBySystem = lib.genAttrs systems homesFor;
-      # SHAPE and EMPTINESS are two different mistakes, and folding them into one predicate made
-      # this check report the wrong one: an entry holding a single malformed home is not empty, yet
-      # it failed with "no homes for [x86_64-linux]". Split by PARTITION rather than two negated
-      # filters, for the reason `mkMemberChecks` states below — the emptiness verdict may only be
-      # asked of an entry it can READ, so the two sets have to stay exact complements.
+      # Shape before emptiness, via the shared partition (`diag.byShape`) — this check is the one
+      # that proved the rationale: folding both into one predicate made it report an entry holding
+      # a single malformed home as "no homes for [x86_64-linux]".
       #
       # ENTRY, not "row": a row is the home matrix's per-system DECLARATION (`{ <mode> = bool; }`,
       # what a fleet writes), and this is the per-system value of `homes` (what a fleet BUILT).
       # They are one word apart in the mapper that produces both, so they do not share it here.
-      byEntryShape = lib.partition (sys: lib.isAttrs homesBySystem.${sys}) systems;
-      malformedSystems = byEntryShape.wrong;
-      emptySystems = lib.filter (sys: homesBySystem.${sys} == { }) byEntryShape.right;
+      byEntryShape = diag.byShape (sys: lib.isAttrs homesBySystem.${sys}) systems;
+      malformedSystems = byEntryShape.malformed;
+      emptySystems = lib.filter (sys: homesBySystem.${sys} == { }) byEntryShape.readable;
       # Every system × home whose forced value is NOT a `.drv` path. A home that does not
       # evaluate never lands here — its error propagates raw out of `force` (no tryEval, above) —
       # so an entry in this list means `force` stopped short of the derivation.
@@ -350,7 +348,7 @@ let
             lib.attrNames homesBySystem.${sys}
           )
         )
-      ) byEntryShape.right;
+      ) byEntryShape.readable;
     in
     # Ordered deliberately: a SHAPE that cannot be read before anything is read off it, then
     # anti-vacuity, and only then evaluability — a check that forced nothing must report the
@@ -478,14 +476,13 @@ let
       shapelyHomes = lib.isAttrs homes;
       systems = lib.optionals shapelyHomes (lib.attrNames homes);
       memberNames = lib.optionals (lib.isAttrs members) (lib.attrNames members);
-      # The system entries that ARE `{ <user> = …; }` attrsets, and the ones that are not. Split once,
-      # by PARTITION rather than two negated filters: the coverage fold below can only ask a
-      # well-formed entry who it holds, and reporting a malformed entry as "holds nobody" would name the
-      # wrong mistake — so the two sets must stay exact complements, and a partition makes that
-      # structural instead of a rule two hand-written predicates have to keep agreeing on.
-      byEntryShape = lib.partition (sys: lib.isAttrs homes.${sys}) systems;
-      wellFormedSystems = byEntryShape.right;
-      malformedSystems = byEntryShape.wrong;
+      # The system entries that ARE `{ <user> = …; }` attrsets, and the ones that are not — shape
+      # before emptiness, via the shared partition (`diag.byShape`). Here the verdict that needs a
+      # readable entry is the coverage fold below, which can only ask a well-formed entry who it
+      # holds; reporting a malformed one as "holds nobody" would name the wrong mistake.
+      byEntryShape = diag.byShape (sys: lib.isAttrs homes.${sys}) systems;
+      wellFormedSystems = byEntryShape.readable;
+      malformedSystems = byEntryShape.malformed;
       # Every system × member the handed homes do NOT hold. Checked here rather than left to the
       # raw `attribute missing` a lookup would throw, because the diagnosis is specific: the members
       # is the authority on who exists, so a member with no homes is a gap in the mapper that built
