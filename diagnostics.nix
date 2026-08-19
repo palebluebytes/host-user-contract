@@ -103,28 +103,4 @@ rec {
     }:
     "An empty ${subject} would ${verbs} NOTHING while every output stayed green, "
     + "so this is an error rather than a silent pass.";
-
-  # THE SHAPE-BEFORE-EMPTINESS PARTITION, stated once (it was retyped three times, in three
-  # wordings — `mkContractFleet`, `mkHomeEvalCheck` and `mkMemberChecks`).
-  #
-  # Shape and emptiness are two DIFFERENT mistakes, and one predicate folding them together reports
-  # the wrong one: an entry holding a single malformed home is not empty, yet it once failed with
-  # "no homes for [x86_64-linux]". So the emptiness verdict — and every other verdict that has to
-  # READ a value — may only be asked of the values it can read, which means the readable set and the
-  # malformed set must be exact COMPLEMENTS. A partition makes that structural; two hand-written
-  # negated filters make it a rule the pair have to keep agreeing on, and the agreement is exactly
-  # what drifts.
-  #
-  # `readable`/`malformed` rather than `lib.partition`'s `right`/`wrong`, so the caller's next line
-  # says which of the two it is asking about instead of leaving a reader to work out which way round
-  # the predicate ran.
-  byShape =
-    pred: names:
-    let
-      split = lib.partition pred names;
-    in
-    {
-      readable = split.right;
-      malformed = split.wrong;
-    };
 }
