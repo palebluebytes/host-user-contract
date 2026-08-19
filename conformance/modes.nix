@@ -133,6 +133,24 @@ in
         } == "gui";
     }
     {
+      # THE GAP THE BIND'S MATRIX-SUBTRACTION GUARD CLOSES (issue #71). The host runs gui and the
+      # user supports it, but this system's home matrix took gui away, so the published set holds
+      # the floor alone — and selection answers the FLOOR, with no refusal and no message. Selection
+      # is right to: it reads what was BUILT, and there is no gui home here to bind. What is missing
+      # is the comparison against what the user SUPPORTS, which selection is never handed and only
+      # `bindContractUser` holds. Stated here so the silent answer is a documented property of the
+      # kernel rather than an accident nobody looked at.
+      name = "selection: a rich mode the matrix subtracted leaves the floor, silently";
+      ok =
+        select {
+          runs = [
+            "cli"
+            "gui"
+          ];
+          published = [ "cli" ];
+        } == "cli";
+    }
+    {
       # …and with no rich mode in common, the floor. This is a headless host binding an ordinary
       # user: it runs the floor, the user publishes both, and the floor is what they share.
       name = "selection: with no rich mode in common, the floor is what is selected";

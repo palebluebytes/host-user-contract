@@ -37,15 +37,22 @@ let
   # `contractPackages` is keyed by MODE and its leaf is the package, so its KEY SET is what this
   # user publishes here (its `supports` as the producer's matrix narrowed it) and selection reads
   # exactly that. The package is the repo-path fixture, so selection builds nothing.
+  #
+  # `supports` is the user's own claim, carried beside the publication so the bind can tell a mode
+  # the user never supported from one this system's matrix took away (issue #71). It DEFAULTS to
+  # the published modes — the case where the matrix took nothing — so every fixture that predates
+  # the guard states exactly what it used to, and only the subtraction case says otherwise.
   mkIndex =
     {
       identity,
       offer,
       modes,
+      supports ? modes,
       package ? fixturePackage,
     }:
     {
       inherit identity offer;
+      supports = lib.genAttrs supports (_: true);
       contractPackages = lib.genAttrs modes (_: package);
     };
 
@@ -140,6 +147,47 @@ let
   # refusal is about the mismatch and not about publishing one mode.
   guiOnlyOnASeat = bindTurnkey {
     index = guiOnlyIndex;
+    affordances = {
+      gui = true;
+    };
+  };
+
+  # --- (b2) THE MATRIX SUBTRACTION (issue #71) ---
+  # ada supports BOTH modes, but this system's home matrix took gui away, so only cli is published
+  # for her here. The host affords gui, so it RUNS gui. Selection alone answers the floor (proved
+  # against the kernel in ./modes.nix) and would activate a terminal home on a graphical seat with
+  # no message at all; the guard names the matrix as the cause instead.
+  subtractedIndex = mkIndex {
+    identity = adaIdentity;
+    offer = {
+      gui = true;
+    };
+    modes = [ "cli" ];
+    supports = [
+      "cli"
+      "gui"
+    ];
+  };
+  subtractedEval = builtins.tryEval (
+    (bindTurnkey {
+      index = subtractedIndex;
+      affordances = {
+        gui = true;
+      };
+    }).custom.users.ada.granted
+  );
+  # The control, and it is the one that makes the claim above mean anything: the SAME publication
+  # on the SAME host, with ada supporting only what is published. Nothing was taken away, so the
+  # floor binds and the guard stays silent — so the refusal is about the SUBTRACTION and not about
+  # binding the floor on a gui-affording host, which is ordinary and must keep working.
+  unsubtractedBind = bindTurnkey {
+    index = mkIndex {
+      identity = adaIdentity;
+      offer = {
+        gui = true;
+      };
+      modes = [ "cli" ];
+    };
     affordances = {
       gui = true;
     };
@@ -509,6 +557,19 @@ in
       # mismatch and not about publishing one mode.
       name = "mode selection: the same gui-only user binds on a gui-affording seat (the control)";
       ok = guiOnlyOnASeat.users.users.ada.isNormalUser;
+    }
+
+    # (b2) the matrix subtraction — the mode the producer took away from THIS system
+    {
+      # Distinct from the refusal above, and the distinction is the point: there the user supports
+      # nothing this host runs, and SELECTION refuses. Here selection succeeds and answers the
+      # floor, so only a guard reading `supports` beside the publication can see the mistake.
+      name = "matrix subtraction: a mode this host runs and this user supports, unpublished here, is a hard error";
+      ok = !subtractedEval.success;
+    }
+    {
+      name = "matrix subtraction: the same publication with nothing subtracted binds the floor (the control)";
+      ok = unsubtractedBind.users.users.ada.isNormalUser;
     }
 
     # (c) the mode coupling guard, reached through the real selection

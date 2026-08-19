@@ -142,6 +142,34 @@ override; nothing here forecloses it.
 No mode name appears in the algorithm — the floor is read off the registry flag, for the same reason
 `keyLabel`'s output is documented as "a cosmetic label, not a parse target".
 
+> **Amendment (2026-08-19, [issue #71](https://github.com/palebluebytes/host-user-contract/issues/71)).**
+> Step 1 as written above is not what selection intersects, and the difference had a silent case in
+> it.
+>
+> What `bindContractUser` reads is the **published** set — the binding index's `contractPackages`
+> key set, which is `supports` **already narrowed by the producer's per-system home matrix** (§6).
+> That is deliberate and stays: publication has one owner, and re-declaring `supports` beside it as
+> a second input to the same decision is precisely the "two declarations that must agree" this
+> record removes everywhere else. Selection still reads one value.
+>
+> What that leaves uncovered is a mode the host **runs** and the user **supports**, which *this
+> system's row subtracted*. It is absent from the publication, so selection cannot see it, falls
+> back to the floor, and activates a terminal home on a graphical seat — with no message. That is
+> the silently lesser home this record refuses two paragraphs later, arrived at from the other
+> direction.
+>
+> So the index carries `supports` as well, read by **one guard and not by the algorithm**: a mode in
+> `runs ∩ supports` that is not published for this system is a hard error naming the matrix as the
+> cause, checked before selection so the empty-intersection refusal cannot fire first and name the
+> wrong thing. The disagreement it reports is real and no host can resolve it — the users repo says
+> that system's seats cannot run the mode while a host on that system affords the feature it runs
+> under.
+>
+> Step 1 therefore reads: **`modes = runs ∩ published`, having first refused any `runs ∩ supports`
+> that publication does not cover.** The two refusals are different and have different owners —
+> selection's means the user supports nothing this host runs; the guard's means the producer built
+> nothing here for a mode both sides wanted.
+
 ### 6. Homes are keyed by mode, and the leaf is the home
 
 ```nix

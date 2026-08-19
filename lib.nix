@@ -45,6 +45,11 @@ let
   # is no combination anywhere downstream to label, pair or narrow (ADR-0032).
   modeNames = lib.attrNames modeRegistry;
 
+  # The modes a `contract.supports` set NAMES — its enabled-name projection, exactly the move
+  # `grantedNamesOf` makes for a grant set, and the only shape anything downstream consumes. Stated
+  # once so the harvest and the bind cannot project the same declaration two ways.
+  supportedNamesOf = supports: lib.filter (m: supports.${m} or false) modeNames;
+
   # floorOf: the ONE mode a registry declares as its FLOOR — the mode every host runs, the
   # fallback of every selection, and the reason `runs` never comes out empty.
   #
@@ -139,7 +144,12 @@ let
     let
       candidates = lib.filter (m: lib.elem m published) runs;
       rich = lib.filter (m: m != floor) candidates;
-      show = "this host runs ${showList runs}; ${showName subject} publishes ${showList published}";
+      # "publishes HERE", because the published set is the user's `contract.supports` as this
+      # system's home matrix narrowed it — not the whole of what the user can run. The two are only
+      # equal when the matrix took nothing away, and the case where they differ has its own error
+      # (the matrix-subtraction guard in `bindContractUser`), so by the time this fires the
+      # narrowing is not the cause: the user supports nothing this host runs.
+      show = "this host runs ${showList runs}; ${showName subject} publishes ${showList published} here";
     in
     if candidates == [ ] then
       diag.stop {
@@ -150,7 +160,9 @@ let
           + "(ADR-0032 narrows ADR-0002's degradation posture to grants). Every SEAT still binds "
           + "every user: what refuses is an operator naming a user whose session shape this host "
           + "cannot run.";
-        fix = "Afford the feature that mode is run under, or bind a user that supports one of them.";
+        fix =
+          "Afford the feature that mode is run under, or bind a user whose `contract.supports` "
+          + "names one of them.";
       }
     else if lib.length rich > 1 then
       diag.stop {
@@ -463,7 +475,7 @@ let
       # Each half compared as its enabled-NAME projection, which is the whole observable content of
       # a bool-per-key set and exactly what downstream consumes.
       offeredNames = map (v: grantedNamesOf v.wants) voices;
-      supportedNames = map (v: lib.filter (m: v.supports.${m} or false) modeNames) voices;
+      supportedNames = map (v: supportedNamesOf v.supports) voices;
       first = lib.head voices;
       supported = lib.head supportedNames;
       # Supporting a mode while vetoing the grant that mode is associated with: issue #59's rule
@@ -539,6 +551,11 @@ let
     {
       inherit published;
       offer = first.wants;
+      # Carried OUT as well as applied here (issue #71). `published` is this ∩ the producer's
+      # matrix, and the two are only equal when the matrix took nothing away — so a bind that sees
+      # only `published` cannot tell a mode the user never supported from one this system
+      # subtracted. It is the same attrset shape `offer` keeps, projected at the reader.
+      supports = first.supports;
     };
 
   # mkContractPackageForHome (ADR-0016, issue #23): the OPTIONAL home-manager producer adapter. It mirrors
@@ -806,7 +823,7 @@ let
         username = userName;
         inherit homes;
       };
-      inherit (voice) offer;
+      inherit (voice) offer supports;
       # The voice guards ride the whole bake RECORD as well as the published `offer`, for the same
       # reason the request guard does: the repo that owns a self-contradictory voice is the USER's,
       # whose flake check builds the PACKAGES and never reads the index a host binds through. A
@@ -831,7 +848,7 @@ let
         mode: package: lib.nameValuePair "${userName}-contractPackage-${mode}" package
       ) built;
       contractUsers.${system}.${userName} = {
-        inherit identity offer;
+        inherit identity offer supports;
         contractPackages = built;
       };
     };
@@ -1430,16 +1447,55 @@ let
       # The modes this host runs, DERIVED (ADR-0032 §4) — the host declared affordances and nothing
       # else, so there is no second declaration to disagree with this one.
       runs = runsFor affordedNames;
+      publishedNames = lib.attrNames index.contractPackages;
+      supportedNames = supportedNamesOf index.supports;
+      # THE MATRIX SUBTRACTION (issue #71). A mode this host RUNS and this user SUPPORTS, which
+      # this system's home matrix took AWAY, is a disagreement with no home to bind: the users repo
+      # said this system's seats cannot run that mode, and a host on that system affords the
+      # feature it is run under. Selection would swallow it — every such mode is absent from
+      # `published`, so the fallback quietly picks the floor and activates a terminal home on a
+      # graphical seat with NO message, which is exactly the silently lesser home ADR-0032 refuses.
+      #
+      # This is why the index carries `supports` at all. Selection still reads ONE value
+      # (`published`), so the single owner of the `supports` cut is untouched; the second value is
+      # read only here, by the guard that can name what the cut removed.
+      #
+      # BEFORE selection, deliberately: when the subtraction empties the published set entirely,
+      # the empty-intersection refusal would otherwise fire first and name the wrong cause.
+      subtracted = lib.subtractLists publishedNames (lib.intersectLists runs supportedNames);
       # …and the mode it binds this user in. The published key set IS the user's `supports` as
       # narrowed by the producer's matrix, so selection reads one value rather than intersecting
-      # two that must agree.
-      mode = selectModeOver {
-        who = "bindContractUser";
-        subject = username;
-        floor = floorMode;
-        inherit runs;
-        published = lib.attrNames index.contractPackages;
-      };
+      # two that must agree — and with the guard above satisfied, every mode this host runs and
+      # this user supports is in it.
+      #
+      # The guard rides `mode` rather than the module head: everything this function selects from
+      # `system` must stay inside a config VALUE, or probing the module for an unrelated option
+      # forces `system` before `pkgs` exists and the config↔pkgs cycle reopens. Riding `mode` also
+      # gets the ordering for free — it is forced before selection's own refusals can be.
+      mode =
+        assert diag.must {
+          ok = subtracted == [ ];
+          who = "bindContractUser";
+          problem =
+            "this host runs ${showList runs} and ${showName username} supports "
+            + "${showList supportedNames}, but ${showList subtracted} is not published for "
+            + "${showName system} — the producer's home matrix took it away";
+          why =
+            "That matrix row is the users repo stating this system's seats CANNOT run that mode, "
+            + "while this host affords the feature it is run under. Nothing built the home, so "
+            + "binding would fall back to the floor and activate a lesser session with no message "
+            + "at all — the silently lesser home ADR-0032 refuses.";
+          fix =
+            "Stop subtracting that mode for ${showName system} in the producer's `mkHomeMatrix`, "
+            + "or stop affording the feature it is run under on this host.";
+        };
+        selectModeOver {
+          who = "bindContractUser";
+          subject = username;
+          floor = floorMode;
+          inherit runs;
+          published = publishedNames;
+        };
       # grant = affordances ∩ offer (both necessary; the host's affordance is the veto). Derived
       # INDEPENDENTLY of the mode: a host must still be able to confer gui's groups to a cli-mode
       # user, and `wants.gui` stays vetoable, which is why the mode never implies its grant.
