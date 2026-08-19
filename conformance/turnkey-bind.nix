@@ -537,7 +537,7 @@ in
       ok = bindings.packages.${system} ? "ada-contractPackage-gui";
     }
     {
-      name = "mkContractUsers: the binding index carries { identity; offer; bakes }";
+      name = "mkContractUsers: the binding index carries { identity; offer; contractPackages }";
       ok =
         (emittedIndex ? identity)
         && (emittedIndex ? offer)

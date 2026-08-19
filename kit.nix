@@ -85,7 +85,17 @@ let
   # default" is a TEACHING convention (`supports.gui = true` in an ordinary home), not a value
   # written for anyone.
   supportsOptions = lib.mapAttrs (
-    _: m: lib.mkEnableOption "${m.description} — whether this user's home can run in it"
+    _: m:
+    # Written out rather than `mkEnableOption`, whose "Whether to enable …" would land in front of
+    # a description that is already a whole sentence. `modes.nix` writes ONE description per mode
+    # and both derived options render it — that is what stops the two describing the same word
+    # differently — so neither may bolt a second clause onto the front of it. `home-profiles.nix`
+    # declines `mkEnableOption` on the other side for its own reason, stated there.
+    lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether this user's home can run in ${m.description} (ADR-0032). At least one mode is required, and nothing defaults to true: a user that says nothing supports nothing, and the bake refuses it by name.";
+    }
   ) modeRegistry;
   featureConfigOptions = lib.foldl' lib.recursiveUpdate { } (
     map (f: f.config or { }) (lib.attrValues registry)

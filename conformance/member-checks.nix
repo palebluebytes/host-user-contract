@@ -218,7 +218,7 @@ in
       ok = !(passes { homes = lib.mapAttrs (_: lib.mapAttrs (_: _: { })) (homesOver members); });
     }
     {
-      # The under-forcing hook: a `force` that never reaches a derivation makes every bake
+      # The under-forcing hook: a `force` that never reaches a derivation makes every home
       # "evaluate" and every probe "expressible". The adapter forwards it, so it breaks LOUDLY.
       name = "members adapter: a force that stops short of the derivation still fails (no vacuous pass)";
       ok = !(passes { force = _: "never forced"; });

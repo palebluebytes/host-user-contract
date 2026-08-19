@@ -199,7 +199,7 @@ in
     {
       # The one claim only the PUBLIC entry point can make: it narrows the contract's own mode
       # set, with no bound for a consumer to pass. That is what makes a registry change reach every
-      # consumer's bake, and it is why the seam lives in kit.internal rather than on this surface.
+      # consumer's published homes, and it is why the seam lives in kit.internal rather than on this surface.
       name = "home-matrix: the public entry point narrows the contract's OWN modes, no bound to pass";
       ok = mkHomeMatrix { systems = referenceSystems; } == matrix;
     }

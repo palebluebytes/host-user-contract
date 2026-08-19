@@ -278,7 +278,7 @@ let
 
   # mkHomeMatrix (issue #58): the PUBLIC per-system home matrix — `homeMatrixOver` closed over the
   # contract's own mode names, which is what makes a registry that gains a mode reach every
-  # consumer's bake with no edit. Returns `{ <system> = [ <mode> ]; }`, so a producer maps over a row
+  # consumer's published homes with no edit. Returns `{ <system> = [ <mode> ]; }`, so a producer maps over a row
   # exactly as it would over the whole mode set. See `homeMatrixOver` above for the declaration shape
   # and the guards.
   mkHomeMatrix =
@@ -550,7 +550,7 @@ let
   # an already-evaluated `home` (`activationPackage`, `config.contract.requests`,
   # `config.home.{packages,username}`), never importing the builder. The generic `mkContractPackage`
   # stays builder-agnostic (a hand-rolled or future nix-darwin home still calls the core directly);
-  # this is a thin convenience over it. `pkgs` stays a parameter so one call emits multi-arch bakes.
+  # this is a thin convenience over it. `pkgs` stays a parameter so one call emits packages for more than one system.
   # INTERNAL: the public producer surface is `mkContractUser`/`mkContractUsers`, which bake through this.
   #
   # `mode` is carried through to the manifest and nothing else, and it is REQUIRED: a published
@@ -594,9 +594,10 @@ let
   # were defended in comments and neither was visible from a signature.
   #
   # One rule now: **a member answers every field, and a field passed beside a member must agree with
-  # it.** Nothing is silently overridden — a disagreement is the same species of mispairing the bake
-  # pairing rejects one rung down (issue #56), where one user's material reaches an output under
-  # another's name. The members-LESS shapes are untouched: they are simply the case with no member to
+  # it.** Nothing is silently overridden — a disagreement is the same species of mispairing the
+  # retired bake pairing rejected one rung down (issue #56, deleted by ADR-0032 along with the
+  # grants↔home pairing it protected), where one user's material reaches an output under another's
+  # name. The members-LESS shapes are untouched: they are simply the case with no member to
   # agree with, so composing a home from one directory while holding an identity from elsewhere
   # (which the suite drives) still works exactly as before.
   #

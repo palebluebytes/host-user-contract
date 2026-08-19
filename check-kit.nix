@@ -14,7 +14,7 @@
 { lib }:
 let
   # How this file phrases every refusal (./diagnostics.nix) — the same owner `lib.nix` uses, so a
-  # consumer meets one voice whether the contract refuses a bake or a check refuses its material.
+  # consumer meets one voice whether the contract refuses to bake or a check refuses its material.
   # NOTE the `who` here is the check's own `name`, which is the CONSUMER's label for a check it
   # owns — a different thing from a contract function naming itself, and deliberately kept.
   diag = import ./diagnostics.nix { inherit lib; };
@@ -322,7 +322,7 @@ let
       systems,
       pkgs,
       name ? "home-eval",
-      # The same override hook as mkConfinementCheck: force a bake hard enough to prove it
+      # The same override hook as mkConfinementCheck: force a home hard enough to prove it
       # evaluates — by default its derivation path, the home-manager shape ~every consumer has.
       force ? defaultForce,
     }:
