@@ -55,6 +55,8 @@ mkSeatVM {
       (bindContractPackage {
         inherit contractPackage;
         identity = testIdentity;
+        # A host affording nothing runs the floor and only the floor.
+        runs = [ "cli" ];
         # No nix-daemon grant → testuser is daemon-restricted
         grants = { };
       })

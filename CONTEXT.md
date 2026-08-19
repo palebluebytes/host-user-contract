@@ -538,6 +538,11 @@ the term is stable, the code is pending (see the cited issue).
   on the **key**, whatever the boolean — a FEATURE, a retired label, a typo), a non-boolean
   setting, a malformed row, an emptied row, and a matrix over no systems. Producers previously
   hand-wrote the filter *and* the assert catching their own filter's failure.
+  Fail-open runs all the way through: a system that builds **none** of a user's supported modes
+  publishes nothing for that user *there*, and that is not a producer error — the refusal belongs
+  to [[mode selection]] at the bind, which is the one place that can name what the host [[runs]]
+  against what the user offers. Refusing at the producer would let one system's topology decide
+  what a self-contained user may *be*.
   **(built — issue #58; reshaped by ADR-0032)** (ADR-0026, ADR-0032)
 - **binding index** — the pure-data selector a `users` flake exposes, `contractUsers.<sys>.<user>
   = { identity; offer; contractPackages = { <mode> = package; } }`. Plain data (no IFD), so a host

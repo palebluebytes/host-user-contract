@@ -56,6 +56,7 @@ let
     inherit pkgs;
     activationPackage = activationStub;
     inherit (primitives) requests packages username;
+    mode = "cli";
   };
 
   # --- mkContractPackageForHome adapter proof (issue #23) ---
@@ -81,12 +82,15 @@ let
   contractPackageFromHome = mkContractPackageForHome {
     inherit pkgs;
     home = syntheticHome;
+    mode = "cli";
   };
 
-  # The MODE forwards through the adapter too (not just the default `null`). A home assembled for
-  # a mode must match the direct call fed the same mode — so the frozen mode (the ADR-0016 coupling
-  # guard as ADR-0032 §8 restates it) survives the adapter. Paired with a non-vacuity check below
-  # (a mode CHANGES the artifact), this proves the adapter neither drops nor mangles it.
+  # A SECOND mode through the same adapter. Every artifact belongs to a mode (there is no default
+  # to fall back on), so what is left to prove is that the adapter carries the one it is handed:
+  # each home assembled for a mode must match the direct call fed the SAME mode. Paired with the
+  # non-vacuity check below (the two modes yield different artifacts), this proves the adapter
+  # neither drops the mode nor substitutes one — the ADR-0016 coupling guard as ADR-0032 §8
+  # restates it, checked at the seam that freezes it.
   contractPackageFromHomeMode = mkContractPackageForHome {
     inherit pkgs;
     home = syntheticHome;
@@ -124,10 +128,19 @@ let
   # JSON is `writeManifest`'s output (a v1 manifest), proven byte-identical below (issue #27).
   fixturePackage = ./fixtures/reference-contract-package;
 
+  # `runs` is required on every bind, so these two hand the kernel a host running both modes. The
+  # fixture is pre-v3 and freezes no mode, so it is the GRANTS that differ between them — which is
+  # the point of the pair, and exactly the independence ADR-0032 asserts: what the host runs and
+  # what it confers are two different questions.
+  hostRunsBoth = [
+    "cli"
+    "gui"
+  ];
   boundRuntime = eval [
     (bindContractPackage {
       contractPackage = fixturePackage;
       identity = referenceIdentity;
+      runs = hostRunsBoth;
       grants = greeterGrants;
     })
   ];
@@ -135,6 +148,7 @@ let
     (bindContractPackage {
       contractPackage = fixturePackage;
       identity = referenceIdentity;
+      runs = hostRunsBoth;
       grants = { };
     })
   ];
@@ -168,25 +182,33 @@ let
     "gui"
   ];
   guardReject = bindGuiFixtureOn [ "cli" ];
-  # …and the SKIP: a caller with no host in sight (`runs` unpassed) has nothing to check against,
-  # which is how the kernel stays a pure function of what it is handed.
-  guardSkipped = builtins.tryEval (
-    (eval [
-      (bindContractPackage {
-        contractPackage = guiFixture;
-        identity = referenceIdentity;
-        grants = {
-          gui = true;
-        };
-      })
-    ]).users.users.ada.isNormalUser
-  );
+  # The same host that REJECTS the gui fixture, handed the pre-v3 one: the only artifact left with
+  # nothing to check. `runs` can no longer opt out of the guard — it is required — so the silence
+  # belongs to the wire shape that predates the field, not to any caller.
+  bindReferenceFixtureOn =
+    runs:
+    builtins.tryEval (
+      (eval [
+        (bindContractPackage {
+          contractPackage = fixturePackage;
+          identity = referenceIdentity;
+          inherit runs;
+          grants = {
+            gui = true;
+          };
+        })
+      ]).users.users.ada.isNormalUser
+    );
+  guardNoFrozenMode = bindReferenceFixtureOn [ "cli" ];
 
   # --- manifest schema owner: round-trip + fixture generation (issue #27) ---
   # The account fields each repo fixture is GENERATED from. Single-sourced here so the equivalence
   # check below attests the committed JSON is byte-identical to `writeManifest`'s output — the
   # fixtures are produced by the schema owner, not a hand-typed blob that could drift from it.
-  # `referenceFields` is v1 (no `mode`, exercising the backward-compat read); `guiFields` is v3.
+  # `referenceFields` is v1 (exercising the backward-compat read); `guiFields` is v3. v1 predates
+  # the field, so `mode = null` is what authoring that shape MEANS here — at v1 `writeManifest`
+  # omits it from the wire outright, which is what makes the round-trip below a real compat proof
+  # rather than a null being written and read back.
   referenceFields = {
     version = 1;
     username = "ada";
@@ -194,6 +216,7 @@ let
       gui.desktop = "plasma";
     };
     packages = [ "hello" ];
+    mode = null;
   };
   guiFields = {
     username = "ada";
@@ -288,8 +311,11 @@ in
       ok = !guardReject.success;
     }
     {
-      name = "coupling guard: no `runs` handed ⇒ nothing to check against (skipped, not fired)";
-      ok = guardSkipped.success && guardSkipped.value;
+      # The ONE artifact left with nothing to check: a pre-v3 manifest, on the very host whose
+      # `runs = [ cli ]` rejected the gui fixture two claims above. Same host, same requests, same
+      # grants — only the frozen mode differs, so the acceptance is about the manifest's silence.
+      name = "coupling guard: a pre-v3 manifest freezes no mode ⇒ nothing to check, even on [cli]";
+      ok = guardNoFrozenMode.success && guardNoFrozenMode.value;
     }
 
     # manifest schema owner: write->read round-trip recovers the original account fields
@@ -307,7 +333,7 @@ in
       ok =
         referenceRoundTrip.version == 1
         && referenceRoundTrip.mode == null
-        && builtins.removeAttrs referenceRoundTrip [ "mode" ] == referenceFields;
+        && referenceRoundTrip == referenceFields;
     }
     # fixtures are generated by writeManifest (byte-identical), not hand-maintained JSON
     {

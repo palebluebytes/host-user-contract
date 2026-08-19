@@ -49,6 +49,13 @@ mkSeatVM {
     (bindContractPackage {
       inherit contractPackage;
       identity = testIdentity;
+      # What this host runs, derived from the same gui affordance it confers below. The synthetic
+      # manifest is pre-v3 and freezes no mode, so the coupling guard has nothing to check — but
+      # `runs` is required regardless, so the kernel is never called without a host in view.
+      runs = [
+        "cli"
+        "gui"
+      ];
       grants = {
         gui = true;
       };

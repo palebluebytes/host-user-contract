@@ -272,27 +272,25 @@ let
         };
       };
   };
-  # …and its refusal, one system over: a member whose supported modes are ALL subtracted by the
-  # system's row has nothing to publish there, which is a named error rather than an empty index
-  # entry a host would meet as silence.
-  nothingToPublish = builtins.tryEval (
-    builtins.deepSeq
-      (mkContractFleet {
-        inherit members;
-        homeMatrix.${system} = [ "cli" ];
-        pkgsFor = _: pkgs;
-        buildHome =
-          { member, ... }:
-          mkSyntheticHome {
-            username = member.name;
-            supports = {
-              cli = false;
-              gui = true;
-            };
-          };
-      }).homes
-      true
-  );
+  # …and the same members one system over, on a row that subtracts EVERY mode they support. The
+  # cut comes out empty, and that is not an error here: the matrix is fail-OPEN on coverage
+  # (ADR-0032 §6), so a system that bakes none of a user's modes simply publishes nothing for that
+  # user THERE. The refusal belongs to the bind, which is where a host and a user meet with nothing
+  # in common and the diagnostic can name both sides.
+  uncoveredFleet = mkContractFleet {
+    inherit members;
+    homeMatrix.${system} = [ "cli" ];
+    pkgsFor = _: pkgs;
+    buildHome =
+      { member, ... }:
+      mkSyntheticHome {
+        username = member.name;
+        supports = {
+          cli = false;
+          gui = true;
+        };
+      };
+  };
 
 in
 {
@@ -491,11 +489,16 @@ in
           ];
     }
     {
-      # …and the cut coming out EMPTY is a named error: a member whose supported modes are all
-      # subtracted by the system's row has nothing to publish there, which a host would otherwise
-      # meet as an empty index entry rather than a refusal.
-      name = "mkContractFleet: a member with nothing left to publish on a system is a hard error";
-      ok = !nothingToPublish.success;
+      # …and the cut coming out EMPTY publishes nothing there, without refusing. A producer must
+      # not get to decide what a self-contained user may BE on the strength of one system's
+      # topology: the user is unchanged and still publishable elsewhere, and the host that runs
+      # only what this system does not bake meets the refusal at its own bind, where the selection
+      # can name what it runs against what the user offers.
+      name = "mkContractFleet: a system baking none of a member's modes publishes nothing for it there";
+      ok =
+        uncoveredFleet.homes.${system}.ada == { }
+        && uncoveredFleet.contractUsers.${system}.ada.contractPackages == { }
+        && uncoveredFleet.packages.${system} == { };
     }
   ];
 }

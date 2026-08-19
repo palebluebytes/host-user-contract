@@ -89,11 +89,11 @@ let
   pkgs    = nixpkgs.legacyPackages.x86_64-linux;
   members = contract.lib.mkMembers { usersDir = ./users; };
 
-  # which modes can this system's seats run? `{ }` = all of them; a row states only what it takes away.
-  modes = (contract.lib.mkHomeMatrix { systems.x86_64-linux = { }; }).x86_64-linux;
+  # which modes does this system bake? `{ }` = all of them; a row states only what it takes away.
+  bakedModes = (contract.lib.mkHomeMatrix { systems.x86_64-linux = { }; }).x86_64-linux;
 
   # build one home per mode, keyed by that mode
-  homesFor = member: lib.genAttrs modes (mode: contract.lib.mkContractHome {
+  homesFor = member: lib.genAttrs bakedModes (mode: contract.lib.mkContractHome {
     inherit member mode pkgs;
     homeManagerConfiguration = home-manager.lib.homeManagerConfiguration;
     stateVersion = "25.11";
@@ -161,15 +161,14 @@ intersection.
 | function | takes | gives |
 | --- | --- | --- |
 | `mkMembers` | `{ usersDir }` | `{ <name> = { name; dir; identity; }; }` |
-| `mkHomeMatrix` | `{ systems }` | `{ <system> = [ { grants; label } ]; }` |
-| `mkContractHome` | `{ homeManagerConfiguration; pkgs; member; grants ? {}; stateVersion; extraModules ? []; }` | a built home |
+| `mkHomeMatrix` | `{ systems }` | `{ <system> = [ <mode> ]; }` — the modes each system bakes |
+| `mkContractHome` | `{ homeManagerConfiguration; pkgs; member; mode; stateVersion; extraModules ? []; }` | a built home |
 | `mkContractUser` | `{ pkgs; member; homes }` | `{ packages.<sys>; contractUsers.<sys>.<u>; }` |
 | `mkContractUsers` | `{ pkgs; members; homes }` | the same, for every member |
 | `mkContractFleet` | `{ members; homeMatrix; pkgsFor; buildHome }` | `{ homes; packages; contractUsers; systems; pkgsBySystem; }` — every member × home × system |
 | `bindContractUser` | `{ usersFlake; username }` | a NixOS module |
 | `traceUser` | `{ userModule; identity; grants ? {}; }` | a dry-run record — no home-manager, no build |
 | `loadIdentity` | a path | the identity |
-| `hostFactsFor` | `{ grants ? {}; platform; exposed ? false; }` | `{ exposed; platform; granted; }` |
 | `renderNixConfig` | settings | a `NIX_CONFIG` string |
 
 Without a member, `mkContractUser` takes `name` + `usersDir` and `mkContractHome` takes `memberDir`
@@ -203,9 +202,9 @@ passing one.
 
 ### Data
 
-`features` (the single registry — everything else is a projection of it), `featureGroups`,
-`privilegedGroups`, `safeSet`, `homes`, `greeterGrants`, `tier1EvalConfig`, `identityFile`,
-`identitySchema`.
+`features` and `modes` (the two registries — every grant and mode surface is a projection of one of
+them), `featureGroups`, `privilegedGroups`, `safeSet`, `floorMode` (the one mode every host runs),
+`greeterGrants`, `tier1EvalConfig`, `identityFile`, `identitySchema`.
 
 The contract handles **no secrets** beyond the login credential (ADR-0023).
 

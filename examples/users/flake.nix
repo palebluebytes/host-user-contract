@@ -12,8 +12,8 @@
   };
 
   outputs =
-    # No `self`: every home is evaluated ONCE, in `homes`/`greeterHomes` below, and the published
-    # names, the binding artifacts and the checks all read THAT. Going back through
+    # No `self`: every home is evaluated ONCE, by the fleet below, and the published names, the
+    # binding artifacts and the checks all read THAT. Going back through
     # `self.homeConfigurations` would also force this file to spell a user's published name to
     # reach its home — the hand-listing the mapper exists to kill.
     {
@@ -28,15 +28,15 @@
       # every user bakes for every system in the home matrix below.
       system = "x86_64-linux";
       # This system's nixpkgs, taken from the FLEET's own per-system memo (below) rather than
-      # instantiated a second time here — so the published homes, the greeter homes and the checks
-      # all share the one evaluation the producer already made.
+      # instantiated a second time here — so the published homes, the binding artifacts and the
+      # checks all share the one evaluation the producer already made.
       pkgs = fleet.pkgsBySystem.${system};
 
       # ── The members, DERIVED from the directory by the CONTRACT ───────────────────────────────
       # `mkMembers` reads the ADR-0020 layout and answers, once, who is in this repo:
       # `{ <name> = { name; dir; identity; }; }`, one member per subdir of ./users/ holding an
       # identity.json. Derived, never listed: adding `users/<new>/{identity.json,home.nix}` needs no
-      # edit to this file — the homes, the greeter homes, both arches' binding artifacts, the checks
+      # edit to this file — the homes for every mode, both arches' binding artifacts, the checks
       # and the posture guard all follow. Each user's own story lives in the header of its own
       # `home.nix`, because it travels with the user: lifting one out into a standalone repo is a
       # directory move.
@@ -99,10 +99,11 @@
       #
       # The fact itself: this reference fleet declares its aarch64 tier headless (the shape a real
       # fleet has — a headless arm builder beside the x86 desktop seats), and so builds `cli` alone
-      # there. That is also why every reference user supports `cli`: a home that could run in no
-      # session this tier offers is one the producer cannot publish there, and it says so by name
-      # rather than publishing an empty set. `examples/fleet` is x86-only and binds none of the
-      # aarch64 homes; they exist to teach the matrix, and to give `home-eval` a real cross-arch
+      # there. That is also why every reference user supports `cli` — not because the producer
+      # demands it (a system baking none of a user's modes simply publishes nothing for it there;
+      # the matrix is fail-open on coverage), but because `examples/fleet`'s headless hosts run the
+      # floor and nothing else, and a user with no `cli` home for them to select is refused at the
+      # BIND. `examples/fleet` is x86-only and binds none of the aarch64 homes; they exist to teach the matrix, and to give `home-eval` a real cross-arch
       # fact to prove rather than a one-row one.
       #
       # Each row states only what its system's seats CANNOT run, per MODE — never a list of what

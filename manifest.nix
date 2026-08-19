@@ -45,8 +45,9 @@ in
       packages,
       # The MODE this home was built for (ADR-0032 §8) — the one thing about a home that a bind
       # cannot change, and so the one thing worth freezing. It lands on the wire under
-      # `modeWireField`; `null` emits the pre-v3 shape's silence about it.
-      mode ? null,
+      # `modeWireField`. No default: an artifact always belongs to a mode, and only the legacy
+      # FIXTURES pass `null`, to author a pre-v3 manifest for the compat proof.
+      mode,
       version ? currentVersion,
     }:
     builtins.toFile "contract-requests-${username}.json" (

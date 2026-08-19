@@ -288,31 +288,6 @@ let
       upperBound = modeNames;
     };
 
-  # hostFactsOf: the FACTS a producer hands a home it is baking (ADR-0032 §7). It is the whole of
-  # what a home learns about the world outside itself, and it is now three plain fields:
-  #
-  #   mode      the session shape this home is BUILT for. The single source the home umbrella
-  #             derives `custom.home.profiles.<mode>.enable` from — exactly one true.
-  #   platform  the system this home is built for, read off the producer's own `pkgs`.
-  #   exposed   false, because a pre-built home is baked per MODE, not per host: which seat
-  #             eventually binds it, and whether that seat is exposed, is unknowable here.
-  #
-  # `granted` is deliberately ABSENT. No grant can affect a home (ADR-0032 §1), so showing a home
-  # the grant set would be showing it something it must not use — the hazard ADR-0028's narrowing
-  # existed to prevent, removed at the source rather than guarded. This replaces the exported
-  # `hostFactsFor`, whose entire content WAS that narrowing: with nothing left to narrow, there is
-  # no rule for a producer to get wrong and so no projection worth exporting. Every home's facts
-  # come from `mkContractHome` below, which is the one caller.
-  hostFactsOf =
-    {
-      mode,
-      platform,
-      exposed ? false,
-    }:
-    {
-      inherit exposed mode platform;
-    };
-
   # The request→feature-configuration bridge, shared by BOTH binding shapes (the headless
   # tracer below and the real `bindContractPackage`). Given a user's harvested `contract.requests`
   # and the set of features the host GRANTED, copy each granted feature's request params into
@@ -392,7 +367,7 @@ let
       requests,
       packages,
       username,
-      mode ? null,
+      mode,
     }:
     let
       packageNames = map (p: p.pname or (builtins.parseDrvName p.name).name) packages;
@@ -474,8 +449,11 @@ let
   #
   # `homes` is `{ <mode> = home; }` — what the caller BUILT, which is its system's matrix row. The
   # published set is that ∩ `supports`, so a mode the user supports but this system does not bake
-  # is simply absent, and a system that bakes none of a user's supported modes is a named error
-  # rather than a user with nothing published.
+  # is simply absent — and a system that builds NONE of them publishes nothing for that user there,
+  # which is not an error here. The matrix is fail-OPEN on coverage (ADR-0032 §6) and the refusal
+  # belongs at the BIND, where a host meets a user with nothing in common and the selection can
+  # name what it runs against what the user offers. Refusing here would instead make one system's
+  # topology decide what a self-contained user may BE, which is the opposite of the north star.
   harvestVoice =
     { username, homes }:
     let
@@ -557,18 +535,6 @@ let
         + "given the session it asked to be built for — a contradiction no host can rescue.";
       fix = "Want the grant, or drop the mode from `contract.supports`.";
     };
-    assert diag.must {
-      ok = published != { };
-      who = "mkContractUser";
-      problem =
-        "nothing to publish for ${showName username} — it supports ${showList supported}, and "
-        + "this system builds ${showList (lib.attrNames homes)}";
-      why =
-        "The published set is `supports` ∩ what this system builds, so an empty one leaves every "
-        + "host that binds this user here reading an empty index entry rather than meeting a "
-        + "refusal.";
-      fix = "Either support a mode this system's matrix row keeps, or drop the system from the matrix.";
-    };
     {
       inherit published;
       offer = first.wants;
@@ -587,15 +553,16 @@ let
   # this is a thin convenience over it. `pkgs` stays a parameter so one call emits multi-arch bakes.
   # INTERNAL: the public producer surface is `mkContractUser`/`mkContractUsers`, which bake through this.
   #
-  # `mode` is carried through to the manifest and nothing else. There is no pairing to verify here
-  # any more (ADR-0032): the coin publishes each home under the very key it was built for, so a
-  # producer has no `{ grants; home }` record left to re-pair wrongly and the marker+cross-check
-  # that guarded that pairing (issue #56) are both gone.
+  # `mode` is carried through to the manifest and nothing else, and it is REQUIRED: a published
+  # artifact always belongs to a mode, so a default would only let one be published claiming none.
+  # There is no pairing to verify here any more (ADR-0032): the coin publishes each home under the
+  # very key it was built for, so a producer has no `{ grants; home }` record left to re-pair
+  # wrongly and the marker+cross-check that guarded that pairing (issue #56) are both gone.
   mkContractPackageForHome =
     {
       home,
       pkgs,
-      mode ? null,
+      mode,
     }:
     mkContractPackage {
       inherit pkgs mode;
@@ -1265,8 +1232,22 @@ let
       ]
       ++ extraModules;
       extraSpecialArgs = extraSpecialArgs // {
-        hostFacts = hostFactsOf {
+        # THE FACTS this home is handed (ADR-0032 §7), and the whole of them:
+        #
+        #   mode      the session shape it was BUILT for. The umbrella derives
+        #             `custom.home.profiles.<mode>.enable` from it — exactly one true.
+        #   platform  the system it is built for, read off the caller's own `pkgs`.
+        #   exposed   false, because a pre-built home is built per MODE, not per host: which seat
+        #             eventually binds it, and whether that seat is exposed, is unknowable here.
+        #
+        # `granted` is deliberately ABSENT. No grant can affect a home, so showing one the grant set
+        # would be showing it something it must not use — the hazard ADR-0028's narrowing existed to
+        # prevent, removed at the source rather than guarded. That narrowing WAS the whole content of
+        # the exported `hostFactsFor`, so with nothing left to narrow there is no rule for a producer
+        # to get wrong and no projection worth naming: the literal lives here, at its one site.
+        hostFacts = {
           inherit mode;
+          exposed = false;
           platform = pkgs.stdenv.hostPlatform.system;
         };
       };
@@ -1285,14 +1266,17 @@ let
   # `hostFacts` has no role in the pre-built path (the home is already evaluated) and is omitted.
   #
   # `runs` is the modes THIS HOST runs, derived from its affordances by the caller — the coupling
-  # guard below is the only reader, and it takes the set rather than deriving it so this kernel
-  # stays a pure function of what it is handed (the same posture `grants` takes).
+  # guard below is its only reader, and it takes the set rather than deriving it so this kernel
+  # stays a pure function of what it is handed (the same posture `grants` takes). REQUIRED, with no
+  # permissive default: the guard exists for exactly this path (the public `bindContractUser`
+  # satisfies it by construction), so a default that let a caller opt out would make it inert
+  # precisely where it is the only thing looking.
   bindContractPackage =
     {
       contractPackage,
       identity,
+      runs,
       grants ? { },
-      runs ? null,
     }:
     { config, pkgs, ... }:
     let
@@ -1314,17 +1298,16 @@ let
       # It is the mode rather than the grant because that is what a bind cannot fix: a grant not
       # conferred degrades silently by design (ADR-0002), whereas a home built for a graphical
       # session, activated on a machine with no display, is a worse answer than an error naming the
-      # mismatch. `runs = null` skips the check outright (a caller with no host in sight), and a
-      # pre-v3 manifest reads back `mode = null` and says nothing to check — the same posture the
-      # v1 grant-key's `[ ]` took.
+      # mismatch. The ONE case with nothing to check is a pre-v3 manifest, which reads back
+      # `mode = null` because it predates the field — the same posture the v1 grant-key's `[ ]`
+      # took, and confined to the same place.
       bakedMode = parsed.mode;
       guard = diag.must {
-        ok = runs == null || bakedMode == null || lib.elem bakedMode runs;
+        ok = bakedMode == null || lib.elem bakedMode runs;
         who = "bindContractPackage";
         problem =
           "the home selected for ${showName username} was built for mode "
-          + "${showName bakedMode}, which this host does not run (it runs "
-          + "${showList (if runs == null then [ ] else runs)})";
+          + "${showName bakedMode}, which this host does not run (it runs ${showList runs})";
         why =
           "A mode is what the home IS, not something a bind confers, so activating it on a host "
           + "that cannot run it degrades into a session the user cannot use — the one mismatch "
