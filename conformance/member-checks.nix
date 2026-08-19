@@ -178,16 +178,16 @@ in
       ok =
         !(passes {
           homes = lib.mapAttrs (
-            sys: rows: if sys == "aarch64-linux" then removeAttrs rows [ "bo" ] else rows
+            sys: entry: if sys == "aarch64-linux" then removeAttrs entry [ "bo" ] else entry
           ) (homesOver members);
         });
     }
     {
-      name = "members adapter: homes naming no system at all is a hard error (nothing to check a bake against)";
+      name = "members adapter: homes naming no system at all is a hard error (nothing to check a home against)";
       ok = !(passes { homes = { }; });
     }
     {
-      name = "members adapter: a homes row that is not an attrset is a broken harness, not a pass";
+      name = "members adapter: a homes entry that is not an attrset is a broken harness, not a pass";
       ok = !(passes { homes.x86_64-linux = [ "not-an-attrset" ]; });
     }
     {

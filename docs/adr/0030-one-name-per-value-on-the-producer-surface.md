@@ -6,7 +6,7 @@ public surface), [ADR-0029](0029-producer-home-builder-and-home-baseline.md) (`m
 changes **argument names and argument counts only** — no behaviour, no published data shape, no
 option path. It settles three naming and shape rules that future surface must follow, including the
 signature of the not-yet-built `mkContractFleet` ([ADR-0029](0029-producer-home-builder-and-home-baseline.md)'s
-2026-08-17 amendment, issue #61). **Amended in place (2026-08-18)** — two corrections to this record's claims about itself: the "only one exception" sentence, and the account of `variant`'s deletion. No decision changes; see the amendment at the end. **Amended by [ADR-0032](0032-grants-ride-the-bind-modes-build-homes.md) (2026-08-18)**: the `{ grants; label; home; }` record is deleted, so `homes` denotes one shape (`homes.<system>.<user>.<mode>`) and the progressive-filling doctrine has nothing left to govern; `.enable` is dropped across the grant vocabulary.
+2026-08-17 amendment, issue #61). **Amended in place (2026-08-18)** — two corrections to this record's claims about itself: the "only one exception" sentence, and the account of `variant`'s deletion. No decision changes; see the amendment at the end. **Amended by [ADR-0032](0032-grants-ride-the-bind-modes-build-homes.md) (2026-08-18)**: the `{ grants; label; home; }` record is deleted, so `homes` denotes one shape (`homes.<system>.<user>.<mode>`) and the progressive-filling doctrine has nothing left to govern; `.enable` is dropped across the grant vocabulary. **Amended in place (2026-08-19)** — the scoped wire-key exception has **fired**: ADR-0032 versioned the manifest to v3, and this record's "the manifest wire format is untouched" now reads as history rather than as current state. No decision changes; see the amendment at the end.
 
 ADR-0026 fixed *which* functions the surface carries and re-levelled them onto one concept seam. It
 did not look at what those functions **call their arguments**. An architecture review focused on
@@ -97,6 +97,9 @@ the mismatched word.
 This is a deliberate, bounded violation of "one word, one type", and it is the **only** one. Its
 trigger is explicit: **the next time the manifest is versioned for any reason, the wire key moves
 too.** Do not treat it as precedent for a second exception.
+
+> **Spent (2026-08-19).** The trigger fired; the exception no longer exists. See the amendment at
+> the end of this document.
 
 No consumer's *data* changes for the manifest; the index field is a live Nix value with no on-disk
 schema, and producer and consumer share one contract revision under the canonical
@@ -327,6 +330,52 @@ and writing a rule for a shape being deleted would date the moment it landed.
 
 Every decision. The `grants`/`grantKey`/`granted` split, reading `system` off `pkgs`, and the
 one-resolver rule are untouched by both corrections, and the code conforms to all three.
+
+## Amendment (2026-08-19) — the scoped exception fired, and the wire key is gone rather than moved
+
+The one deliberate violation this ADR kept was the manifest's wire key: `grantKey` on both Nix
+faces, `granted` on the wire. It was scoped and it was given an explicit trigger — *the next time the
+manifest is versioned for any reason, the wire key moves too.*
+
+**The trigger has fired.** [ADR-0032](0032-grants-ride-the-bind-modes-build-homes.md) versioned the
+manifest to **v3**, and did so for a reason this ADR could not have anticipated: grants stopped
+reaching home content, so there is no grant key left to freeze. The wire field did not *move* to
+`grantKey` as the trigger imagined — it was **deleted**, and replaced by `mode`, the session shape a
+home was built for. `grantKeyWireField` is now `modeWireField`, and `manifest.nix` translates
+nothing: the Nix face and the wire face are one word again.
+
+So the exception is not merely spent, it is **moot**. The outcome is what the rule wanted and better
+than what the trigger promised — the mismatch a schema owner existed to hide is gone rather than
+relocated, and the "do not treat it as precedent" warning now guards an empty space.
+
+### What this corrects in the record
+
+Two sentences in this document describe a state that no longer holds, and both are load-bearing for
+a reader deciding what they may change:
+
+1. The status header's **"no behaviour, no published data shape"** and the index entry's *"the
+   manifest wire format is untouched"*. True of the rename this ADR made; not true of the surface
+   today. Both are now read as claims about **this ADR's own change**, not as standing guarantees —
+   which is what they always were, and what the arrival of a second document changing the same file
+   makes worth saying out loud.
+2. The **Considered Options** entry rejecting "rename the wire key as well, accepting a v3", whose
+   stated grounds were that a sweep found *"no other anticipated manifest version bump, so 'later'
+   meant 'never'"*. That prediction was wrong within two days. The reasoning was sound on the
+   evidence available — the cost of a v3 for a cosmetic rename was real, and paying it as a
+   *side-effect* of a bump made for a substantive reason is exactly the deferral working — but the
+   lesson is the one this record's previous amendment already drew about completeness claims: *"no
+   such audit was performed"* generalizes to prediction as well as to census. A sweep of open work
+   is evidence about what is planned, never about what will be decided.
+
+**No decision changes**, but the three-way split has lost a member to attrition rather than to any
+decision here. `grants` is still the attrset every argument holds; `granted` is still an option path
+and only an option path (`custom.users.<u>.granted`, with `grantedNames`/`grantedGroups` as its
+projections). **`grantKey` has no referent left at all** — the sorted name list existed to key a home
+against the grants it was baked under, and ADR-0032 deleted the pairing, the manifest field and the
+binding-index field together. A word retiring because the value it named ceased to exist is the rule
+working, not an exception to it: what the rule forbids is one word for two types, and zero types
+needs no word. Reading `system` off `pkgs` stands; the one-resolver rule stands. What is deleted
+here is one exception to them, by the mechanism the exception itself specified.
 
 ## Considered Options
 

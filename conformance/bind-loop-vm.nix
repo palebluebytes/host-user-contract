@@ -50,9 +50,9 @@ let
   #
   # THE ONE CONCESSION (and only here): a *nested test VM* cannot realize a fresh sandboxed `nix build`
   # (its store overlay can't mount build inputs, and the contract pins sandbox=true) — so this test binds
-  # a bake that resolves to the home built at TEST-BUILD time (homeDrv, pre-seeded). That keeps the
+  # a contractPackage that resolves to the home built at TEST-BUILD time (homeDrv, pre-seeded). That keeps the
   # BIND LOOP fully real end-to-end — archive, eval-free Tier-1 auth, provision, session — while the home
-  # BUILD itself is proven separately by the example user flake's package builds. The bake still
+  # BUILD itself is proven separately by the example user flake's package builds. The stand-in still
   # consumes $src/$user, so the orchestrator's contract (hand src+user, get an activation path) is
   # exercised intact.
   homeBuilder = pkgs.writeShellScript "reference-home-builder" ''

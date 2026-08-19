@@ -329,13 +329,17 @@ let
     let
       homesBySystem = lib.genAttrs systems homesFor;
       # SHAPE and EMPTINESS are two different mistakes, and folding them into one predicate made
-      # this check report the wrong one: a row holding a single malformed entry is not empty, yet
+      # this check report the wrong one: an entry holding a single malformed home is not empty, yet
       # it failed with "no homes for [x86_64-linux]". Split by PARTITION rather than two negated
       # filters, for the reason `mkMemberChecks` states below — the emptiness verdict may only be
-      # asked of a row it can READ, so the two sets have to stay exact complements.
-      byRowShape = lib.partition (sys: lib.isAttrs homesBySystem.${sys}) systems;
-      malformedSystems = byRowShape.wrong;
-      emptySystems = lib.filter (sys: homesBySystem.${sys} == { }) byRowShape.right;
+      # asked of an entry it can READ, so the two sets have to stay exact complements.
+      #
+      # ENTRY, not "row": a row is the home matrix's per-system DECLARATION (`{ <mode> = bool; }`,
+      # what a fleet writes), and this is the per-system value of `homes` (what a fleet BUILT).
+      # They are one word apart in the mapper that produces both, so they do not share it here.
+      byEntryShape = lib.partition (sys: lib.isAttrs homesBySystem.${sys}) systems;
+      malformedSystems = byEntryShape.wrong;
+      emptySystems = lib.filter (sys: homesBySystem.${sys} == { }) byEntryShape.right;
       # Every system × home whose forced value is NOT a `.drv` path. A home that does not
       # evaluate never lands here — its error propagates raw out of `force` (no tryEval, above) —
       # so an entry in this list means `force` stopped short of the derivation.
@@ -346,15 +350,15 @@ let
             lib.attrNames homesBySystem.${sys}
           )
         )
-      ) byRowShape.right;
+      ) byEntryShape.right;
     in
     # Ordered deliberately: a SHAPE that cannot be read before anything is read off it, then
     # anti-vacuity, and only then evaluability — a check that forced nothing must report the
-    # emptied row, not read as "every home evaluates".
+    # emptied entry, not read as "every home evaluates".
     #
     # The anti-vacuous assert EXTENDS issue #49's clause ("for every system in `systems`,
     # `homesFor sys` is a non-empty attrset") to the list itself, which that wording passes over:
-    # `systems = [ ]` satisfies it for-all-vacuously, so the same emptied-row hazard one level up
+    # `systems = [ ]` satisfies it for-all-vacuously, so the same emptied-entry hazard one level up
     # would read as green forever. Same species, same verdict — a derived system list that filters
     # down to nothing is a mapper bug, not a passing check.
     assert diag.must {
@@ -374,9 +378,9 @@ let
       who = name;
       problem = "the homes for ${showList malformedSystems} are not attrsets";
       why =
-        "A row that cannot be read cannot be reported as EMPTY — which is what this check used to "
-        + "say about a row holding one malformed entry, naming the wrong mistake to whoever had to "
-        + "fix it.";
+        "An entry that cannot be read cannot be reported as EMPTY — which is what this check used "
+        + "to say about an entry holding one malformed home, naming the wrong mistake to whoever "
+        + "had to fix it.";
       fix = "`homesFor` returns `{ <mode> = home; }` — this user's built homes for that system.";
     };
     assert diag.must {
@@ -384,8 +388,8 @@ let
       who = name;
       problem = "no homes for ${showList emptySystems}";
       why =
-        "An accidentally-emptied row (a per-system subtraction gone wrong in the mapper) must fail "
-        + "here, never read as a passing eval check.";
+        "An accidentally-emptied entry (a per-system subtraction gone wrong in the mapper) must "
+        + "fail here, never read as a passing eval check.";
       fix =
         "`homesFor` must return a NON-EMPTY attrset of this user's built homes for every handed "
         + "system.";
@@ -451,7 +455,7 @@ let
   # LEVEL UP, where the fold is — a member set with no members, homes naming no system, and homes that
   # do not cover the members. Each of those yields a check set that is merely SMALLER, and a missing
   # check is indistinguishable from a passing one in `nix flake check` output. (Plus the two SHAPE
-  # guards those diagnoses need to stay honest: a member set or a homes row that is not an attrset gets
+  # guards those diagnoses need to stay honest: a member set or a homes entry that is not an attrset gets
   # told so, rather than being reported as empty or iterated over.)
   #
   # The coverage rule is worth stating outright, because it is the one thing the adapter asks of a
@@ -474,21 +478,21 @@ let
       shapelyHomes = lib.isAttrs homes;
       systems = lib.optionals shapelyHomes (lib.attrNames homes);
       memberNames = lib.optionals (lib.isAttrs members) (lib.attrNames members);
-      # The system rows that ARE `{ <user> = …; }` attrsets, and the ones that are not. Split once,
+      # The system entries that ARE `{ <user> = …; }` attrsets, and the ones that are not. Split once,
       # by PARTITION rather than two negated filters: the coverage fold below can only ask a
-      # well-formed row who it holds, and reporting a malformed row as "holds nobody" would name the
+      # well-formed entry who it holds, and reporting a malformed entry as "holds nobody" would name the
       # wrong mistake — so the two sets must stay exact complements, and a partition makes that
       # structural instead of a rule two hand-written predicates have to keep agreeing on.
-      rows = lib.partition (sys: lib.isAttrs homes.${sys}) systems;
-      wellFormedRows = rows.right;
-      malformedRows = rows.wrong;
+      byEntryShape = lib.partition (sys: lib.isAttrs homes.${sys}) systems;
+      wellFormedSystems = byEntryShape.right;
+      malformedSystems = byEntryShape.wrong;
       # Every system × member the handed homes do NOT hold. Checked here rather than left to the
       # raw `attribute missing` a lookup would throw, because the diagnosis is specific: the members
       # is the authority on who exists, so a member with no homes is a gap in the mapper that built
       # them, not a member that should be skipped.
       uncovered = lib.concatMap (
         sys: map (n: "${sys}/${n}") (lib.filter (n: !(homes.${sys} ? ${n})) memberNames)
-      ) wellFormedRows;
+      ) wellFormedSystems;
     in
     # Ordered deliberately, as in the helpers: report a SHAPE that cannot be read before reading it,
     # and a set that would check NOBODY before reporting anything about what it checked.
@@ -531,11 +535,11 @@ let
       fix = "Its key set is what the home-eval checks run over.";
     };
     assert diag.must {
-      ok = malformedRows == [ ];
+      ok = malformedSystems == [ ];
       who = "mkMemberChecks";
-      problem = "the `homes` row(s) for ${showList malformedRows} are not attrsets";
+      problem = "the `homes` entr(y/ies) for ${showList malformedSystems} are not attrsets";
       fix =
-        "Each system's row must be `{ <user> = { <mode> = home; }; }`, this repo's own built "
+        "Each system's entry must be `{ <user> = { <mode> = home; }; }`, this repo's own built "
         + "homes for that system.";
     };
     assert diag.must {

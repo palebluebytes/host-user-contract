@@ -93,7 +93,7 @@ rec {
   #
   # It is the argument behind every empty-input refusal in this repo: a fold over nothing produces
   # nothing and reports success, so the failure is INVISIBLE — green output with no work done. That
-  # is why an empty roster, an empty matrix, an emptied row and an identity-less posture check are
+  # is why an empty roster, an empty matrix, an emptied `homes` entry and an identity-less posture check are
   # all hard errors rather than benign no-ops. `subject` names the empty thing; `verbs` names what
   # it would silently skip.
   vacuity =

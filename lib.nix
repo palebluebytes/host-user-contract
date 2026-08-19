@@ -383,7 +383,7 @@ let
       cp ${manifestFile} $out/${manifest.manifestFileName}
     '';
 
-  # assertNoVetoedRequests (issue #59): the second bake-time guard on a bake's home — the two
+  # assertNoVetoedRequests (issue #59): the second bake-time guard on a user's home — the two
   # halves of the user's VOICE (ADR-0028) held to each other. `contract.wants` (which features) and
   # `contract.requests` (their parameters) are typed independently, so one home can veto a feature
   # and still carry its parameters. Those parameters can then never bridge on ANY host, because the
@@ -846,10 +846,10 @@ let
   # WHO the users are is a `members` (issue #57): the `mkMembers` attrset, whose member for
   # each `users` key supplies that user's directory and already-resolved identity. `users` keys stay
   # the caller's own list because WHICH members it builds homes for, and which homes, is the producer's
-  # home matrix — the same fleet fact the per-system bake filter is (decision #43), and not
+  # home matrix — the same fleet fact the per-system mode subtraction is (decision #43), and not
   # something the contract opines on. A key the members does NOT hold is the other story: that is a
-  # hand-listed name that has drifted from the directory, so it is a named error rather than a bake
-  # of nobody. (The pre-members `usersDir` shape still works, and resolves per user as before.)
+  # hand-listed name that has drifted from the directory, so it is a named error rather than
+  # baking for nobody. (The pre-members `usersDir` shape still works, and resolves per user as before.)
   mkContractUsers =
     {
       loadIdentity,
@@ -1142,7 +1142,7 @@ let
   # injected by the kit (as `homeModule` is for traceUser), so a caller passes only its own side.
   #
   # It builds a home for ONE MODE (ADR-0032). That is the whole of what used to be a grant set
-  # here: a grant can no longer change a home, so there is nothing about a bake for the builder to
+  # here: a grant can no longer change a home, so there is nothing about the bake for the builder to
   # record and nothing for the producer to re-pair afterwards — the `contractBakedGrantKey` marker
   # and its `assertHomePairing` cross-check are gone with the pairing they existed to protect.
   #
@@ -1257,7 +1257,7 @@ let
   # binds through. It reads the already-built `contract-requests.json` from a pinned store path and
   # bridges the feature requests via `mkUserAccount`/`bridgeRequests`. No home-manager dependency.
   # Returns a NixOS module (not a tracer value) that the host imports. NOT public: hosts consume the
-  # user-level `bindContractUser`, which selects a bake from the index and delegates here (ADR-0026).
+  # user-level `bindContractUser`, which selects a contractPackage from the index and delegates here (ADR-0026).
   #
   # `contractPackage` must be a realized store path at eval time — in the pre-built workflow it is
   # a pinned flake input already in the store, so reading its JSON is a plain `builtins.readFile`,

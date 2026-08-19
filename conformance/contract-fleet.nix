@@ -10,8 +10,8 @@
 #                      proven here at all: nothing is built, and no home-manager is anywhere near it
 #                      (ADR-0004/0022).
 #   the OUTPUT track — the real `pkgs` and a synthetic already-evaluated home, so the three
-#                      published attributes (`packages`, `contractUsers`, and the bakes behind them)
-#                      are pinned on the real bake path rather than on a stub of it.
+#                      published attributes (`packages`, `contractUsers`, and the homes behind them)
+#                      are pinned on the real producer path rather than on a stub of it.
 #
 # All five returned attributes are covered, because a returned value nobody pins is a rule nobody
 # holds. So are the traps that only exist at THIS rung, where the fold is: a member set with no
@@ -237,9 +237,9 @@ let
   };
 
   # PARITY with the rung below: for one system, the fleet must emit exactly what `mkContractUsers`
-  # emits over the same built rows. `mkContractFleet` adds the fold, never a second bake — so if
+  # emits over the same built homes. `mkContractFleet` adds the fold, never a second bake — so if
   # these ever differ, the fleet has grown an opinion of its own.
-  builtRows = lib.mapAttrs (
+  builtHomes = lib.mapAttrs (
     _: member:
     lib.genAttrs outputMatrix.${system} (
       mode:
@@ -251,7 +251,7 @@ let
   ) members;
   usersOut = mkContractUsers {
     inherit pkgs members;
-    homes = builtRows;
+    homes = builtHomes;
   };
 
   # PUBLICATION IS DRIVEN BY `supports` (ADR-0032 §6): the matrix says what a SYSTEM builds and the
@@ -467,8 +467,8 @@ in
     }
     {
       # The fleet adds the fold and nothing else: for one system it must emit exactly what the rung
-      # below emits over the same filled rows.
-      name = "mkContractFleet: matches mkContractUsers over the same rows, for one system";
+      # below emits over the same built homes.
+      name = "mkContractFleet: matches mkContractUsers over the same homes, for one system";
       ok =
         outputFleet.packages.${system} == usersOut.packages.${system}
         && outputFleet.contractUsers.${system} == usersOut.contractUsers.${system};

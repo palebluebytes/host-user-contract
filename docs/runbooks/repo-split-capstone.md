@@ -59,8 +59,10 @@ the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
   a grant rides the bind and cannot change a home. Its `wants` and `supports` must NOT depend on
   `hostFacts` (ADR-0028: the grant is derived from the offer).
 - `flake.nix` — inputs `contract` + `home-manager` (with `nixpkgs.follows` so there is ONE
-  nixpkgs, ADR-0004); a `checks.home-build` that builds the real home (this is the home-manager
-  build the contract's own package-free suite cannot host); and its contractPackages + binding
+  nixpkgs, ADR-0004); `checks = packages`, which gives the home-manager build the contract's own
+  package-free suite cannot host **for free** — a `contractPackage` build-depends on its home's
+  activation package, so building the check builds the home (this replaces the hand-written
+  `checks.home-build` an earlier revision of this guide told you to write); and its contractPackages + binding
   index via `contract.lib.mkContractUser { name; homes; pkgs; usersDir }` (the singular producer;
   `mkContractUsers` for a multi-user repo) — the pre-built path (ADR-0016/0026). The offer is
   harvested from the home, not passed; the set of homes to build is each user's own
@@ -74,7 +76,9 @@ the *old* sparse numbers (e.g. "ADR-0023" = the user-flake shape, now
 > evaluate, it is not merely `mkIf`-denied. Keep the user home free of any imported module that
 > would smuggle a system channel back in.
 
-**Verify:** `nix build .#checks.<system>.home-build` in the new repo builds the home standalone.
+**Verify:** `nix build .#checks.<system>.<user>-contractPackage-<mode>` in the new repo builds the
+home standalone — e.g. `nix build .#checks.x86_64-linux.ada-contractPackage-cli` against
+`examples/users`. `nix flake check` builds every published mode for every member at once.
 
 ## Stage 2 — decide `hashedPassword` by repo visibility
 

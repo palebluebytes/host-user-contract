@@ -17,8 +17,8 @@
 let
   inherit (toolkit) eval;
 
-  # The repo-path fixture (a plain path, not a derivation) that stands in for a bake's
-  # package. bindContractPackage reads its contract-requests.json at eval time — no build, no IFD.
+  # The repo-path fixture (a plain path, not a derivation) that stands in for a published
+  # contractPackage. bindContractPackage reads its contract-requests.json at eval time — no build, no IFD.
   fixturePackage = ./fixtures/reference-contract-package;
 
   # A synthetic user's on-disk identity path (ADR-0020 layout), reused for the binding index and

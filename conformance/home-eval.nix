@@ -4,7 +4,7 @@
 # repo builds it for — the members-generic replacement for the hand-written cross-arch eval
 # checks every user's `checks.nix` used to carry. A consumer's mapper applies it per user
 # over the derived members, so a typical user ships no check file at all; what this domain
-# proves is the helper's own logic — that it cannot pass vacuously (an emptied row, an
+# proves is the helper's own logic — that it cannot pass vacuously (an emptied entry, an
 # empty system list, a force that stops short), that it fails loudly when any handed
 # system × home does not evaluate, and that each of those failures is reported as ITSELF.
 #
@@ -31,7 +31,7 @@ let
     activationPackage.drvPath = throw "package 'emacs-pgtk' missing on this system";
   };
 
-  # The decided reference shape (#43): a consumer's per-system rows, keyed by MODE —
+  # The decided reference shape (#43): a consumer's per-system entries, keyed by MODE —
   # x86_64 {cli, gui}, aarch64 {cli}. The helper takes it as handed and asserts ALL of it.
   matrix = {
     "x86_64-linux" = {
@@ -61,24 +61,25 @@ let
   # handed system is skipped (including the native one: the helper has no native/foreign
   # distinction, it forces the whole handed matrix).
   brokenOn =
-    badSys: lib.mapAttrs (sys: row: if sys == badSys then row // { cli = brokenHome; } else row) matrix;
+    badSys:
+    lib.mapAttrs (sys: entry: if sys == badSys then entry // { cli = brokenHome; } else entry) matrix;
 
   # THE MISLEADING-MESSAGE CASE (issue #67, second guard defect). SHAPE and EMPTINESS were folded
-  # into one predicate, so a row that is not an attrset — a list holding one home, say — failed
-  # with *"no homes for [x86_64-linux]"*. The row is not empty; it holds a home in the wrong shape,
+  # into one predicate, so an entry that is not an attrset — a list holding one home, say — failed
+  # with *"no homes for [x86_64-linux]"*. The entry is not empty; it holds a home in the wrong shape,
   # and the message named the wrong mistake to whoever had to fix it. The two predicates are split
-  # now, and the two rows below drive them SEPARATELY: an unreadable row and an emptied one are
+  # now, and the two fixtures below drive them SEPARATELY: an unreadable entry and an emptied one are
   # different mistakes with different diagnoses.
   #
   # What cannot be asserted here is the message TEXT — `tryEval` discards it, as this suite records
   # wherever it drives a named error. So the split is pinned the only way eval allows: each shape
-  # is refused on its own, and the emptiness verdict is structurally unreachable for a row the
+  # is refused on its own, and the emptiness verdict is structurally unreachable for an entry the
   # check could not read (the partition makes the two sets exact complements rather than two
   # hand-written predicates that have to keep agreeing).
-  rowHoldingAHomeInTheWrongShape = {
+  entryHoldingAHomeInTheWrongShape = {
     homesFor = sys: if sys == "x86_64-linux" then [ (home "cli-x86") ] else matrix.${sys};
   };
-  emptiedRow = {
+  emptiedEntry = {
     homesFor = sys: if sys == "x86_64-linux" then { } else matrix.${sys};
   };
 in
@@ -89,10 +90,10 @@ in
       ok = passes { };
     }
     {
-      # The anti-vacuous claim: an accidentally-emptied row (a subtraction gone wrong in the
+      # The anti-vacuous claim: an accidentally-emptied entry (a subtraction gone wrong in the
       # consumer's mapper) must never read as a passing eval check.
       name = "mkHomeEvalCheck: fails when a system's home set is empty (no vacuous pass)";
-      ok = !(passes emptiedRow);
+      ok = !(passes emptiedEntry);
     }
     {
       # Same trap one level up: a check over ZERO systems would pass vacuously forever.
@@ -100,16 +101,16 @@ in
       ok = !(passes { systems = [ ]; });
     }
     {
-      # THE MISLEADING-MESSAGE CASE (issue #67): a row that HOLDS a home but is not an attrset is
+      # THE MISLEADING-MESSAGE CASE (issue #67): an entry that HOLDS a home but is not an attrset is
       # a broken harness, and must be reported as one rather than as "no homes" — it is not empty.
       # Paired with the emptiness claim above, this is the split: two shapes, two refusals.
-      name = "mkHomeEvalCheck: a row holding a home in the wrong shape is refused as a SHAPE error, not as empty";
-      ok = !(passes rowHoldingAHomeInTheWrongShape);
+      name = "mkHomeEvalCheck: an entry holding a home in the wrong shape is refused as a SHAPE error, not as empty";
+      ok = !(passes entryHoldingAHomeInTheWrongShape);
     }
     {
-      # The claim the helper exists to make: a bake that does not evaluate on a handed
+      # The claim the helper exists to make: a home that does not evaluate on a handed
       # system fails the check — and there is no tryEval to swallow the underlying error.
-      name = "mkHomeEvalCheck: fails when a bake's home throws at force (the eval error surfaces)";
+      name = "mkHomeEvalCheck: fails when a published home throws at force (the eval error surfaces)";
       ok = !(passes { homesFor = sys: (brokenOn "aarch64-linux").${sys}; });
     }
     {

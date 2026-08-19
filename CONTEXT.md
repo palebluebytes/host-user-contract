@@ -237,7 +237,7 @@ the term is stable, the code is pending (see the cited issue).
   fold — an **empty members**, **homes naming no system**, and **homes that do not cover the
   members** — each of which would otherwise yield a *smaller* check set, and a missing check reads
   exactly like a passing one (with two shape guards under those diagnoses, so a non-attrset members
-  or row is named as such rather than reported as empty). The coverage rule is the one thing it
+  or `homes` entry is named as such rather than reported as empty). The coverage rule is the one thing it
   asks that the helpers do not: **every member bakes on every system in `homes`**, the shape
   [[home matrix]] already implies (rows are per *system*); a fleet baking different members on
   different systems calls the helpers per user. `require` has no default here either: the
@@ -728,8 +728,8 @@ the term is stable, the code is pending (see the cited issue).
   [[mkConfinementCheck]], the [[credential posture]] check, and `mkHomeEvalCheck` (every published
   [[home]] × every built-for system evaluates — members-generic, applied per user by the consumer's
   mapper; deliberately no `tryEval`, and shape-agnostic about *which* modes a fleet builds, the
-  consumer's fact — decision #43; its SHAPE and EMPTINESS refusals are separate, so a row holding a
-  home in the wrong shape is not reported as an empty one) — plus [[mkMemberChecks]], the
+  consumer's fact — decision #43; its SHAPE and EMPTINESS refusals are separate, so an entry
+  holding a home in the wrong shape is not reported as an empty one) — plus [[mkMemberChecks]], the
   **members adapter** that applies
   all three across a whole member set in one call (issue #60). Each proves something only a **consumer** can
   prove — over its own real module set, over its own members, over its own home matrix — so the
@@ -791,6 +791,16 @@ the term is stable, the code is pending (see the cited issue).
   which system, in which [[home]]s* (the consumer's own fleet fact, narrowed and guarded by the
   contract's `mkHomeMatrix`). Never call the home matrix "the members," and never let a hand-listed
   set of names stand in for one.
+- **row** (a declaration) vs **entry** (what got built) — a **row** is the [[home matrix]]'s
+  per-system *declaration*, `{ <mode> = bool; }`, written by a fleet; an **entry** is the per-system
+  value of `homes`, `{ <user> = { <mode> = home; }; }`, produced by one. The mapper that turns the
+  first into the second holds both a line apart, so they do not share a word: the check kit and its
+  diagnostics say *entry*, `mkHomeMatrix` and its guards say *row*. A third sense — the
+  `{ grants; label; home; }` record — died with the record (ADR-0032) and is not to be revived.
+- **bake is a verb, and only a verb** (ADR-0030) — "fails the bake", "the bake pairing", "baked
+  under". The object is a **[[home]]** (or, once published, a **[[contractPackage]]**); "a bake"
+  tells a reader that an operation happened, not what the thing is. `bake`-as-a-noun-for-the-object
+  was swept out on 2026-08-19; do not reintroduce it.
 - **`contractPackage` vs `activationPackage`** — `contractPackage` is the contract-level
   content-addressed flake output (activation + `contract-requests.json` sidecar);
   `activationPackage` is home-manager's internal term for the derivation that activates the
