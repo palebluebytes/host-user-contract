@@ -5,8 +5,8 @@ Agent-facing configuration for this repo. See `README.md` for what the project i
 
 ## Dev environment
 
-All dev tools come from `nix develop` (ADR-0004: the flake inputs **only nixpkgs**), not from
-flake inputs — there is no `treefmt-nix` or `git-hooks.nix`.
+All dev tools come from `nix develop` (the flake inputs **only nixpkgs**), not from flake
+inputs — there is no `treefmt-nix` or `git-hooks.nix`.
 
 - **Work inside `nix develop`** (or direnv).
 - **Format with `nix fmt`** before committing — treefmt over the whole tree.
@@ -28,8 +28,11 @@ nix flake check examples/fleet # the reference host fleet
 ```
 
 The two fleets carry their own checks because they need home-manager, which the contract does
-not input (ADR-0004/0022) — so nothing but running all three catches drift between them.
+not input — so nothing but running all three catches drift between them.
 `.github/workflows/ci.yml` walks the same matrix.
+
+New files must be **`git add`-ed before `nix flake check` sees them** — a flake only reads the
+tracked tree.
 
 ## Agent skills
 

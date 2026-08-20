@@ -3,12 +3,21 @@
 Operator guide for the model-A → model-C cutover: moving a real user (`inkpotmonkey`)
 into its **own repo** consumed by the fleet via `bindContractUser`.
 
-> **⚠️ Superseded stages (ADR-0023 — "the contract handles no secrets").** The contract
+> **⚠️ Written against an older surface.** The user side is now a **declaration** —
+> `users/<u>/user.nix` naming the session shapes a user runs in and the home for each — and a host
+> states what the machine can run (`contract.modes`) and what each person may do
+> (`bindContractUsers { source; users; }`).
+> `contract.wants` / `contract.supports` / `contract.requests`, the host-level `contract.affordances`
+> option, and `traceUser` no longer exist. The *operational* shape of the cutover below is
+> unchanged; where it quotes the surface, read [`README.md`](../../README.md) and
+> [`CONTEXT.md`](../../CONTEXT.md) instead.
+
+> **⚠️ Superseded stages ("the contract handles no secrets").** The contract
 > now handles no secrets beyond the login credential. The secret-specific stages below are
 > **obsolete** and retained only as historical context: **Stage 4** (grant a secret feature →
 > per-feature re-key) and **Stage 5** (revoke → remove recipient + rotate) do not apply —
 > there are no secret-bearing features, no `mkFeatureRecipients`, and no host recipients. In
-> **Stage 6**, `custom.host.exposed` is now a plain host *fact* with no enforced ban (the
+> **Stage 6**, `contract.exposed` is now a plain host *fact* with no enforced ban (the
 > `exposedHostOffenders` assertion was removed). A user's own home secrets, if any, ride the
 > user's own key, provisioned by the user's own home module — never through the contract.
 
@@ -93,13 +102,13 @@ This is acceptance criterion 5. The rationale (which visibility, why) must be wr
 
 **Edit (fleet).** Add `user-inkpotmonkey` as a flake input and bind it turnkey. The user repo bakes
 its contractPackages + binding index with `contract.lib.mkContractUser`/`mkContractUsers`; the fleet
-declares `contract.affordances` once and binds each user with
-`contract.lib.bindContractUser { usersFlake; username }` (ADR-0025/0026). The grant is derived as
-`affordances ∩ offer` — no per-host grant matrix. This is the single, pre-built binding mode
-(ADR-0026 retired the inline-eval alternative); the user owns their nixpkgs pin and package set.
+declares what the machine runs (`contract.modes`) and binds each user with their affordances beside
+them (`contract.lib.bindContractUsers { source; users; }`). The grant is what the host afforded —
+there is no user-side half to intersect with, and no per-host grant matrix. This is the single,
+pre-built binding mode; the user owns their nixpkgs pin and package set.
 
-**Afford nothing secret-bearing yet.** A build whose affordances are empty/gui-only proves the input
-wiring (acceptance criterion 3, first half).
+**Afford nothing yet.** A build whose affordances are empty proves the input wiring (acceptance
+criterion 3, first half) — an ordinary desktop user needs no affordance at all.
 
 **Verify:** `nix build .#nixosConfigurations.<host>.config.system.build.toplevel` on a
 workstation host builds with the user present and login-capable.
@@ -130,7 +139,7 @@ half), driven by the contract's slice-06 tooling, `contract.lib.mkFeatureRecipie
    host's age key is now a recipient; the secret resolves at runtime on that host.
 
 > A **secret-bearing grant on an exposed host is a build error before any of this** — the
-> `custom.host.exposed` ban (stage 6), enforced by the `exposedHostOffenders` assertion in
+> `contract.exposed` ban (stage 6), enforced by the `exposedHostOffenders` assertion in
 > `modules.nix`, not by `mkFeatureRecipients` itself (which has no exposed-host filter). So an
 > exposed host can never reach the re-key step holding a secret feature.
 
