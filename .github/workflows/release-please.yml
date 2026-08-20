@@ -1,0 +1,29 @@
+# Release automation — release-please walks Conventional Commits on `main`, keeps a standing release
+# PR with the computed version bump and the generated CHANGELOG, and cuts the tag + GitHub Release
+# when that PR merges. See docs/adr/0024-versioned-releases.md for what the version means.
+#
+# Separate from ci.yml on purpose: this job needs write scopes on contents and pull-requests, and
+# ci.yml runs on every PR — granting those there would widen the token on untrusted runs for nothing.
+#
+# The release PR is opened with the default GITHUB_TOKEN, which by design does NOT trigger other
+# workflows, so ci.yml will not run on it. That is deliberate (ADR-0024): the PR edits only
+# CHANGELOG.md, flake.nix's version line, and the manifest JSON — nothing any check reads — and the
+# commits underneath it already got a full green matrix when they landed on main.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

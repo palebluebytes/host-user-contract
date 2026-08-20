@@ -6,6 +6,14 @@
   outputs =
     { self, nixpkgs }:
     let
+      # The contract's RELEASE version — the repo's publication version, owned by release-please
+      # (docs/adr/0024). The annotation comment is the bump target: release-please rewrites the
+      # string on this line and nothing else, so do not edit it by hand.
+      #
+      # This is NOT `manifest.manifestVersion`. That one versions the producer↔consumer wire format
+      # and refuses a mismatch; this one tells a human whether `nix flake update` is about to break
+      # them. They move independently, and a docs-only release must not touch the wire format.
+      version = "0.0.0"; # x-release-please-version
       kit = import ./kit.nix { inherit (nixpkgs) lib; };
       systems = [
         "x86_64-linux"
@@ -36,6 +44,12 @@
 
       # The contract derivation functions.
       inherit (kit) lib;
+
+      # The release version this contract revision was published as — `nix eval
+      # <contract>#contractVersion`. Exposed so a fleet can record WHICH contract a host is running
+      # without git archaeology. Semantics live in docs/adr/0024; while it reads `0.x`, a breaking
+      # change arrives as a MINOR bump, so read the CHANGELOG rather than the digit.
+      contractVersion = version;
 
       # Data surface: the FEATURE vocabulary a host affords out of (per user), the MODE vocabulary
       # a producer bakes over and BOTH parties declare under (a user says which it runs in, a host
