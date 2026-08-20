@@ -1,13 +1,14 @@
 # Shared conformance fixtures — the synthetic-world builders every domain file reuses, so each
-# domain (./realization.nix, ./requests.nix, ./bind.nix, ./greeter.nix, ./matrix.nix) stays a
-# focused list of claims rather than re-deriving the harness. Built once in ./default.nix and
-# passed to each domain. No host repo, no real user, no host bindings (ADR-0004 Q5).
+# domain stays a focused list of claims rather than re-deriving the harness. Built once in
+# ./default.nix and passed to each domain. No host repo, no real user, no host bindings.
 {
   lib,
   contractModule,
   homeModule,
+  userOptions,
   nixosSystem,
   loadIdentity,
+  floorMode,
   system,
 }:
 rec {
@@ -31,46 +32,69 @@ rec {
     };
   eval = mods: (base mods).config;
 
-  # A synthetic manifest — pure data, exactly as a real one: identity + (for gui) a chosen
-  # desktop NAME, no grants (the host grants), no system config. `desktop` is a free-form name
-  # the user requests; the contract does not map it to a session type — that is the seat's
-  # concern (ADR-0021). It defaults to "plasma" (the example user's desktop).
+  # A synthetic bound ACCOUNT — pure data, exactly as a real bind writes it: an identity, the mode
+  # it was bound in, and whatever the host conferred. Powers arrive only through `grant` below; the
+  # session shape arrives through `mode`, and the two are separate because they answer different
+  # questions. `mode` defaults to the floor, as the option does.
   mkUser =
     name:
     {
-      gui ? true,
-      desktop ? "plasma",
+      mode ? floorMode,
     }:
     {
-      custom.users.${name} = {
+      contract.users.${name} = {
+        inherit mode;
         identity = {
           name = "User ${name}";
           email = "${name}@example.invalid";
           username = name;
         };
-      }
-      // lib.optionalAttrs gui { gui.desktop = desktop; };
+      };
     };
-  grant = name: features: { custom.users.${name}.granted = features; };
+  grant = name: features: { contract.users.${name}.granted = features; };
 
-  # The failing assertions of an evaluated system (the exposed-host ban + matrix read these).
+  # The failing assertions of an evaluated system (the matrix domain reads this).
   failing = c: builtins.filter (a: !a.assertion) c.assertions;
 
-  # The home eval-side: a user's home module populates contract.requests; evalModules with only
-  # the home umbrella proves the namespace's shape with no home-manager.
-  evalHome = mods: (lib.evalModules { modules = [ homeModule ] ++ mods; }).config;
-
-  # A real atom borrowed from the reference user fleet (ADR-0020, docs/adr/0022): ada's contract-pure
-  # home + her identity.json, inspected by traceUser and baked via the pre-built path. This is the one-way
-  # oracle→reference seam — the synthetic suite consumes realistic atoms from the reference fleet,
-  # never the reverse. referenceIdentity has username "ada", name "Ada Reference".
-  referenceHome = import ../examples/users/users/ada/home.nix;
-  referenceIdentity = loadIdentity ../examples/users/users/ada/identity.json;
-  # What a producer hands a home (ADR-0032 §7): the mode it was built for, its platform, and the
-  # exposure fact — and no grant set, because no grant can change a home.
-  referenceHostFacts = {
-    exposed = false;
-    mode = "gui";
-    platform = system;
+  # ── The HOME eval side ───────────────────────────────────────────────────────────────────────
+  # The home umbrella is deliberately thin — a home is handed its identity and nothing else, since
+  # the user's whole voice lives one level up in `user.nix`. So the synthetic home eval supplies
+  # the three required identity fields and leaves the optional ones free, which is what gives the
+  # confinement probe both a thing to FORCE (`identity.username`, always present) and a legitimate
+  # option to set as its POSITIVE CONTROL (`identity.gmail`, declared with a default and defined by
+  # nobody here).
+  homeIdentity = {
+    name = "Probe User";
+    email = "probe@example.invalid";
+    username = "probe";
   };
+  evalHome =
+    mods:
+    (lib.evalModules {
+      modules = [
+        homeModule
+        { identity = homeIdentity; }
+      ]
+      ++ mods;
+    }).config;
+  # Forcing this runs the module system's unmatched-definition check across ALL definitions, so an
+  # UNDECLARED option anywhere in the module set throws here.
+  homeForce = c: c.identity.username;
+  homePositiveControl = {
+    identity.gmail = "probe@example.invalid";
+  };
+
+  # ── The USER DECLARATION eval side ───────────────────────────────────────────────────────────
+  # A declaration evaluated against the REAL schema module the contract ships, so a domain proves
+  # what a user's `user.nix` can and cannot say without owning a second copy of the options.
+  evalDeclaration = mods: (lib.evalModules { modules = [ userOptions ] ++ mods; }).config.contract;
+
+  # A real atom borrowed from the reference user fleet: ada's directory (her identity.json and her
+  # `user.nix`), consumed by the producer domains exactly as a real users repo's would be. This is
+  # the one-way oracle→reference seam — the synthetic suite consumes realistic atoms from the
+  # reference fleet, never the reverse. `referenceIdentity` has username "ada", name "Ada
+  # Reference"; her declaration runs in both modes and asks for the plasma desktop.
+  referenceDir = ../examples/users/users/ada;
+  referenceIdentity = loadIdentity ../examples/users/users/ada/identity.json;
+  referenceDeclaration = evalDeclaration [ ../examples/users/users/ada/user.nix ];
 }

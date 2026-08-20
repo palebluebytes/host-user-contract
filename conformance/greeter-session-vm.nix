@@ -1,5 +1,5 @@
 # Runtime VM for the greeter's SESSION RENDER (ADR-0010 step 8) — proves the bound
-# `custom.greeter.desktops.<name>.command` brings up a LIVE graphical session, the render counterpart
+# `contract.greeter.desktops.<name>.command` brings up a LIVE graphical session, the render counterpart
 # to greeter-provision-vm's session SELECTION (which only checks which command is chosen).
 #
 # A real compositor needs a logind SEAT session for DRM/KMS access — which greetd establishes
@@ -55,8 +55,8 @@ mkSeatVM {
   # Offer one desktop (the self-contained Wayland command under test). greetd autologins alice into
   # our launcher, which (running AS alice, in greetd's seat session) resolves + execs it.
   seat = {
-    custom.greeter.desktops.wayland.command = backend;
-    custom.greeter.defaultDesktop = "wayland";
+    contract.greeter.desktops.wayland.command = backend;
+    contract.greeter.defaultDesktop = "wayland";
   };
 
   testScript = ''

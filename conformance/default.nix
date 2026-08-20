@@ -9,8 +9,8 @@
   #
   # `self` rather than `kit` for everything public, deliberately: the domains below then exercise
   # the REAL flake outputs, so an output wired to the wrong kit attr fails the suite. `kit` is read
-  # ONLY for `internal` — the in-repo kernels that are not outputs (ADR-0026), including the
-  # `accountPlan` the greeter also evaluates at login.
+  # ONLY for `internal` — the in-repo kernels that are not outputs, including the `accountPlan` the
+  # greeter also evaluates at login.
   self,
   kit,
 }:
@@ -18,13 +18,12 @@ let
   contractModule = self.nixosModules.default;
   greeterModule = self.nixosModules.greeter;
   homeModule = self.homeModules.default;
-  homeGreeterDesktopModule = self.homeModules.greeterDesktop;
   homeBaselineModule = self.homeModules.baseline;
   inherit (self)
     safeSet
     modes
     floorMode
-    greeterGrants
+    greeterAffordances
     tier1EvalConfig
     featureGroups
     privilegedGroups
@@ -33,7 +32,7 @@ let
     loadIdentity
     mkHomeMatrix
     mkMembers
-    traceUser
+    enabledModesOf
     mkConfinementCheck
     mkIdentityPostureCheck
     mkHomeEvalCheck
@@ -43,11 +42,13 @@ let
     mkContractFleet
     mkContractHome
     bindContractUser
+    bindContractUsers
     renderNixConfig
     ;
   inherit (kit.internal)
+    userOptions
     floorOf
-    runsFor
+    runsWith
     selectModeOver
     homeMatrixOver
     mkContractPackage
@@ -57,6 +58,7 @@ let
     writeManifest
     readManifest
     manifestFileName
+    manifestVersion
     outOfUniverseProbes
     ;
 
@@ -65,8 +67,10 @@ let
       lib
       contractModule
       homeModule
+      userOptions
       nixosSystem
       loadIdentity
+      floorMode
       system
       ;
   };
@@ -78,18 +82,19 @@ let
         toolkit
         loadIdentity
         safeSet
+        modes
         featureGroups
         privilegedGroups
         ;
     })
-    (import ./requests.nix {
+    (import ./declaration.nix {
       inherit
         lib
         toolkit
-        homeModule
-        homeGreeterDesktopModule
         modes
-        safeSet
+        enabledModesOf
+        mkMembers
+        mkContractHome
         ;
     })
     (import ./confinement.nix {
@@ -114,7 +119,7 @@ let
         modes
         floorMode
         floorOf
-        runsFor
+        runsWith
         selectModeOver
         ;
     })
@@ -129,8 +134,10 @@ let
     (import ./members.nix {
       inherit
         lib
+        toolkit
         loadIdentity
         mkMembers
+        enabledModesOf
         ;
     })
     (import ./member-checks.nix {
@@ -151,29 +158,24 @@ let
         mkIdentityPostureCheck
         ;
     })
-    (import ./bind.nix {
-      inherit
-        toolkit
-        traceUser
-        greeterGrants
-        ;
-    })
     (import ./greeter.nix {
       inherit
         lib
         pkgs
         toolkit
         greeterModule
-        greeterGrants
+        greeterAffordances
+        runsWith
         safeSet
         tier1EvalConfig
         renderNixConfig
         ;
     })
     (import ./matrix.nix { inherit lib toolkit; })
-    (import ./account-plan.nix { inherit lib accountPlan; })
+    (import ./account-plan.nix { inherit lib floorMode accountPlan; })
     (import ./contract-package.nix {
       inherit
+        lib
         pkgs
         toolkit
         mkContractPackage
@@ -182,13 +184,13 @@ let
         writeManifest
         readManifest
         manifestFileName
-        greeterGrants
+        manifestVersion
         ;
     })
     (import ./contract-home.nix {
       inherit
         lib
-        homeGreeterDesktopModule
+        toolkit
         homeBaselineModule
         mkContractHome
         ;
@@ -198,6 +200,7 @@ let
         lib
         pkgs
         system
+        toolkit
         loadIdentity
         mkContractFleet
         mkContractUsers
@@ -212,6 +215,7 @@ let
         mkContractUser
         mkContractUsers
         bindContractUser
+        bindContractUsers
         system
         ;
     })

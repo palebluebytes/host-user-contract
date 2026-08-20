@@ -23,7 +23,7 @@
   contractModule,
   greeterModule,
   accountPlan,
-  greeterGrants,
+  greeterAffordances,
   system,
 }:
 let
@@ -39,8 +39,8 @@ let
   inherit (seatVM) mkSeatVM activationStub;
 
   # A synthetic external identity (the inert data the eval-free auth reads). hashedPassword is the
-  # sha512-crypt of "correct-horse-battery-staple"; extraGroups carries one safe group (audio) and
-  # one privileged group (docker) so the runtime clamp is observable.
+  # sha512-crypt of "correct-horse-battery-staple". It names NO groups — an identity cannot — so
+  # every group the realized account ends up with came from the mode it was bound in.
   passwordHash = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
   identityAttrs = {
     name = "Example User";
@@ -49,22 +49,22 @@ let
     hashedPassword = passwordHash;
     sshKey = "ssh-ed25519 AAAAexamplekey example@user.invalid";
     trustedKeys = [ "ssh-ed25519 AAAAtrustedkey trusted@elsewhere" ];
-    extraGroups = [
-      "audio"
-      "docker"
-    ];
   };
   identityJson = pkgs.writeText "identity.json" (builtins.toJSON identityAttrs);
 
-  # The BUILD-TIME account for the SAME identity + the safe-set grant, rendered from the ONE shared
+  # The BUILD-TIME account for the SAME identity + the selected mode, rendered from the ONE shared
   # accountPlan (ADR-0012). `provision` now EVALUATES this same accountPlan at runtime (via
   # contract-account-plan) and renders it, so its realized account must match this record
   # field-for-field — the renderer-faithfulness this VM proves. `provision` adds the greeter-seat
   # marker (`greeter-users`) on top of the record's groups (the standing baseline it enrolls into),
-  # so the expected supplementary group set is the record's `extraGroups` ∪ that marker.
+  # so the expected supplementary group set is the record's groups ∪ that marker.
+  # The seat runs the graphical mode, which is what gives a walk-up account its input groups —
+  # nothing is granted at a greeter, because the safe set is empty.
+  seatMode = "gui";
   buildTimePlan = accountPlan {
     identity = identityAttrs;
-    grants = greeterGrants;
+    grants = greeterAffordances;
+    mode = seatMode;
   };
   expectedGroups = lib.sort (a: b: a < b) (
     lib.unique (buildTimePlan.extraGroups ++ [ "greeter-users" ])
@@ -84,9 +84,9 @@ mkSeatVM {
   # just record which desktop was selected. `docker` must EXIST for the clamp test to be meaningful
   # (so "not in docker" proves the clamp dropped it, not that the group was merely absent).
   seat = {
-    custom.greeter.desktops.gnome.command = "echo gnome > /tmp/desktop-launched";
-    custom.greeter.desktops.plasma.command = "echo plasma > /tmp/desktop-launched";
-    custom.greeter.defaultDesktop = "plasma";
+    contract.greeter.desktops.gnome.command = "echo gnome > /tmp/desktop-launched";
+    contract.greeter.desktops.plasma.command = "echo plasma > /tmp/desktop-launched";
+    contract.greeter.defaultDesktop = "plasma";
     users.groups.docker = { };
   };
 
@@ -101,7 +101,7 @@ mkSeatVM {
     machine.fail("getent passwd example")
 
     # RUNTIME provision: the shell-side realization (ADR-0012).
-    machine.succeed("contract-greeter-provision example ${identityJson} ${activationStub} tier1")
+    machine.succeed("contract-greeter-provision example ${identityJson} ${activationStub} tier1 ${seatMode}")
     machine.succeed("getent passwd example")
 
     # Account fully realized by RENDERING the record the shared accountPlan evaluates for this
@@ -142,7 +142,7 @@ mkSeatVM {
     machine.succeed("grep -qx plasma /tmp/desktop-launched")
 
     # Tier 2 (ephemeral) provisioning is designed-for but DEFERRED — the helper refuses it.
-    machine.fail("contract-greeter-provision someone-else ${identityJson} ${activationStub} tier2")
+    machine.fail("contract-greeter-provision someone-else ${identityJson} ${activationStub} tier2 ${seatMode}")
 
     print(machine.succeed("id example; getent passwd example"))
   '';

@@ -10,7 +10,7 @@
 #
 # COVERAGE NOTE — like `./confinement.nix`, this drives the helper through SYNTHETIC homes
 # (plain attrsets shaped like the default force's attrpath): the contract has no home-manager
-# (ADR-0004), so the `activationPackage.drvPath` default over a REAL home-manager home is only
+# so the `activationPackage.drvPath` default over a REAL home-manager home is only
 # exercised in a consumer repo's own `checks`.
 {
   lib,

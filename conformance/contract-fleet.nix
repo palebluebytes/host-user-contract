@@ -1,5 +1,5 @@
-# Conformance domain: the FLEET-LEVEL producer (ADR-0029's second amendment, issue #62) —
-# `mkContractFleet`, the members-and-matrix rung above `mkContractUsers`.
+# Conformance domain: the FLEET-LEVEL producer — `mkContractFleet`, the members-and-matrix rung
+# above `mkContractUsers`.
 #
 # Two tracks, because the subject has two halves that want opposite material:
 #
@@ -7,8 +7,8 @@
 #                      fold hands its injected closure is read straight off the recorded arguments.
 #                      This is the same posture `contract-home.nix` takes with its recording
 #                      `homeManagerConfiguration` stub, and it is what lets a two-system fleet be
-#                      proven here at all: nothing is built, and no home-manager is anywhere near it
-#                      (ADR-0004/0022).
+#                      proven here at all: nothing is built, and no home-manager is anywhere near
+#                      it.
 #   the OUTPUT track — the real `pkgs` and a synthetic already-evaluated home, so the three
 #                      published attributes (`packages`, `contractUsers`, and the homes behind them)
 #                      are pinned on the real producer path rather than on a stub of it.
@@ -22,24 +22,39 @@
   lib,
   pkgs,
   system,
+  toolkit,
   loadIdentity,
   mkContractFleet,
   mkContractUsers,
 }:
 let
+  inherit (toolkit) evalDeclaration;
+
   # Two members, hand-built as in ./turnkey-bind.nix, so these stay claims about the FLEET rather
   # than about `mkMembers` (which ./members.nix owns). Their identities come from the reference
-  # fleet — the suite borrows real atoms from the positive-space example, never the reverse
-  # (ADR-0022).
-  mkMember = name: {
-    inherit name;
+  # fleet — the suite borrows real atoms from the positive-space example, never the reverse.
+  #
+  # A member carries its DECLARATION, and the declaration is what decides which modes get built:
+  # the fold builds this system's row ∩ what the user runs in. So the declaration is a parameter
+  # here, and the publication claims below vary it rather than varying a home.
+  bothModes = evalDeclaration [
+    {
+      contract.cli.enable = true;
+      contract.gui.enable = true;
+    }
+  ];
+  guiOnly = evalDeclaration [ { contract.gui.enable = true; } ];
+  mkMemberWith = declaration: name: {
+    inherit name declaration;
     dir = ../examples/users/users + "/${name}";
     identity = loadIdentity (../examples/users/users + "/${name}/identity.json");
   };
-  members = {
-    ada = mkMember "ada";
-    ben = mkMember "ben";
+  mkMember = mkMemberWith bothModes;
+  membersRunning = declaration: {
+    ada = mkMemberWith declaration "ada";
+    ben = mkMemberWith declaration "ben";
   };
+  members = membersRunning bothModes;
 
   # ── The probe track ──────────────────────────────────────────────────────────────────────────
   # The reference fleet's own shape, in miniature: an x86 tier that runs every mode and a headless
@@ -71,30 +86,13 @@ let
   };
 
   # The RECORDING builder: it returns what it was handed, so every claim about what the fold passes
-  # its injected closure is read off the result. It carries the minimum HOME shape the fold really
-  # requires and no more — the user's VOICE — because publication is driven by `supports`
-  # (ADR-0032 §6), so which homes a fleet publishes cannot be answered without reading them. It
-  # carries no `activationPackage` and no `home.*`: nothing on this track bakes, and a fold that
-  # quietly required MORE than the voice would be a contract the signature does not state.
+  # its injected closure is read off the result. It carries NOTHING else — no `activationPackage`,
+  # no `config` — because a fold that quietly required more of a home than the signature states
+  # would be a contract nobody wrote down. Which homes get published is answered from the MEMBER's
+  # declaration, one step before any home exists, so this track never has to fabricate a home shape
+  # to satisfy the producer.
   recordingBuildHome = args: {
     recorded = args;
-    config.contract = {
-      wants = probeWants;
-      supports = probeSupports;
-    };
-  };
-  # Every mode supported, so the probe track's claims are about the FOLD and not about the cut;
-  # the cut has its own claim on the output track below.
-  probeSupports = {
-    cli = true;
-    gui = true;
-  };
-  probeWants = {
-    gui = true;
-    sudo = false;
-    containers = false;
-    virtualization = false;
-    nix-daemon = false;
   };
 
   probeFleet = mkContractFleet {
@@ -183,52 +181,26 @@ let
   # ── The output track ─────────────────────────────────────────────────────────────────────────
   # One system (the suite's own), the real `pkgs`, and a synthetic already-evaluated home — the
   # same stand-in ./turnkey-bind.nix and ./contract-package.nix use, since the builder needs
-  # home-manager and this suite has none (ADR-0004). The end-to-end half, a REAL `mkContractHome`
-  # result driven through this producer, is `examples/users`' own `nix flake check` (ADR-0022).
+  # home-manager and this suite has none. The end-to-end half, a REAL `mkContractHome` result
+  # driven through this producer, is `examples/users`' own `nix flake check`.
   activationStub = pkgs.runCommand "fleet-activation-stub" { } ''
     mkdir -p $out
     printf '#!/bin/sh\necho activated\n' > $out/activate
     chmod +x $out/activate
   '';
-  # The full want set a real home eval yields: every registry feature present, one bool each.
-  syntheticWants = {
-    gui = true;
-    sudo = false;
-    containers = false;
-    virtualization = false;
-    nix-daemon = false;
-  };
-  # …and the full support set: every registry mode present, one bool each. These members run in
-  # both modes, so both are published; the gui-only member below is the case where the cut bites.
-  syntheticSupports = {
-    cli = true;
-    gui = true;
-  };
-  mkSyntheticHome =
-    {
-      username,
-      supports ? syntheticSupports,
-    }:
-    {
-      activationPackage = activationStub;
-      config = {
-        contract.requests = {
-          gui.desktop = "plasma";
-        };
-        contract.wants = syntheticWants;
-        contract.supports = supports;
-        home = {
-          packages = [ pkgs.hello ];
-          inherit username;
-        };
-      };
+  mkSyntheticHome = username: {
+    activationPackage = activationStub;
+    config.home = {
+      packages = [ pkgs.hello ];
+      inherit username;
     };
+  };
 
   outputMatrix.${system} = [
     "cli"
     "gui"
   ];
-  buildSyntheticHome = { member, ... }: mkSyntheticHome { username = member.name; };
+  buildSyntheticHome = { member, ... }: mkSyntheticHome member.name;
   outputFleet = mkContractFleet {
     inherit members;
     homeMatrix = outputMatrix;
@@ -254,42 +226,27 @@ let
     homes = builtHomes;
   };
 
-  # PUBLICATION IS DRIVEN BY `supports` (ADR-0032 §6): the matrix says what a SYSTEM builds and the
-  # user says which of those it can run in, so what is published is the intersection. A gui-only
-  # member on a two-mode system therefore publishes ONE home, and the cli home the fold built for
-  # it is simply never published.
+  # PUBLICATION IS THE INTERSECTION: the matrix says what a SYSTEM builds and the user's own
+  # declaration says which session shapes it runs in, so a gui-only member on a two-mode system
+  # publishes ONE home — and the cli home is never BUILT either, because the fold intersects before
+  # it builds rather than building everything and discarding.
   guiOnlyFleet = mkContractFleet {
-    inherit members;
+    members = membersRunning guiOnly;
     homeMatrix = outputMatrix;
     pkgsFor = _: pkgs;
-    buildHome =
-      { member, ... }:
-      mkSyntheticHome {
-        username = member.name;
-        supports = {
-          cli = false;
-          gui = true;
-        };
-      };
+    buildHome = buildSyntheticHome;
   };
-  # …and the same members one system over, on a row that subtracts EVERY mode they support. The
-  # cut comes out empty, and that is not an error here: the matrix is fail-OPEN on coverage
-  # (ADR-0032 §6), so a system that bakes none of a user's modes simply publishes nothing for that
-  # user THERE. The refusal belongs to the bind, which is where a host and a user meet with nothing
-  # in common and the diagnostic can name both sides.
+  # …and the same members on a row that subtracts EVERY mode they run in. The intersection comes
+  # out empty, and that is not an error here: the matrix is fail-OPEN on coverage, so a system that
+  # bakes none of a user's modes simply publishes nothing for that user THERE — an index entry that
+  # still says which modes the user runs in, with no contractPackages behind it. The refusal
+  # belongs to the bind, which is where a host and a user meet with nothing in common and the
+  # diagnostic can name both sides.
   uncoveredFleet = mkContractFleet {
-    inherit members;
+    members = membersRunning guiOnly;
     homeMatrix.${system} = [ "cli" ];
     pkgsFor = _: pkgs;
-    buildHome =
-      { member, ... }:
-      mkSyntheticHome {
-        username = member.name;
-        supports = {
-          cli = false;
-          gui = true;
-        };
-      };
+    buildHome = buildSyntheticHome;
   };
 
 in
@@ -455,10 +412,14 @@ in
             "ben"
           ]
         &&
-          # The index entry is the coin's own: the member's identity, the harvested offer, and one
+          # The index entry is the coin's own: the member's identity, the modes it runs in, and one
           # contractPackage per PUBLISHED mode, keyed by that mode.
           outputFleet.contractUsers.${system}.ada.identity == members.ada.identity
-        && outputFleet.contractUsers.${system}.ada.offer == syntheticWants
+        &&
+          outputFleet.contractUsers.${system}.ada.modes == [
+            "cli"
+            "gui"
+          ]
         &&
           lib.attrNames outputFleet.contractUsers.${system}.ada.contractPackages == [
             "cli"
@@ -474,11 +435,11 @@ in
         && outputFleet.contractUsers.${system} == usersOut.contractUsers.${system};
     }
 
-    # --- publication is driven by `supports` (ADR-0032 §6) ---
+    # --- publication is the row ∩ what the user runs in ---
     {
-      # The system BUILDS both modes and the member runs in one, so one is published. `homes` is
-      # the published set, not the built one — a home nobody could bind is not a flake output.
-      name = "mkContractFleet: a gui-only member publishes its gui home alone, though the row built both";
+      # The system's row names both modes and the member runs in one, so one home exists. The fold
+      # intersects before it builds: a home nobody could bind is never built, let alone published.
+      name = "mkContractFleet: a gui-only member publishes its gui home alone, though the row names both";
       ok =
         lib.attrNames guiOnlyFleet.homes.${system}.ada == [ "gui" ]
         && lib.attrNames guiOnlyFleet.contractUsers.${system}.ada.contractPackages == [ "gui" ]
@@ -489,15 +450,20 @@ in
           ];
     }
     {
-      # …and the cut coming out EMPTY publishes nothing there, without refusing. A producer must
-      # not get to decide what a self-contained user may BE on the strength of one system's
-      # topology: the user is unchanged and still publishable elsewhere, and the host that runs
-      # only what this system does not bake meets the refusal at its own bind, where the selection
-      # can name what it runs against what the user offers.
+      # …and the intersection coming out EMPTY publishes nothing there, without refusing. A
+      # producer must not get to decide what a self-contained user may BE on the strength of one
+      # system's topology: the user is unchanged and still publishable elsewhere, and the host that
+      # runs only what this system does not bake meets the refusal at its own bind, where the
+      # selection can name what it runs against what the user publishes.
+      #
+      # The index entry SURVIVES, carrying the modes the user runs in and no contractPackages —
+      # which is what lets that bind-side refusal name both sides instead of reporting a user the
+      # flake has never heard of.
       name = "mkContractFleet: a system baking none of a member's modes publishes nothing for it there";
       ok =
         uncoveredFleet.homes.${system}.ada == { }
         && uncoveredFleet.contractUsers.${system}.ada.contractPackages == { }
+        && uncoveredFleet.contractUsers.${system}.ada.modes == [ "gui" ]
         && uncoveredFleet.packages.${system} == { };
     }
   ];

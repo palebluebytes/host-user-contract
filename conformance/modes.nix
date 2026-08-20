@@ -18,7 +18,7 @@
   modes,
   floorMode,
   floorOf,
-  runsFor,
+  runsWith,
   selectModeOver,
 }:
 let
@@ -82,37 +82,53 @@ in
       ok = modes ? ${floorMode} && (modes.${floorMode}.floor or false);
     }
     {
-      # The floor is the mode every host runs, so it must need no affordance to reach: a floor
-      # with an associated grant would be a mode a host could fail to run, which is a contradiction
-      # in terms.
-      name = "modes: the floor carries no associated grant — nothing is afforded to run it";
-      ok = !(modes.${floorMode} ? grant);
+      # The floor is the mode every host runs, so it must need nothing to reach it: a floor that
+      # needed a declaration would be a mode a host could fail to run, which is a contradiction in
+      # terms. The floor is also where a selection with nothing else in common lands.
+      name = "modes: the floor needs no declaration and no groups to run";
+      ok = (modes.${floorMode}.groups or [ ]) == [ ] && !(modes.${floorMode}.display or false);
     }
     {
-      # A non-floor mode's `grant` names a FEATURE, because that is what a host affords. A name
-      # that is not a feature would derive a `runs` set nothing could ever put the mode into.
-      name = "modes: every non-floor mode names a feature as its associated grant";
-      ok = lib.all (m: modes.${m} ? grant) (lib.filter (m: m != floorMode) (lib.attrNames modes));
+      # THE TWO REGISTRIES TOUCH NOWHERE. A mode used to name the FEATURE a host afforded in order
+      # to run it, which meant a machine capability had to be laundered through a per-user policy
+      # namespace. The host declares its modes directly now, so no entry here names a feature at
+      # all — and this claim is what stops the association growing back.
+      name = "modes: no mode names a feature — the mode and feature registries do not touch";
+      ok = lib.all (m: !(modes.${m} ? grant)) (lib.attrNames modes);
     }
 
-    # --- the host-side derivation: affordances ⇒ the modes a host runs ---
+    # --- the host-side derivation: a machine's declaration ⇒ the modes it runs ---
     {
-      # A host that affords NOTHING still runs the floor. That is what makes `runs` never empty,
-      # and it is why nobody declares the floor: there is no affordance to declare it with.
-      name = "runs: a host affording nothing runs the floor, and only the floor";
-      ok = runsFor [ ] == [ floorMode ];
+      # A host that declares NOTHING still runs the floor. That is what makes `runs` never empty,
+      # and why nobody writes the floor down: there is nothing to write it with.
+      name = "runs: a host declaring nothing runs the floor, and only the floor";
+      ok = runsWith [ ] == [ floorMode ];
     }
     {
-      # …and affording a mode's associated grant is what puts that mode in the set. No host
-      # declares a mode; the disagreement between "affords gui" and "runs gui" is unwriteable.
-      name = "runs: affording a mode's associated grant is what makes the host run it";
-      ok = runsFor [ "gui" ] == lib.attrNames modes;
+      # …and declaring a mode is what puts it in the set. One declaration, so nothing can disagree
+      # with it — there is no second namespace saying what this machine can run.
+      name = "runs: declaring a mode is what makes the host run it";
+      ok = runsWith [ "gui" ] == lib.attrNames modes;
     }
     {
-      # An afforded feature that is no mode's grant changes nothing: `sudo` rides the bind, and a
-      # grant that reaches no home cannot change what a home was built as.
-      name = "runs: a bind-riding grant adds no mode (sudo is nobody's session shape)";
-      ok = runsFor [ "sudo" ] == [ floorMode ];
+      # THE DECLARATION IS A SET, not a sequence. `runsWith` filters the REGISTRY rather than
+      # concatenating the list, so order never reaches an outcome or a diagnostic, a redundantly
+      # declared floor collapses, and duplicates cost nothing. Three spellings, one meaning.
+      name = "runs: order, duplicates and a redundant floor all wash out — the declaration is a set";
+      ok =
+        runsWith [
+          "gui"
+          "cli"
+        ] == runsWith [
+          "cli"
+          "gui"
+        ]
+        &&
+          runsWith [
+            "gui"
+            "gui"
+          ] == runsWith [ "gui" ]
+        && runsWith [ "cli" ] == [ floorMode ];
     }
 
     # --- the selection (ADR-0032 §5) ---

@@ -16,7 +16,7 @@
 # not a greeter-session-launch one; the greeter's job (select the desktop, exec the host-bound
 # self-contained command — the seat owns the session type, ADR-0021) is what this proves, with two
 # compositors that DO launch+exit cleanly. A seat that wants GNOME binds a GNOME launcher to
-# custom.greeter.desktops.<name>.command; rendering a full DE is the host backend's concern
+# contract.greeter.desktops.<name>.command; rendering a full DE is the host backend's concern
 # (the consumer-renders boundary), exactly as the gui-surface VM renders Plasma via a host SDDM binding.
 {
   pkgs,
@@ -60,8 +60,8 @@ mkSeatVM {
 
   # The desktop is a self-contained command; the seat owns the session type (ADR-0021).
   seat = {
-    custom.greeter.desktops.sequence.command = "${sequence}";
-    custom.greeter.defaultDesktop = "sequence";
+    contract.greeter.desktops.sequence.command = "${sequence}";
+    contract.greeter.defaultDesktop = "sequence";
   };
 
   testScript = ''

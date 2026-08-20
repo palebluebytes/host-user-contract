@@ -40,8 +40,8 @@ mkSeatVM {
     imports = [ de.module ];
     virtualisation.memorySize = 4096;
     virtualisation.cores = 2;
-    custom.greeter.desktops.${de.name}.command = de.command;
-    custom.greeter.defaultDesktop = de.name;
+    contract.greeter.desktops.${de.name}.command = de.command;
+    contract.greeter.defaultDesktop = de.name;
   };
 
   testScript = ''

@@ -36,11 +36,11 @@ let
     echo "daemon-restricted home activated for $USER" > "$HOME/.contract-activated"
     SH
     chmod +x $out/activate
-    cat > $out/contract-requests.json <<'JSON'
+    cat > $out/contract-manifest.json <<'JSON'
     {
-      "version": 1,
+      "version": 4,
       "username": "testuser",
-      "requests": { "gui": { "desktop": "" } },
+      "mode": "cli",
       "packages": ["hello", "curl"]
     }
     JSON
@@ -63,7 +63,7 @@ mkSeatVM {
     ];
 
     # Package policy: only hello is approved.
-    custom.host.packagePolicy.allowedPrograms = [ "hello" ];
+    contract.packagePolicy.allowedPrograms = [ "hello" ];
 
     # Restrict the Nix daemon to nix-users only (testuser is NOT in nix-users).
     nix.settings.allowed-users = [ "@nix-users" ];

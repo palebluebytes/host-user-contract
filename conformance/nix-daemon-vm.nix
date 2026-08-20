@@ -2,10 +2,10 @@
 # divide at runtime: a user granted nix-daemon is in nix-users and can talk to the
 # daemon; a user denied it cannot. The host wires nix.settings.allowed-users = ["@nix-users"]
 # — the daemon refuses connections from non-members. The runtime clamp is also proven:
-# a user who self-declares nix-users in identity.extraGroups without the grant does not
+# a user afforded no nix-daemon does not
 # end up in the group (the realization drops it, as with all privileged groups).
 #
-# A build-time-binding seat (greeter off, CONTEXT.md): it binds users declaratively via `custom.users`
+# A build-time-binding seat (greeter off, CONTEXT.md): it binds users declaratively via `contract.users`
 # and asserts the realization, so ./seat-vm.nix's `greeter = false` boot base is all it needs.
 {
   pkgs,
@@ -26,7 +26,7 @@ mkSeatVM {
 
   seat = {
     # alice: granted nix-daemon → in nix-users → can use the daemon.
-    custom.users.alice = {
+    contract.users.alice = {
       identity = {
         name = "Alice";
         email = "alice@example.invalid";
@@ -36,7 +36,7 @@ mkSeatVM {
     };
 
     # bob: no grant → not in nix-users → daemon-restricted.
-    custom.users.bob = {
+    contract.users.bob = {
       identity = {
         name = "Bob";
         email = "bob@example.invalid";
@@ -44,13 +44,13 @@ mkSeatVM {
       };
     };
 
-    # carol: self-declares nix-users in identity.extraGroups → realization clamps it.
-    custom.users.carol = {
+    # carol: afforded nothing, so she is daemon-restricted. She cannot put herself in `nix-users`
+    # either — an identity names no groups at all.
+    contract.users.carol = {
       identity = {
         name = "Carol";
         email = "carol@example.invalid";
         username = "carol";
-        extraGroups = [ "nix-users" ];
       };
     };
 

@@ -1,16 +1,22 @@
-# Conformance domain: the producer HOME builder (issue #40/#42) — `mkContractHome` and the home
-# baseline module it includes by default. All package-free (ADR-0004/0022): `homeManagerConfiguration`
-# is a RECORDING STUB (a function returning its own arguments), so every claim is over the arguments
-# the contract composes — the module list, the identity/home.* inline module, the hostFacts
-# specialArg — with no home-manager anywhere. The baseline's mkDefault posture is proven by a merged
-# `evalModules` over stub declarations of the two home-manager option paths it pins.
+# Conformance domain: the producer HOME builder — `mkContractHome` and the home baseline module it
+# composes by default. All package-free: `homeManagerConfiguration` is a RECORDING STUB (a function
+# returning its own arguments), so every claim is over the arguments the contract composes — the
+# module list, the identity/home.* inline module, the hostFacts specialArg — with no home-manager
+# anywhere. The baseline's mkDefault posture is proven by a merged `evalModules` over stub
+# declarations of the two home-manager option paths it pins.
+#
+# The claim this domain exists for is the per-mode one: the home a builder composes is the module
+# THAT MODE's declaration points at. duo-a is the reference atom for it — her two modes name two
+# different files — and duo-b is the control, naming one file twice.
 {
   lib,
-  homeGreeterDesktopModule,
+  toolkit,
   homeBaselineModule,
   mkContractHome,
 }:
 let
+  inherit (toolkit) evalDeclaration;
+
   # The recording stub: whatever the builder composes is returned verbatim for inspection.
   recordingHMC = args: args;
 
@@ -22,62 +28,73 @@ let
   };
 
   # One appended module, structurally comparable, standing in for everything the seam carries
-  # (confinement probes, greeterDesktop, markers, repo glue).
+  # (confinement probes, markers, repo glue).
   probe = {
     home.file.".probe".text = "probe";
   };
 
-  recorded = mkContractHome {
-    homeManagerConfiguration = recordingHMC;
-    pkgs = stubPkgs;
+  build =
+    args:
+    mkContractHome (
+      {
+        homeManagerConfiguration = recordingHMC;
+        pkgs = stubPkgs;
+        stateVersion = "25.11";
+      }
+      // args
+    );
+
+  recorded = build {
     memberDir = ../examples/users/users/ada;
-    # The SESSION SHAPE this home is built for (ADR-0032) — the only thing a producer tells a home
-    # about the world outside it, beyond the platform and the exposure fact.
+    # The SESSION SHAPE this home is built for — the only thing a producer tells a home about the
+    # world outside it, beyond the platform and the exposure fact.
     mode = "gui";
-    stateVersion = "25.11";
     extraModules = [ probe ];
-    # The clobber attempt: hostFacts is contract-owned and must win; everything else (the
-    # ADR-0020 `inputs` convention) passes through opaquely.
+    # The clobber attempt: hostFacts is contract-owned and must win; everything else (an `inputs`
+    # passthrough, say) passes through opaquely.
     extraSpecialArgs = {
       hostFacts = "clobber-attempt";
       inputs = "opaque-inputs";
     };
   };
 
-  # The one owner of "where the inline identity/home.* module sits" (slot 4, after umbrella /
-  # baseline / greeterDesktop / home.nix) — the composition-order assertion below pins the other
-  # slots, so a reorder in mkContractHome fails there loudly rather than silently shifting what
-  # this reads.
+  # The composition, slot by slot. The order assertion below pins every one of them, so a reorder
+  # in mkContractHome fails there loudly rather than silently shifting what these read.
+  umbrellaOf = r: (lib.elemAt r.modules 0) { };
+  baselineOf = r: (lib.elemAt r.modules 1) { };
+  # The desktop dotfile module is a FUNCTION of the mode's `desktop` parameter, so applying it is
+  # the whole of what it does: the gui build materialises the file, and a build for a mode with no
+  # desktop to choose materialises nothing at all.
+  desktopOf = r: (lib.elemAt r.modules 2) { };
+  configurationOf = r: lib.elemAt r.modules 3;
+  # The MODULES a mode's `configuration` actually names. The deferredModule value itself always
+  # differs across two modes — its `_file` records the option path it was defined under, so
+  # `contract.gui.configuration` and `contract.cli.configuration` are never equal even when they
+  # name one file. So the comparison reaches through to what was NAMED, which is the fact the
+  # claims below are actually about.
+  namedModules = r: lib.concatMap (m: m.imports or [ ]) (configurationOf r).imports;
   inlineOf = r: lib.elemAt r.modules 4;
   inlineModule = inlineOf recorded;
 
-  # Nix functions are incomparable (`==` on two lambdas is always false), so module identity is
-  # asserted by CONTENT: each composed module function is applied and its body inspected. The
-  # umbrella is recognised by the options only it declares; the baseline's applied body is plain
-  # data (mkDefault wrappers), so it compares structurally equal to the exposed module's own.
-  composedUmbrella = (lib.elemAt recorded.modules 0) { };
-  slotOneIsBaseline = (lib.elemAt recorded.modules 1) { } == homeBaselineModule { };
-
-  # The greeterDesktop recogniser: does this function module materialise the greeter's desktop
-  # dotfile when a desktop is requested? Applied to the REAL greeterDesktop module as the positive
-  # control (a probe that recognises nothing would pass vacuously), then over the composed list.
-  desktopProbeArg = {
-    config.contract.requests.gui.desktop = "plasma";
-  };
-  surfacesDesktopChoice =
-    m:
-    lib.isFunction m
-    && lib.hasAttrByPath [
-      "content"
-      "home"
-      "file"
-      ".contract-desktop"
-    ] (m desktopProbeArg);
+  # --- the per-mode configuration, and its control ---
+  # duo-a's two modes name two DIFFERENT modules (`gui.nix` and `cli.nix`), so the composed slot
+  # differs across them. duo-b's two modes name ONE module, so it does not. Without the control,
+  # "the two differ" could hold for a reason that has nothing to do with the declaration.
+  duoA =
+    mode:
+    build {
+      memberDir = ../examples/users/users/duo-a;
+      inherit mode;
+    };
+  duoB =
+    mode:
+    build {
+      memberDir = ../examples/users/users/duo-b;
+      inherit mode;
+    };
 
   # An explicit identity must override the memberDir loader, and the fixed home.* rules follow it.
-  overridden = mkContractHome {
-    homeManagerConfiguration = recordingHMC;
-    pkgs = stubPkgs;
+  overridden = build {
     memberDir = ../examples/users/users/ada;
     identity = {
       username = "sol";
@@ -87,42 +104,49 @@ let
   };
   overriddenInline = inlineOf overridden;
 
-  # --- the member as the builder's input (issue #57) ---
-  # A `mkMembers` entry, stood in for by hand so this stays a claim about the BUILDER: its
-  # `dir` is ada's real directory while its `identity` is somebody else's. Both must be taken from
-  # the member — which is only possible if the builder no longer re-resolves `<dir>/identity.json`
-  # for itself. The members resolved it once; a third resolution site is what this removes.
-  memberBuilt = mkContractHome {
-    homeManagerConfiguration = recordingHMC;
-    pkgs = stubPkgs;
+  # --- the member as the builder's input ---
+  # A `mkMembers` entry, stood in for by hand so this stays a claim about the BUILDER: its `dir` is
+  # ada's real directory while its `identity` and its `declaration` are somebody else's. All three
+  # must be taken from the member — which is only possible if the builder no longer re-resolves
+  # `<dir>/identity.json` or `<dir>/user.nix` for itself.
+  memberBuilt = build {
     member = {
       name = "ada";
       dir = ../examples/users/users/ada;
       identity = {
         username = "rosa";
       };
+      declaration = evalDeclaration [
+        {
+          contract.cli = {
+            enable = true;
+            configuration = ./fixtures/members/pip/home.nix;
+          };
+        }
+      ];
     };
     mode = "cli";
-    stateVersion = "25.11";
   };
   memberInline = inlineOf memberBuilt;
 
-  # Neither a member nor a memberDir: there is no user directory to compose from, so this is a named
-  # error rather than a home assembled from a missing path.
-  sourcelessEval = builtins.tryEval (
+  # Neither a member nor a memberDir: there is no user directory to compose from, so this is a
+  # named error rather than a home assembled from a missing path.
+  sourcelessEval = builtins.tryEval (lib.elemAt (build { mode = "cli"; }).modules 3);
+
+  # A mode the user does not run in has no `configuration` to build from, so building it would
+  # publish an empty home under a session shape no host could ever select.
+  unrunEval = builtins.tryEval (
     lib.elemAt
-      (mkContractHome {
-        homeManagerConfiguration = recordingHMC;
-        pkgs = stubPkgs;
-        mode = "cli";
-        stateVersion = "25.11";
+      (build {
+        memberDir = ../examples/users/users/ben;
+        mode = "gui";
       }).modules
       3
   );
 
   # --- the home baseline's mkDefault posture, in a merged eval ---
-  # Stub declarations of the two home-manager option paths the baseline pins (we evaluate with no
-  # home-manager, ADR-0004), with CONTRARY upstream defaults so the pin is observable: a mkDefault
+  # Stub declarations of the two home-manager option paths the baseline pins (this suite evaluates
+  # with no home-manager), with CONTRARY upstream defaults so the pin is observable: a mkDefault
   # definition (prio 1000) must beat an option default (prio 1500).
   stubHomeManagerOptions = {
     options.programs.home-manager.enable = lib.mkOption {
@@ -163,13 +187,13 @@ in
   assertions = [
     # --- composition: the module list mkContractHome hands the injected builder ---
     {
-      name = "mkContractHome: composes umbrella → baseline → greeterDesktop → home.nix → inline, then extraModules";
+      name = "mkContractHome: composes umbrella → baseline → desktop → the mode's configuration → inline, then extraModules";
       ok =
         lib.length recorded.modules == 6
-        && composedUmbrella.options.contract ? wants
-        && composedUmbrella.options.contract ? requests
-        && slotOneIsBaseline
-        && lib.elemAt recorded.modules 3 == ../examples/users/users/ada/home.nix
+        && umbrellaOf recorded ? options
+        && (umbrellaOf recorded).options ? identity
+        && baselineOf recorded == homeBaselineModule { }
+        && configurationOf recorded ? imports
         && lib.last recorded.modules == probe;
     }
     {
@@ -180,20 +204,43 @@ in
         && inlineModule.home.homeDirectory == "/home/ada"
         && inlineModule.home.stateVersion == "25.11";
     }
+
+    # --- THE PER-MODE CLAIM: the home is the module THIS mode's declaration points at ---
     {
-      # BOTH home-manager-aware helpers are composed by default now (ADR-0032). greeterDesktop
-      # joined the baseline because the separate greeter-granted home it used to be opted into no
-      # longer exists — grants stopped reaching homes, so there is nothing for a `<u>-greeter`
-      # artifact to differ in. It is `mkIf (… != "")`, so a cli home pays nothing for it.
-      #
-      # The recogniser keeps the positive control it had when this claim was inverted: it MUST fire
-      # on the real greeterDesktop module, or "it is composed" would be a probe recognising anything.
-      name = "mkContractHome: baseline AND greeterDesktop are both composed by default";
+      # duo-a's `user.nix` names `gui.nix` for one mode and `cli.nix` for the other, so the module
+      # the builder composes differs across the two builds. This is what no bind-time grant could
+      # ever do: content cannot be injected into a sealed derivation, which is the whole reason a
+      # mode is a mode and not a grant.
+      name = "mkContractHome: two modes naming two modules compose two DIFFERENT configurations";
       ok =
-        slotOneIsBaseline
-        && surfacesDesktopChoice homeGreeterDesktopModule
-        && lib.any surfacesDesktopChoice recorded.modules;
+        namedModules (duoA "gui") == [ ../examples/users/users/duo-a/gui.nix ]
+        && namedModules (duoA "cli") == [ ../examples/users/users/duo-a/cli.nix ];
     }
+    {
+      # The control: duo-b's two modes name ONE module, and compose the same one. Without this,
+      # "the two differ" could hold for a reason unrelated to the declaration.
+      name = "mkContractHome: two modes naming ONE module compose the SAME configuration (the control)";
+      ok =
+        namedModules (duoB "gui") == namedModules (duoB "cli")
+        && namedModules (duoB "gui") == [ ../examples/users/users/duo-b/home.nix ];
+    }
+    {
+      # The desktop dotfile carries the gui mode's own `desktop` parameter into the home, where a
+      # greeter's launcher reads it before evaluating any of the home's Nix. ada asks for plasma;
+      # duo-a asks for sway; and a cli home — a terminal has no desktop to choose — gets nothing,
+      # so the mechanism costs a non-graphical home exactly zero.
+      name = "mkContractHome: the gui home carries its own desktop choice; the cli home carries none";
+      ok =
+        (desktopOf recorded).home.file.".contract-desktop".text == "plasma"
+        && (desktopOf (duoA "gui")).home.file.".contract-desktop".text == "sway"
+        && desktopOf (duoA "cli") == { };
+    }
+    {
+      name = "mkContractHome: building a mode the user does not run in is a hard error";
+      ok = !unrunEval.success;
+    }
+
+    # --- who the home is for ---
     {
       name = "mkContractHome: an explicit identity overrides the memberDir loader; home.* follow it";
       ok =
@@ -202,15 +249,16 @@ in
         && overriddenInline.home.homeDirectory == "/home/sol"
         && overriddenInline.home.stateVersion == "26.05";
     }
-
-    # --- the member (issue #57) ---
     {
-      name = "mkContractHome: a member supplies the memberDir AND the already-resolved identity";
+      name = "mkContractHome: a member supplies the identity AND the declaration, with no second resolution";
       ok =
-        lib.elemAt memberBuilt.modules 3 == ../examples/users/users/ada/home.nix
-        && memberInline.identity.username == "rosa"
+        memberInline.identity.username == "rosa"
         && memberInline.home.username == "rosa"
-        && memberInline.home.homeDirectory == "/home/rosa";
+        && memberInline.home.homeDirectory == "/home/rosa"
+        # ada's own declaration names no configuration at all, so a builder that had re-read
+        # `<dir>/user.nix` would compose nothing here rather than the member's own module.
+        && namedModules memberBuilt == [ ./fixtures/members/pip/home.nix ]
+        && namedModules overridden != namedModules memberBuilt;
     }
     {
       name = "mkContractHome: with neither a member nor a memberDir there is no home to compose ⇒ hard error";
@@ -222,7 +270,7 @@ in
       # The whole of what a home is told: the MODE it was built for, the platform (read off the
       # caller's own pkgs, never ambient), and the exposure fact. `granted` is deliberately absent —
       # no grant can change a home, so showing one the grant set would be showing it something it
-      # must not use (ADR-0032 §7).
+      # must not use.
       name = "mkContractHome: hostFacts is { mode; platform; exposed } — no grant reaches a home";
       ok =
         recorded.extraSpecialArgs.hostFacts == {
@@ -241,13 +289,11 @@ in
       name = "mkContractHome: pkgs is forwarded verbatim to the injected homeManagerConfiguration";
       ok = recorded.pkgs == stubPkgs;
     }
-
     {
-      # NOTHING is appended to the builder's own result. The `contractBakedGrantKey` marker the
-      # producer coin used to cross-check is gone with the pairing it protected (ADR-0032): a home
-      # is published under the very mode it was built for, so there is no second record to disagree
-      # with. The recording stub returns its arguments verbatim, so the result's attribute set IS
-      # exactly what the builder composed.
+      # NOTHING is appended to the builder's own result: a home is published under the very mode it
+      # was built for, so there is no second record for the producer to cross-check against. The
+      # recording stub returns its arguments verbatim, so the result's attribute set IS exactly
+      # what the builder composed.
       name = "mkContractHome: the result is the builder's own arguments — no marker rides it";
       ok =
         lib.attrNames recorded == [

@@ -1,4 +1,4 @@
-# Conformance domain: the MEMBER-SET ADAPTER over the check kit (issue #60).
+# Conformance domain: the MEMBER-SET ADAPTER over the check kit.
 #
 # `mkMemberChecks` applies the three shipped helpers — confinement, home-eval, credential
 # posture — across a whole members in one call. The helpers' own logic is proven next door
@@ -17,7 +17,7 @@
 #     passing one look identical in `nix flake check` output.
 #
 # COVERAGE NOTE — as in ./confinement.nix and ./home-eval.nix, the homes here are synthetic: the
-# contract has no home-manager (ADR-0004), so the adapter is driven with the `force` /
+# contract has no home-manager, so the adapter is driven with the `force` /
 # `positiveControl` hooks pointed at the umbrella's own declared options. That the adapter FORWARDS
 # those hooks is itself part of the surface, and is what makes this domain possible at all.
 {
@@ -28,13 +28,18 @@
   mkMemberChecks,
 }:
 let
-  inherit (toolkit) evalHome referenceIdentity;
+  inherit (toolkit)
+    evalHome
+    homeForce
+    homePositiveControl
+    referenceIdentity
+    ;
 
-  # A synthetic members: plain `{ name; dir; identity; }` members, which is all the adapter consumes
-  # (the DERIVATION of a member set from a directory is ./members.nix's subject, and the real derived one
-  # is claimed against below). Built over the suite's REAL reference identity (ADR-0022), so the
-  # posture claims run against a credential a consumer actually ships — `ada` carries `$y$`, the
-  # public-repo posture `examples/users` chose.
+  # A synthetic member set: plain `{ name; dir; identity; }` members, which is all the adapter
+  # consumes (the DERIVATION of a member set from a directory is ./members.nix's subject, and the
+  # real derived one is claimed against below). Built over the suite's REAL reference identity, so
+  # the posture claims run against a credential a consumer actually ships — `ada` carries `$y$`,
+  # the public-repo posture `examples/users` chose.
   memberFor = n: {
     name = n;
     dir = ./fixtures/members/pip;
@@ -48,8 +53,8 @@ let
     "bo"
   ];
 
-  # A member whose credential is a `$6$` sha512crypt hash — legal under ADR-0019's private-repo
-  # posture, and therefore the offender a `require = "yescrypt"` members must reject.
+  # A member whose credential is a `$6$` sha512crypt hash — legal under the private-repo posture,
+  # and therefore the offender a `require = "yescrypt"` member set must reject.
   offender = memberFor "sixto" // {
     identity = referenceIdentity // {
       username = "sixto";
@@ -61,7 +66,7 @@ let
   # stand-in for a real `home.activationPackage.drvPath`, whose `.drv` suffix is what proves a home
   # was forced all the way to its derivation.
   builtHome = tag: {
-    contract.requests.gui.desktop = "/nix/store/00000000000000000000000000000000-${tag}.drv";
+    identity.username = "/nix/store/00000000000000000000000000000000-${tag}.drv";
   };
   # The consumer's per-system homes, DERIVED from the members exactly as a real mapper derives them:
   # two systems, one MODE each. Built as a function of the members so the growth claim below changes
@@ -90,13 +95,11 @@ let
         # eval is the same for all of them); a real one resolves the member's own `home.nix`.
         buildHome = _member: evalHome;
         require = "yescrypt";
-        # The home-manager-free hooks the contract's own suite must use (ADR-0004): a declared
-        # umbrella option in place of `activationPackage.drvPath`, and the sanctioned request
-        # channel in place of a home-manager session variable.
-        force = c: c.contract.requests.gui.desktop;
-        positiveControl = {
-          contract.requests.gui.desktop = "plasma";
-        };
+        # The home-manager-free hooks the contract's own suite must use: a declared umbrella
+        # option in place of `activationPackage.drvPath`, and an optional identity field in place
+        # of a home-manager session variable.
+        force = homeForce;
+        positiveControl = homePositiveControl;
       }
       // args
     );
@@ -107,7 +110,7 @@ let
   verdictsOf = set: lib.foldl' (acc: v: builtins.seq v acc) (lib.attrNames set) (lib.attrValues set);
   passes = args: (builtins.tryEval (verdictsOf (checksOver args))).success;
 
-  # The REAL derived members (ADR-0022: the synthetic suite borrows real atoms from the positive-
+  # The REAL derived members (the synthetic suite borrows real atoms from the positive-
   # space example, never the reverse) — the adapter must cover the fleet a consumer actually ships,
   # not only a member set shaped for it here.
   realMembers = mkMembers { usersDir = ../examples/users/users; };
@@ -152,7 +155,7 @@ in
     }
     {
       # Over the REAL reference fleet's derived members: every member, whoever they are today.
-      name = "members adapter: covers every member of the reference fleet's derived members (ADR-0022)";
+      name = "members adapter: covers every member of the reference fleet's derived member set";
       ok =
         let
           names = lib.attrNames realMembers;
@@ -241,12 +244,12 @@ in
     }
     {
       # The posture stays the CONSUMER's choice: the adapter picks none, so omitting `require` is a
-      # call error rather than a quiet default (ADR-0019 — the repo's visibility picks the strength,
+      # call error rather than a quiet default (the repo's visibility picks the strength,
       # and an adapter that defaulted would impose one repo's posture on every adopter that never
       # thought about it). Read off the SIGNATURE rather than by calling without it: a missing
       # required argument is one of the few eval errors `tryEval` does not catch, so the "it throws"
       # spelling would take this whole suite down instead of reporting a claim.
-      name = "members adapter: `require` has no default — the posture stays the consumer's choice (ADR-0019)";
+      name = "members adapter: `require` has no default — the posture stays the consumer's choice";
       ok =
         let
           formals = builtins.functionArgs mkMemberChecks;
@@ -258,7 +261,7 @@ in
     {
       # The same posture is still a PARAMETER through the adapter: the `$6$` member a public repo
       # rejects is legal in a private one, which is the whole reason `require` is asked for.
-      name = "members adapter: the same members passes under require = \"libc\" (the posture is a parameter, ADR-0019)";
+      name = "members adapter: the same member set passes under require = \"libc\" (the posture is a parameter)";
       ok = passes {
         members = members // {
           sixto = offender;

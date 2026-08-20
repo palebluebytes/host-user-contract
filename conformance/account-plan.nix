@@ -1,14 +1,19 @@
 # accountPlan — the account-combining RULE, proven as a unit with NO boot (issue #31 follow-up).
 #
-# `accountPlan (identity, grants) → record` is the ONE owner of the four-field rule both adapters
-# render: the build-time realization.nix and — since the evaluator landed — the runtime greeter
-# `provision` (which execs `contract-account-plan`, re-importing this same function). Because there
-# is now a SINGLE source, the rule's own guarantees no longer need a `runNixOSTest` to reconcile two
-# spellings: this domain drives `accountPlan` directly and asserts the clamp, the empty-sshKey drop,
-# and key ordering as pure `{ name; ok; }` claims. The greeter-provision VM keeps only what genuinely
-# needs a boot — that the shell renderer SURFACES this record onto a real account.
+# `accountPlan (identity, grants, mode) → record` is the ONE owner of the account-combining rule
+# both adapters render: the build-time realization.nix and the runtime greeter `provision` (which
+# execs `contract-account-plan`, re-importing this same function). Because there is a SINGLE
+# source, the rule's guarantees need no boot to reconcile two spellings: this domain drives
+# `accountPlan` directly. The greeter-provision VM keeps only what genuinely needs one — that the
+# shell renderer SURFACES this record onto a real account.
+#
+# TWO GROUP SOURCES meet here, and the claims below hold them apart: what the host GRANTED (a
+# decision about a person) and what the MODE needs (a property of the session shape). There is no
+# third — an identity cannot name a group — which is why an ordinary desktop user's account can be
+# fully graphical with an empty grant set, and why there is no untrusted group input to filter.
 {
   lib,
+  floorMode,
   accountPlan,
 }:
 let
@@ -19,62 +24,61 @@ let
     hashedPassword = "$6$base$hash";
     sshKey = "";
     trustedKeys = [ ];
-    extraGroups = [ ];
   };
-  plan =
-    identity: grants:
+  # Every case names its mode explicitly; the floor is the default because most claims here are
+  # about the other two group sources and a terminal session needs nothing.
+  planIn =
+    mode: identity: grants:
     accountPlan {
       identity = base // identity;
-      inherit grants;
+      inherit grants mode;
     };
+  plan = planIn floorMode;
   has = g: r: lib.elem g r.extraGroups;
 
   noGrant = { };
-  gui = {
-    gui = true;
-  };
   containers = {
     containers = true;
   };
 in
 {
   assertions = [
-    # The clamp: a privileged group self-declared in identity.extraGroups is dropped when no grant
-    # confers it — a user cannot self-escalate. (Same rule realization.nix's clamp assertions prove
-    # through a full system eval; here it is the unit under test.)
+    # An account afforded nothing, in the floor, holds nothing. There is no identity input to
+    # filter out — the rule is that groups only ever come from a grant or a mode.
     {
-      name = "account-plan: privileged group (docker) is clamped out without a grant";
-      ok =
-        !has "docker" (
-          plan {
-            extraGroups = [
-              "audio"
-              "docker"
-            ];
-          } noGrant
-        );
+      name = "account-plan: an account with no grant and no session groups holds none";
+      ok = (plan { } noGrant).extraGroups == [ ];
     }
-    # …while a NON-privileged self-declared group is kept.
-    {
-      name = "account-plan: non-privileged declared group (audio) is kept";
-      ok = has "audio" (
-        plan {
-          extraGroups = [
-            "audio"
-            "docker"
-          ];
-        } noGrant
-      );
-    }
-    # A grant restores the privileged group it confers — privilege enters ONLY via a grant.
+    # Privilege enters ONLY via a grant.
     {
       name = "account-plan: the containers grant confers docker";
-      ok = has "docker" (plan { extraGroups = [ "docker" ]; } containers);
+      ok = has "docker" (plan { } containers);
     }
-    # The grant→groups fold: gui confers its input groups.
+    # The MODE→groups fold, and the claim the whole machine/person split rests on: a graphical
+    # session's input groups arrive from the SESSION SHAPE, with an entirely empty grant set.
     {
-      name = "account-plan: the gui grant confers its input groups";
-      ok = has "input" (plan { } gui) && has "uinput" (plan { } gui);
+      name = "account-plan: the gui MODE confers its input groups with nothing granted";
+      ok =
+        let
+          r = planIn "gui" { } noGrant;
+        in
+        has "input" r && has "uinput" r;
+    }
+    # …and the control: the same identity and the same (empty) grant in the floor gets none of
+    # them. The groups follow the session, not the account and not the machine.
+    {
+      name = "account-plan: the floor confers no session groups (the control)";
+      ok = !has "uinput" (plan { } noGrant);
+    }
+    # The two sources compose without either reaching into the other: a privileged grant beside a
+    # graphical session yields both, and neither is a route to the other.
+    {
+      name = "account-plan: a grant and a mode compose — docker from the grant, uinput from the mode";
+      ok =
+        let
+          r = planIn "gui" { } containers;
+        in
+        has "docker" r && has "uinput" r;
     }
     # authorizedKeys, empty-sshKey branch: an empty primary key is DROPPED (not written blank),
     # trustedKeys alone remain. This is the branch the greeter-provision VM used to carry a whole

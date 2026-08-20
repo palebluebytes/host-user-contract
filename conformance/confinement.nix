@@ -1,24 +1,20 @@
-# Conformance domain: STRUCTURAL confinement (ADR-0002, issue #1 acceptance criterion 2).
+# Conformance domain: STRUCTURAL confinement.
 #
-# The user surface is a home-manager module with NO system channel. Host-affecting effects
-# leave the user ONLY as `contract.requests` the host harvests and applies `mkIf granted`
-# (proven in ./bind.nix / ./requests.nix). This file proves the OTHER half of that promise —
-# the negative space: a system option (`users.users`, `security.sudo`, `boot.*`, `sops.*`) is
-# *unexpressible* in the user's world, not merely rejected or `mkIf`-denied downstream.
+# A user's home is a home-manager module with NO system channel: a system option (`users.users`,
+# `security.sudo`, `boot.*`, `sops.*`) is *unexpressible* in the user's world, not merely rejected
+# or denied downstream. Host-affecting effects reach a user only through what the HOST afforded at
+# the bind, which is a decision the user never participates in.
 #
 # The proof is that these paths are UNDECLARED in the contract home umbrella (modules.nix's
-# `homeModule` declares only `identity`, `custom.home.profiles`, and the fully-typed
-# `contract.wants` / `contract.requests` namespaces — no freeformType anywhere since ADR-0028). So a home that
-# sets one throws "option does not exist" at eval, exactly as a stray `home.packages` does in
-# the headless traceUser inspector. This is the SAME universe traceUser harvests in (../lib.nix),
-# so what is unexpressible here is unexpressible in a real bound user. Privilege escalation is
-# impossible because the vocabulary to request it does not exist — structural, not a blocklist.
+# `homeModule` declares `identity` and nothing else — no freeformType anywhere). So a home that
+# sets one throws "option does not exist" at eval. Privilege escalation is impossible because the
+# vocabulary to request it does not exist — structural, not a blocklist.
 #
-# It ALSO proves the shipped `mkConfinementCheck` (issue #35) — the same technique lifted into
-# `../check-kit.nix` so a CONSUMER can run it over its OWN real module set (this suite can only reach
-# the umbrella; a consumer's imports are where a system channel actually gets smuggled back in).
-# The helper's own failure modes are the point: it must reject a smuggled channel, and it must NOT
-# pass by rejecting everything (the positive control) or by never forcing the home at all.
+# It ALSO proves the shipped `mkConfinementCheck` — the same technique lifted into
+# `../check-kit.nix` so a CONSUMER can run it over its OWN real module set (this suite can only
+# reach the umbrella; a consumer's imports are where a system channel actually gets smuggled back
+# in). The helper's own failure modes are the point: it must reject a smuggled channel, and it must
+# NOT pass by rejecting everything (the positive control) or by never forcing the home at all.
 {
   lib,
   pkgs,
@@ -27,43 +23,41 @@
   outOfUniverseProbes,
 }:
 let
-  inherit (toolkit) evalHome;
+  inherit (toolkit) evalHome homeForce homePositiveControl;
 
   # Does a one-module home evaluate against the contract umbrella? Force a declared attr
-  # (`contract.requests.gui.desktop`, always present via its "" default): building `config`
+  # (`identity.username`, always present — the synthetic home eval supplies it): building `config`
   # runs the module system's unmatched-definition check across ALL definitions, so an
   # UNDECLARED system option makes this throw — caught as `success = false`. A `false` therefore
   # means "this path is unexpressible", never an unrelated eval error.
-  evaluates = mod: (builtins.tryEval ((evalHome [ mod ]).contract.requests.gui.desktop)).success;
+  evaluates = mod: (builtins.tryEval (homeForce (evalHome [ mod ]))).success;
 
-  # The system options ADR-0002 names as out-of-universe — the negative space itself, read from
+  # The system options that are out-of-universe for a home — the negative space itself, read from
   # `../check-kit.nix` (via kit.internal) so the umbrella's proof here and the probe set the shipped
   # `mkConfinementCheck` runs at a consumer are ONE list. Two copies of "what a user must not be
   # able to say" would drift the day a new escalation path is added to only one of them.
   unexpressibleAssertions = lib.mapAttrsToList (path: mod: {
-    name = "confinement: `${path}` is unexpressible in the user home (no system channel, ADR-0002)";
+    name = "confinement: `${path}` is unexpressible in the user home (no system channel)";
     ok = !(evaluates mod);
   }) outOfUniverseProbes;
 
-  # --- the shipped consumer check (issue #35) ---
+  # --- the shipped consumer check ---
   # A stand-in for a consumer's real home builder. A consumer passes its own `mkHome` (a
   # home-manager configuration, forced through `activationPackage.drvPath`); the contract has no
-  # home-manager (ADR-0004), so the synthetic umbrella eval plays that role and the force hook
-  # points at a declared attr instead. The helper's LOGIC is what is under test here — that the
-  # umbrella itself is confined is the block above.
+  # home-manager, so the synthetic umbrella eval plays that role and the force hook points at a
+  # declared attr instead. The helper's LOGIC is what is under test here — that the umbrella itself
+  # is confined is the block above.
   checkOver =
     args:
     mkConfinementCheck (
       {
         inherit pkgs;
         buildHome = evalHome;
-        force = c: c.contract.requests.gui.desktop;
+        force = homeForce;
         # The default positive control is a home-manager option, which this home-manager-free
-        # builder cannot declare; the sanctioned request channel is the equivalent legitimate
-        # option here (and exercises the parameter).
-        positiveControl = {
-          contract.requests.gui.desktop = "plasma";
-        };
+        # builder cannot declare; an optional identity field is the equivalent legitimate option
+        # here.
+        positiveControl = homePositiveControl;
       }
       // args
     );
@@ -83,20 +77,18 @@ in
   assertions = unexpressibleAssertions ++ [
     {
       # Positive control: confinement is structural, not a broken harness that rejects
-      # everything. A legitimate host-affecting request (the user's ONLY channel) evaluates.
-      name = "confinement: a legitimate contract.requests still evaluates (the sanctioned channel)";
-      ok = evaluates { contract.requests.gui.desktop = "plasma"; };
+      # everything. A legitimate home option (an optional identity field) evaluates.
+      name = "confinement: a legitimate home option still evaluates (not a reject-everything harness)";
+      ok = evaluates homePositiveControl;
     }
     {
-      # Until ADR-0028 the freeformType inside `contract.requests` ACCEPTED a system-shaped key as
-      # an inert (never-bridged) request, so this claim read "inert under contract.requests, fatal
-      # at top level". With the freeform gone the namespace is fully typed and the same key throws
-      # in BOTH positions. Confinement itself is unchanged (an inert request never reached system
-      # state either way); what changed is that the typo-net now covers the request namespace too.
-      name = "confinement: `users.users` is unexpressible at top level AND inside contract.requests";
+      # The home umbrella declares no `contract` namespace at all: a user's voice lives in its
+      # `user.nix`, one level up, and is not a home-manager module. So a home trying to speak
+      # outward — to enable a mode, or to name its own desktop — is an eval error rather than a
+      # declaration nothing reads, and the two places a value could have lived cannot disagree.
+      name = "confinement: a home cannot declare its own modes — `contract.*` is not a home namespace";
       ok =
-        !(evaluates { contract.requests.users.users.root = "inert-request"; })
-        && !(evaluates { users.users.root.hashedPassword = "!escalate"; });
+        !(evaluates { contract.gui.enable = true; }) && !(evaluates { contract.gui.desktop = "plasma"; });
     }
     {
       name = "mkConfinementCheck: passes over a confined real module set (issue #35)";
