@@ -55,7 +55,7 @@ mkSeatVM {
     machine.succeed("test -e /home/${username}/.nix-profile")
 
     # …and the home's OWN content landed, owned by the new account. The desktop-choice helper
-    # (ADR-0013) auto-surfaced `contract.requests.gui.desktop` to ~/.contract-desktop, where the
+    # The producer wrote the gui mode's own `desktop` parameter to ~/.contract-desktop, where the
     # greeter's launcher reads it — no manual step, and no marker module grafted onto the user to
     # make this observable: the dotfile comes from ada's own voice. It is also the proof that the
     # helper is composed by DEFAULT now (ADR-0032), since nothing here opts into it. ada requests

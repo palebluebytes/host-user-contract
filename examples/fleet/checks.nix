@@ -1,9 +1,9 @@
-# Reference-fleet smoke/coherence checks (docs/adr/0022) — the POSITIVE-space counterpart to the
+# Reference-fleet smoke/coherence checks — the POSITIVE-space counterpart to the
 # contract's synthetic conformance suite. Where that suite fabricates adversarial worlds to probe
 # the contract's decision logic (the ban FIRES, the clamp DROPS), this proves a realistic,
 # correct fleet — the reference user fleet bound on real hosts — evaluates coherently and exhibits
 # the contract's promises in the direction a real consumer sees them. It never replaces the
-# synthetic suite; it complements it (ADR-0022: oracle vs reference).
+# synthetic suite; it complements it — oracle vs reference.
 {
   lib,
   pkgs,
@@ -36,19 +36,21 @@ let
       ];
     }
     {
-      name = "grant-divergence: ada is a GUI user on desk (uinput group + display surface)";
-      ok = (lib.elem "uinput" (acct "desk" "ada").extraGroups) && cfgs.desk.custom.gui.surface.enabled;
+      # ada is afforded NOTHING on desk. She still gets the input groups a graphical session needs,
+      # because they ride the MODE she was bound in — which is what makes the machine capability
+      # and the per-person policy genuinely different mechanisms rather than one wearing two hats.
+      name = "machine capability: ada is a GUI user on desk with an EMPTY affordance set";
+      ok = (lib.elem "uinput" (acct "desk" "ada").extraGroups) && cfgs.desk.contract.display.enabled;
     }
     {
-      name = "grant-divergence: the SAME ada output is CLI-only on agent (no uinput, no surface) — silent degradation";
-      ok =
-        !(lib.elem "uinput" (acct "agent" "ada").extraGroups) && !cfgs.agent.custom.gui.surface.enabled;
+      name = "machine capability: the SAME ada is CLI-only on agent — the hardware differs, not the policy";
+      ok = !(lib.elem "uinput" (acct "agent" "ada").extraGroups) && !cfgs.agent.contract.display.enabled;
     }
     {
-      # MODE SELECTION (ADR-0032), from the outside: desk affords gui so it RUNS { cli, gui } and
-      # binds ada's gui home; agent affords nothing so it runs { cli } and binds her cli home.
-      # Neither host declares a mode — the run set is derived from the affordances — and the same
-      # identity, from one users flake, lands on two different homes.
+      # MODE SELECTION, from the outside: desk declares gui so it RUNS { cli, gui } and binds
+      # ada's gui home; agent declares nothing so it runs { cli } alone and binds her cli home.
+      # Neither host says anything about ada — the run set is a fact about the MACHINE — and the
+      # same identity, from one source, lands on two different homes.
       name = "mode selection: desk and agent bind DIFFERENT homes of the same ada";
       ok = boundHome "desk" "ada" != boundHome "agent" "ada";
     }
@@ -80,8 +82,33 @@ let
         (acct "desk" "admin").isNormalUser && lib.elem "wheel" g && !(lib.elem "docker" g);
     }
     {
+      # PER-USER AFFORDANCES, on ONE host: desk binds three users with three different affordance
+      # sets, so what each account holds differs without any second mechanism. ada is afforded
+      # nothing, so she gets neither docker nor wheel on the very machine that confers both to
+      # somebody else.
+      name = "per-user affordances: on ONE host, ada gets neither cleo's docker nor admin's wheel";
+      ok =
+        let
+          g = (acct "desk" "ada").extraGroups;
+        in
+        lib.elem "uinput" g && !(lib.elem "docker" g) && !(lib.elem "wheel" g);
+    }
+    {
+      # …and the other half of the split: the display surface follows the MACHINE, not its users.
+      # desk would need one even with nobody bound, which is precisely what a greeter requires —
+      # the surface must exist before the first walk-up user does.
+      name = "machine capability: the display surface follows contract.modes, not any account";
+      ok = cfgs.desk.contract.display.enabled && !cfgs.vault.contract.display.enabled;
+    }
+    {
+      # The mode's groups reach a cli account on a gui machine? No: they ride the SELECTED mode.
+      # svc runs only in a terminal, so on a seat with a display it still gets no input groups.
+      name = "mode groups ride the SELECTED mode, not the machine";
+      ok = !(lib.elem "uinput" (acct "vault" "svc").extraGroups);
+    }
+    {
       name = "agent (exposed) evaluates coherently — exposure is a plain host fact, no ban";
-      ok = cfgs.agent.custom.host.exposed && (failing cfgs.agent == [ ]);
+      ok = cfgs.agent.contract.exposed && (failing cfgs.agent == [ ]);
     }
   ];
 
