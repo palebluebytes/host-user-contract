@@ -5,6 +5,5 @@
   "username": "ada",
   "hashedPassword": "$y$j9T$A5WpCOX3TaFRciO.ILZsD1$pHwIEiJI6anN/oQwAS6C6fK8Y.AZXErGHI/U7aTbaA4",
   "sshKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIADAexamplekeyada ada@example.invalid",
-  "trustedKeys": [],
-  "extraGroups": []
+  "trustedKeys": []
 }
