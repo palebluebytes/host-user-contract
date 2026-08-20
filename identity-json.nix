@@ -37,7 +37,6 @@ in
         "hashedPassword"
         "sshKey"
         "trustedKeys"
-        "extraGroups"
       ];
       unknown = lib.subtractLists known names;
     in
@@ -49,7 +48,7 @@ in
   identityFile = "identity.json";
 
   # Parse + validate an identity.json into the identity option shape (the attrset assigned
-  # to `custom.users.<u>.identity` / the home `identity`). Errors loudly on a missing
+  # to `contract.users.<u>.identity` / the home `identity`). Errors loudly on a missing
   # required field or an unknown key, rather than producing a silently-wrong account; the
   # option submodule fills defaults for any omitted optional field.
   loadIdentity =
