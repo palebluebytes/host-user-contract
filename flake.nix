@@ -1,5 +1,5 @@
 {
-  description = "The host↔user contract — shared schema, host-invariant realization, derivation logic, and conformance kit (ADR-0001, ADR-0004). Depends only on nixpkgs lib.";
+  description = "The host↔user contract — shared schema, host-invariant realization, derivation logic, and conformance kit. Depends only on nixpkgs lib.";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -14,29 +14,19 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in
     {
-      # The umbrella kit (ADR-0004 Q2): one module per eval-side, closed over the
-      # registry. A consumer imports these and binds the platform host-side.
+      # The umbrella kit: one module per eval-side, closed over the registries.
       #
-      # `nixosModules` is deliberately NOT a single `default` (ADR-0008): `default` is the
-      # schema + realization + features every host wants; `greeter` is the opt-in reference
-      # runtime greeter (greetd + the eval-free bind→provision flow) a SEAT host enables and a
-      # headless host omits — à-la-carte justified precisely by that split.
+      # `nixosModules` is deliberately NOT a single `default`: `default` is the schema +
+      # realization every host wants; `greeter` is the opt-in reference runtime greeter (greetd +
+      # the eval-free bind→select→provision flow) a SEAT host enables and a headless host omits.
       nixosModules.default = kit.nixosModule;
       nixosModules.greeter = kit.greeterModule;
       homeModules.default = kit.homeModule;
-      # The desktop-choice helper (ADR-0013): materialises ~/.contract-desktop from the home's
-      # contract.requests.gui.desktop, so the greeter's launcher reads the user's desktop choice
-      # before any of the home's Nix is evaluated. `lib.mkContractHome` composes it by DEFAULT
-      # (ADR-0032) — it is inert when no desktop is requested, so it costs a cli home nothing;
-      # exposed here for a consumer building homes by hand. Separate from `default` because it
-      # touches home-manager's `home.file` (default stays tracer-pure — evaluable with no
-      # home-manager, ADR-0008).
-      homeModules.greeterDesktop = kit.homeGreeterDesktopModule;
-      # The home baseline (ADR-0029, issue #42): the standing home-manager hygiene every produced
-      # home starts from — every line mkDefault, so a user's plain definition wins per-option.
-      # `lib.mkContractHome` composes it by default; exposed here so a consumer building homes by
-      # hand can opt in. Separate from default for the same reason greeterDesktop is: it references
-      # home-manager option paths, and the default umbrella stays tracer-pure.
+      # The home baseline: the standing home-manager hygiene every produced home starts from —
+      # every line mkDefault, so a user's plain definition wins per-option. `lib.mkContractHome`
+      # composes it by default; exposed here so a consumer building homes by hand can opt in.
+      # Separate from `default` because it references home-manager option paths, and the default
+      # umbrella must stay evaluable with no home-manager present.
       homeModules.baseline = kit.homeBaselineModule;
       # Legacy-spelling alias: `homeModules` is the modern name (mirrors nixosModules/darwinModules
       # and home-manager's own `<x>Modules.default` outputs), but the older `homeManagerModules`
@@ -44,12 +34,13 @@
       # Same modules, no divergence — prefer `homeModules` in new consumers.
       homeManagerModules = self.homeModules;
 
-      # The contract derivation functions (ADR-0004 Q4).
+      # The contract derivation functions.
       inherit (kit) lib;
 
-      # Data surface the host reads where it wires grants and the safe set, the MODE vocabulary a
-      # producer bakes over and a user declares `contract.supports` against (ADR-0032), plus the
-      # identity.json convention (filename + schema) a greeter authenticates on.
+      # Data surface: the FEATURE vocabulary a host affords out of (per user), the MODE vocabulary
+      # a producer bakes over and BOTH parties declare under (a user says which it runs in, a host
+      # says which it can run), what a greeter confers, and the identity.json convention (filename
+      # + schema) a greeter authenticates on.
       inherit (kit)
         features
         featureGroups
@@ -57,13 +48,13 @@
         safeSet
         modes
         floorMode
-        greeterGrants
+        greeterAffordances
         tier1EvalConfig
         identityFile
         identitySchema
         ;
 
-      # The contract's own conformance suite (ADR-0004 Q5): proves the contract's
+      # The contract's own conformance suite: proves the contract's
       # promises against synthetic users on synthetic systems built from the umbrella —
       # no host repo. Independent CI; the host keeps only the thin coherence gate.
       checks = forAllSystems (system: {
@@ -83,7 +74,7 @@
         };
 
         # Runtime proof (a booted VM): the session-agnostic gui-surface decision RENDERS — one seat,
-        # a granted gui user ⇒ custom.gui.surface.enabled, a test SDDM/Plasma binding renders a live
+        # a machine declaring the gui mode ⇒ contract.display.enabled, a test SDDM/Plasma binding renders a live
         # plasma session + the account activated. The seat picks the session type, not the contract
         # (ADR-0021). Uses a test-only SDDM/Plasma binding the suite supplies. Moved here from its
         # original in-repo home (ADR-0004).
@@ -100,11 +91,11 @@
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           greeterModule = self.nixosModules.greeter;
-          # The shared plan + the fixed runtime grant, so the VM proves build↔runtime parity by
+          # The shared plan + what a greeter affords, so the VM proves build↔runtime parity by
           # rendering the build-time account for its fixture identity and asserting `provision`
-          # reproduces it (ADR-0012, issue #31).
+          # reproduces it.
           inherit (kit.internal) accountPlan;
-          inherit (self) greeterGrants;
+          inherit (self) greeterAffordances;
           inherit system;
         };
 
