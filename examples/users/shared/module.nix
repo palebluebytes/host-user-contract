@@ -1,13 +1,13 @@
-# The SHARED HOME MODULE of the reference user fleet (ADR-0020, amended 2026-08-15 by issue #36).
+# The SHARED HOME MODULE of the reference user fleet (ADR-0014, amended 2026-08-15 by issue #36).
 #
-# ADR-0020's central ergonomic is "shared code, per-user data": ONE module, imported by several of
+# ADR-0014's central ergonomic is "shared code, per-user data": ONE module, imported by several of
 # the operator's own accounts, keyed on `config.identity.username` so no user's identity is ever
 # baked into the shared code. Since issue #36 that is PERMITTED, not required — which is exactly why
 # it needs a worked example: an optional shape with no exercise rots. duo-a and duo-b import this
 # module (and `shared/overlay.nix`); the other five reference users deliberately do not, so the
 # members shows both supported arrangements side by side. See ADR-0022's exception note.
 #
-# Unlike the other five reference homes this module is NOT contract-pure (ADR-0008): it sets
+# Unlike the other five reference homes this module is NOT contract-pure (ADR-0002): it sets
 # home-manager's own `home.packages`/`home.file` and reads `pkgs`, so it needs home-manager to
 # evaluate. That is fine HERE — this flake has home-manager — but it is precisely why the shared
 # pair is kept off ada: the conformance tracer borrows ada's home.nix and evaluates it headlessly
@@ -27,7 +27,7 @@ in
   # closures. This is the half that must NOT vary.
   home.packages = [ pkgs.contract-shared-marker ];
 
-  # Per-user data, DERIVED from the identity the binding injected (ADR-0009). Both the derivation
+  # Per-user data, DERIVED from the identity the binding injected (ADR-0005). Both the derivation
   # NAME and its content are keyed on the username, so the two homes produce two different store
   # paths and neither carries a trace of the other's identity.
   home.file.".contract-shared-card".source = pkgs.writeText "contract-shared-card-${username}" ''

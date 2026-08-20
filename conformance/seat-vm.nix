@@ -5,7 +5,7 @@
 # activation stub and the ssh-signing fixtures. It plays the role ./toolkit.nix plays for the eval
 # side: each seat VM file becomes a focused record of what it VARIES — the users/grants, the binding,
 # the assertion — handed to `mkSeatVM`. Built per-VM in ./flake.nix (no host repo, no host bindings,
-# ADR-0004 Q5).
+# ADR-0002 Q5).
 #
 # Two binding-mode postures (CONTEXT.md) share the boot base: the RUNTIME-binding seats — the GREETER
 # seats (greeter-provision / -session / -sequence / -desktop / -bind-loop and the fleet integration
@@ -35,7 +35,7 @@ let
     };
   };
 
-  # The greeter-seat preamble: enable the reference runtime greeter (ADR-0008). Layered on top of the
+  # The greeter-seat preamble: enable the reference runtime greeter (ADR-0017). Layered on top of the
   # boot base for greeter seats only; mkSeatVM imports greeterModule alongside it.
   greeterPreamble = {
     contract.greeter.enable = true;
@@ -88,7 +88,7 @@ let
     sshKey = "ssh-ed25519 AAAAtestkey testuser@example";
   };
 
-  # The ssh-signing fixtures — the host's Tier-1 trust anchor (ADR-0011): a signer keypair built at
+  # The ssh-signing fixtures — the host's Tier-1 trust anchor (ADR-0019): a signer keypair built at
   # test-build time, with its PUBLIC key surfaced for `contract.greeter.trustedSigners`. Owned here so
   # the seat VMs that drive the signed-auth path (the bind-loop / examples-integration VMs, issue
   # #32) bind the same atom rather than each re-authoring the ssh-keygen dance.

@@ -1,11 +1,11 @@
-# Runtime VM for the pre-built binding path (ADR-0016, issue #16). Proves that
+# Runtime VM for the pre-built binding path (ADR-0011, issue #16). Proves that
 # bindContractPackage correctly materializes a user account, confers the grant
 # into the realization, and runs the contractPackage's activate script at system activation.
 # The contractPackage is a synthetic derivation: activate writes a marker file, and
 # manifest freezes the cli mode. After boot, the account exists,
 # the marker is present, and the gui surface decision reflects the bridged request.
 #
-# A build-time-binding seat (greeter off, CONTEXT.md): it binds the pre-built package (ADR-0016), so
+# A build-time-binding seat (greeter off, CONTEXT.md): it binds the pre-built package (ADR-0011), so
 # ./seat-vm.nix's `greeter = false` boot base + shared synthetic identity are all it needs.
 {
   pkgs,

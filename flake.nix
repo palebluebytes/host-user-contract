@@ -69,7 +69,7 @@
           # name a domain happens to want. `self` deliberately, not `kit`: the suite then exercises
           # the REAL flake outputs, so an output wired to the wrong kit attr fails here instead of
           # shipping. `kit` is passed only for `internal` — the in-repo kernels that are not
-          # outputs (ADR-0026).
+          # outputs (ADR-0014).
           inherit self kit;
         };
 
@@ -77,14 +77,14 @@
         # a machine declaring the gui mode ⇒ contract.display.enabled, a test SDDM/Plasma binding renders a live
         # plasma session + the account activated. The seat picks the session type, not the contract
         # (ADR-0021). Uses a test-only SDDM/Plasma binding the suite supplies. Moved here from its
-        # original in-repo home (ADR-0004).
+        # original in-repo home (ADR-0002).
         gui-surface-vm = import ./conformance/vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           inherit system;
         };
 
-        # Runtime proof of the greeter's provisioning CRUX (ADR-0006, issue #2): a booted seat
+        # Runtime proof of the greeter's provisioning CRUX (ADR-0018, issue #2): a booted seat
         # host with nixosModules.greeter enabled materializes the example user's account and
         # activates a built home at runtime — the declarative→runtime bridge eval cannot show.
         greeter-provision-vm = import ./conformance/greeter-vm.nix {
@@ -99,7 +99,7 @@
           inherit system;
         };
 
-        # Session RENDER (ADR-0013 step 8): the bound desktop's self-contained command brings up a
+        # Session RENDER (ADR-0021 step 8): the bound desktop's self-contained command brings up a
         # LIVE session on real virtio-gpu DRM, via greetd-as-user. The seat owns the session type
         # (ADR-0021), so one Wayland (cage) boot exercises the render; the sequence VM below proves
         # two different desktops one-after-another on one seat. Heavy (a real graphical boot) — the
@@ -130,7 +130,7 @@
           inherit system;
         };
 
-        # A REAL full desktop environment launched by the greeter (ADR-0013) — the non-technical-user
+        # A REAL full desktop environment launched by the greeter (ADR-0021) — the non-technical-user
         # target. The seat enables the DE and binds its session entry to a desktop; a greeter login
         # brings it up live, exactly as a display manager would exec it. Heavy (a full DE closure).
         greeter-desktop-plasma = import ./conformance/greeter-desktop-vm.nix {
@@ -165,7 +165,7 @@
             # GNOME 50's gnome-session starts gnome-shell as a systemd USER service, detached from
             # greetd's login session, so mutter can't find its seat ("no matching session"). Launch
             # gnome-shell as a DIRECT CHILD of the greetd session (as kwin/cage/sway run) so it is in
-            # the session and takes the seat — the seat's GNOME binding (a host concern, ADR-0013).
+            # the session and takes the seat — the seat's GNOME binding (a host concern, ADR-0021).
             command =
               let
                 p = nixpkgs.legacyPackages.${system};
@@ -180,7 +180,7 @@
           };
         };
 
-        # Runtime proof of the nix-daemon feature (ADR-0017, issue #15): a system with
+        # Runtime proof of the nix-daemon feature (ADR-0016, issue #15): a system with
         # nix.settings.allowed-users = ["@nix-users"] where one user is granted nix-daemon
         # (in nix-users → can use the daemon) and one is not (daemon-restricted).
         nix-daemon-vm = import ./conformance/nix-daemon-vm.nix {
@@ -189,7 +189,7 @@
           inherit system;
         };
 
-        # Runtime proof of the pre-built binding path (ADR-0016, issue #16): a system that
+        # Runtime proof of the pre-built binding path (ADR-0011, issue #16): a system that
         # uses bindContractPackage to bind the example user, boots, and verifies the account
         # materializes and the activation script runs.
         prebuilt-bind-vm = import ./conformance/prebuilt-bind-vm.nix {
@@ -199,7 +199,7 @@
           inherit (kit.internal) bindContractPackage;
         };
 
-        # Runtime proof of package policy + daemon restriction (ADR-0017, issue #17): host
+        # Runtime proof of package policy + daemon restriction (ADR-0016, issue #17): host
         # denies nix-daemon, sets allowedPrograms = ["hello"]; contractPackage declares hello
         # and curl; after activation hello works from PATH and curl does not.
         daemon-restricted-vm = import ./conformance/daemon-restricted-vm.nix {
@@ -212,7 +212,7 @@
 
       # `nix fmt`: treefmt over the whole tree — nixfmt (RFC 166) for Nix, ruff for Python, shfmt for
       # shell. All formatters come from nixpkgs, so the contract flake still inputs only nixpkgs (no
-      # treefmt-nix/git-hooks.nix inputs, ADR-0004). Config: ./treefmt.toml.
+      # treefmt-nix/git-hooks.nix inputs, ADR-0002). Config: ./treefmt.toml.
       formatter = forAllSystems (
         system:
         let

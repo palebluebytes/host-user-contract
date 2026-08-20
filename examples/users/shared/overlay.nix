@@ -1,7 +1,7 @@
-# The SHARED OVERLAY of the reference user fleet (ADR-0020, amended 2026-08-15 by issue #36).
+# The SHARED OVERLAY of the reference user fleet (ADR-0014, amended 2026-08-15 by issue #36).
 #
 # One overlay, imported by every user that opts into the shared setup — the overlay half of the
-# sharing mechanism ADR-0020 blesses. (Its layout block draws root-level `overlays/`; the amendment
+# sharing mechanism ADR-0014 blesses. (Its layout block draws root-level `overlays/`; the amendment
 # says the block illustrates an arrangement rather than fixing one, so this fixture keeps the module
 # and its overlay together under `shared/`.) It is deliberately trivial: a marker program, so the
 # fixture realizes for nearly free while still putting a package from the overlay into each
@@ -18,7 +18,7 @@
 # home's own overlays MERGE with the producer's rather than replacing them (probed against this
 # repo's pinned home-manager: passing overlay A and declaring overlay B yields both, n = 2).
 # It closes over nothing but `prev`, so a home importing it needs no `inputs` specialArg
-# (ADR-0020's amendment) — the producer keeps passing `hostFacts` alone.
+# (ADR-0014's amendment) — the producer keeps passing `hostFacts` alone.
 _: prev: {
   contract-shared-marker = prev.writeShellScriptBin "contract-shared-marker" ''
     echo "contract-shared-marker from examples/users/shared/overlay.nix"

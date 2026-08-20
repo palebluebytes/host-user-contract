@@ -5,7 +5,7 @@
 # imports, its actual members of identities, its actual per-system home matrix), which is exactly
 # why the contract cannot make them for anyone and must hand them over as functions.
 #
-# Lib-only and package-free (ADR-0004): this file is a pure function of `lib`. Each check takes
+# Lib-only and package-free (ADR-0002): this file is a pure function of `lib`. Each check takes
 # the caller's `pkgs` (for the trivial `runCommand` witness) and — crucially for the confinement
 # check — the caller's OWN home builder, so the contract never needs home-manager to prove a
 # home-manager module set. Every check fails LOUDLY at eval with a named message, the same
@@ -19,7 +19,7 @@ let
   # owns — a different thing from a contract function naming itself, and deliberately kept.
   diag = import ./diagnostics.nix { inherit lib; };
   inherit (diag) showList showName;
-  # The negative space itself (ADR-0002): system options a confined user home must be unable to
+  # The negative space itself (ADR-0001): system options a confined user home must be unable to
   # NAME. Each is a real NixOS/sops option a user might reach for to escalate; the home umbrella
   # declares none of them, so each throws "option does not exist" at eval. Single-sourced here and
   # read BOTH by `mkConfinementCheck` below and by the contract's own umbrella proof
@@ -39,17 +39,17 @@ let
       sops.secrets."steal".sopsFile = "/dev/null";
     };
     # A privileged group grab via the system account option (grants flow the other way — the host
-    # adds groups `mkIf granted`, ADR-0003).
+    # adds groups on its own decision, ADR-0006).
     "users.users.extraGroups" = {
       users.users.example.extraGroups = [ "wheel" ];
     };
   };
 
-  # The credential postures — exactly the TWO ADR-0019 names, as prefix rules over
+  # The credential postures — exactly the TWO ADR-0004 names, as prefix rules over
   # `identity.json`'s `hashedPassword` (a crypt hash's `$id$` prefix IS its algorithm label):
   # "**Private repo** — any libc-`crypt` hash (`$6$` sha512crypt is fine) … **Public / shared
   # repo** — **yescrypt** (`$y$`)". No third posture is invented here: a posture a repo can ask
-  # for is a decision ADR-0019 made, and this table only spells each one once so no repo
+  # for is a decision ADR-0004 made, and this table only spells each one once so no repo
   # hand-writes a `$y$` comparison. Each carries its remedy, so a failure says how to fix itself.
   credentialPostures = {
     # Public / shared repo: the hash is world-readable, so it must be memory-hard.
@@ -113,7 +113,7 @@ let
   # the technique instead of the verdict.
   #
   # SIGNATURE — the caller passes its own home BUILDER, which is what keeps this package-free and
-  # home-manager-free (ADR-0004): the contract never imports home-manager, it only applies a
+  # home-manager-free (ADR-0002): the contract never imports home-manager, it only applies a
   # function the consumer supplies. A typical user repo already has one:
   #
   #     contract.lib.mkConfinementCheck {
@@ -141,7 +141,7 @@ let
   # underlying error instead of the messages below.
   #
   # COVERAGE NOTE — `conformance/confinement.nix` drives this function's logic through a synthetic
-  # home-manager-free builder (it has to: ADR-0004). The two DEFAULTS a real consumer relies on —
+  # home-manager-free builder (it has to: ADR-0002). The two DEFAULTS a real consumer relies on —
   # `force = home.activationPackage.drvPath` and the `home.sessionVariables` positive control —
   # are therefore only exercised where home-manager actually exists, i.e. in a consumer repo's own
   # `checks`. Keep them in step with home-manager's option names.
@@ -184,7 +184,7 @@ let
       problem =
         "this module set has a SYSTEM CHANNEL — the out-of-universe option(s) "
         + "${showList expressible} are expressible in the home";
-      why = "A user could reach host state directly (ADR-0002).";
+      why = "A user could reach host state directly (ADR-0001).";
       fix =
         "Something in the imports declares them (a freeform type, or a NixOS module pulled into "
         + "the home); remove it. If instead the home is never FORCED by `force`, every probe looks "
@@ -194,9 +194,9 @@ let
     okWitness pkgs name;
 
   # mkIdentityPostureCheck (issue #35): assert every identity in a repo's OWN members carry the
-  # login-credential posture that repo has chosen (ADR-0019).
+  # login-credential posture that repo has chosen (ADR-0004).
   #
-  # OPT-IN BY CONSTRUCTION, and that is the whole design. ADR-0019 makes the posture conditional
+  # OPT-IN BY CONSTRUCTION, and that is the whole design. ADR-0004 makes the posture conditional
   # and consumer-owned — a private repo may legitimately ship `$6$` sha512crypt; a public/shared
   # repo wants yescrypt because its hash is world-readable. So `loadIdentity` imposes NO hash
   # policy: baking yescrypt into the loader would impose one repo's public posture on every
@@ -210,7 +210,7 @@ let
   #     }
   #
   # `require` has NO DEFAULT: the contract does not pick a repo's posture, so the caller must say
-  # which one it is asserting. Known postures are `credentialPostures` above (ADR-0019's two:
+  # which one it is asserting. Known postures are `credentialPostures` above (ADR-0004's two:
   # `yescrypt`, `libc`); an unknown name is a loud error naming them, since a posture typo must
   # never read as "checked". `identities` is a LIST of loaded identities (`lib.attrValues` an
   # attrset members) — derive it from the users directory rather than hardcoding it, so a newly
@@ -228,7 +228,7 @@ let
         credentialPostures.${require} or (diag.stop {
           who = name;
           problem = "unknown credential posture ${showName require}";
-          fix = "Known postures are ${showList (lib.attrNames credentialPostures)} (ADR-0019).";
+          fix = "Known postures are ${showList (lib.attrNames credentialPostures)} (ADR-0004).";
         });
       # `loadIdentity` returns the identity.json RAW (the option submodule fills defaults only
       # once the value is assigned to an option), and `hashedPassword` is an OPTIONAL field — so a
@@ -282,7 +282,7 @@ let
         "identity.json credential(s) do not carry the required posture ${posture.description}: "
         + "${lib.concatMapStringsSep ", " describe offenders}";
       why =
-        "ADR-0019: the credential travels with the user as public data, and repo visibility picks "
+        "ADR-0004: the credential travels with the user as public data, and repo visibility picks "
         + "the hash strength.";
       fix = "Re-hash with `${posture.remedy}`.";
     };
@@ -313,7 +313,7 @@ let
   # check exists to surface (the reasoning the old hand-written checks documented).
   #
   # COVERAGE NOTE — like `mkConfinementCheck`, `conformance/home-eval.nix` drives this logic
-  # through synthetic homes (it has to: ADR-0004). The `activationPackage.drvPath` default over a
+  # through synthetic homes (it has to: ADR-0002). The `activationPackage.drvPath` default over a
   # REAL home-manager home is therefore only exercised in a consumer repo's own `checks` — keep it
   # in step with home-manager's attribute names.
   mkHomeEvalCheck =
@@ -432,7 +432,7 @@ let
   # public arguments those calls take.
   #
   # SIGNATURE — what stays the consumer's, stays the consumer's:
-  #   `members`    the ADR-0020 members (`mkMembers`, issue #57), the authority on WHO is
+  #   `members`    the ADR-0014 members (`mkMembers`, issue #57), the authority on WHO is
   #               checked. Derived, so a user added to the directory is covered the moment it
   #               exists; an EMPTY one is a hard error, since a check set over nobody is green
   #               forever.
@@ -441,9 +441,9 @@ let
   #               "which systems this fleet bakes" is read off the material rather than handed a
   #               second time and trusted to agree.
   #   `buildHome` `member: extraModules: home` — the consumer's own builder, curried per member.
-  #               Same package-free injection `mkConfinementCheck` takes (ADR-0004): the contract
+  #               Same package-free injection `mkConfinementCheck` takes (ADR-0002): the contract
   #               applies a function it never imports.
-  #   `require`   the credential posture, with NO DEFAULT here either. ADR-0019 makes it
+  #   `require`   the credential posture, with NO DEFAULT here either. ADR-0004 makes it
   #               consumer-owned, and an adapter that picked one would impose a posture on every
   #               repo that adopted the adapter — precisely what the helper refuses to do.
   #   `force` / `positiveControl` — forwarded to the helpers unchanged, defaulting to the same
@@ -575,7 +575,7 @@ let
     ) members
     // {
       # ONE posture claim over the whole members, not one per member: `require` is a fact about the
-      # repo (ADR-0019 — its visibility picks the hash strength), and the helper's own message names
+      # repo (ADR-0004 — its visibility picks the hash strength), and the helper's own message names
       # every offender it found, so a per-member split would only make the same failure noisier.
       ${checkNames.identityPosture} = mkIdentityPostureCheck {
         inherit pkgs require;

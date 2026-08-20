@@ -344,7 +344,7 @@ in
       ok = !(lib.elem "" emptyKeys) && lib.elem "ssh-ed25519 AAAAtrusted" emptyKeys;
     }
 
-    # --- the nix-daemon feature (ADR-0017, issue #15) ---
+    # --- the nix-daemon feature (ADR-0016, issue #15) ---
     {
       name = "nix-daemon: grant confers nix-users group";
       ok =

@@ -1,4 +1,4 @@
-# Runtime VM: a REAL full desktop environment launched by the greeter (ADR-0013) — the
+# Runtime VM: a REAL full desktop environment launched by the greeter (ADR-0021) — the
 # non-technical-user target. Where greeter-session-vm proves the mechanism with lightweight
 # compositors, this proves an actual DE (GNOME/Plasma) comes up live when the seat binds its
 # session entry to a desktop and a user logs in — the same session command a display manager
@@ -6,7 +6,7 @@
 #
 # Uses ./seat-vm.nix's live-session posture (greetd autologins alice into the session launcher).
 # Heavy by nature (a full DE closure booted under software-rendered virtio-gpu). The DE is supplied
-# as a TEST binding (the contract ships none, ADR-0004) — the consumer-renders boundary.
+# as a TEST binding (the contract ships none, ADR-0002) — the consumer-renders boundary.
 {
   pkgs,
   system,

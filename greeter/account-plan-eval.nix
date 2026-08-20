@@ -9,9 +9,9 @@
 # It builds a small `contract-account-plan <identity.json> <grants.json> <mode>` tool that evaluates the
 # contract's own pure `kit.internal.accountPlan` over the (authenticated) identity.json and prints
 # the neutral account record as JSON. This is CONTRACT-OWNED code over ALREADY-AUTHENTICATED data,
-# run AFTER the eval-free auth gate (ADR-0006 "data before code" governs the auth step, not this) —
+# run AFTER the eval-free auth gate (ADR-0005 "data before code" governs the auth step, not this) —
 # so it does not evaluate any USER Nix. It runs UNRESTRICTED: the Tier-1 restricted-eval posture
-# (ADR-0014) is scoped to the home BUILD (the homeBuilder), never to provision, and this is a
+# (ADR-0019) is scoped to the home BUILD (the homeBuilder), never to provision, and this is a
 # one-shot login computation, not a reproducible build — `--impure` is honest here (it reads a
 # runtime path and the identity by env) and does not touch the user-code eval boundary.
 #
@@ -24,9 +24,9 @@
 # (`sshKey=""`, `trustedKeys=[]`, …) come from identity.nix, not a third hand-written place. An
 # unknown/missing field throws — the same loud typo-net `loadIdentity` gives.
 #
-# INTERNAL, greeter-scoped: it needs `pkgs` (a package), which the pure kit (ADR-0004) does not
+# INTERNAL, greeter-scoped: it needs `pkgs` (a package), which the pure kit (ADR-0002) does not
 # have, so — like auth/provision/session — it is assembled inside the greeter module, the one place
-# the contract ships packages (ADR-0008). The conformance suite imports it directly to prove the
+# the contract ships packages (ADR-0017). The conformance suite imports it directly to prove the
 # evaluator's record equals `accountPlan`'s.
 {
   pkgs,

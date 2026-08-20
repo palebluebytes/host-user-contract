@@ -1,13 +1,13 @@
-# Greeter path END-TO-END with a REAL home (ADR-0006, issue #2), fleet edition — the runtime half
+# Greeter path END-TO-END with a REAL home (ADR-0018, issue #2), fleet edition — the runtime half
 # of the uniform flake-output consumption convention. The declarative binds (hosts/*.nix) consume
 # each user's `<u>-contractPackage` at EVAL; here a booted seat consumes the SAME user's ordinary
 # published home (`homes.<system>.ada.gui`) at RUNTIME through the greeter, and observes it
-# activate. Same user fleet, sibling outputs, two paths — and, since ADR-0032, the same home: a
+# activate. Same user fleet, sibling outputs, two paths — and, since ADR-0007, the same home: a
 # greeter binds what a declarative host binds, because no grant can make a home differ.
 #
 # It lives here, in the fleet flake that legitimately has home-manager (via the users input), for
 # the reason the contract's own suite cannot host it: building a real home needs home-manager, and
-# the contract depends only on nixpkgs `lib` (ADR-0004). It is a FOCUSED seat node (like the
+# the contract depends only on nixpkgs `lib` (ADR-0002). It is a FOCUSED seat node (like the
 # contract's greeter-provision-vm), not the full desk host config — so the runtime-provisioned account
 # never collides with a declarative one, and the boot stays lean.
 #
@@ -43,7 +43,7 @@ mkSeatVM {
     machine.fail("getent passwd ${username}")
 
     # Runtime provision the REAL home from ada's published `homes` output: fully realize the
-    # account from identity.json (shell-side realization, ADR-0012) and activate the actual
+    # account from identity.json (shell-side realization, ADR-0020) and activate the actual
     # home-manager generation as that user.
     machine.succeed("contract-greeter-provision ${username} ${identityJson} ${homeActivation} tier1")
     machine.succeed("getent passwd ${username}")
@@ -58,7 +58,7 @@ mkSeatVM {
     # The producer wrote the gui mode's own `desktop` parameter to ~/.contract-desktop, where the
     # greeter's launcher reads it — no manual step, and no marker module grafted onto the user to
     # make this observable: the dotfile comes from ada's own voice. It is also the proof that the
-    # helper is composed by DEFAULT now (ADR-0032), since nothing here opts into it. ada requests
+    # helper is composed by DEFAULT now (ADR-0007), since nothing here opts into it. ada requests
     # "plasma".
     machine.succeed("test -f /home/${username}/.contract-desktop")
     machine.succeed("grep -qx plasma /home/${username}/.contract-desktop")

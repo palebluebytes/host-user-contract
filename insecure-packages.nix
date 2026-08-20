@@ -1,5 +1,4 @@
-# The single writer of nixpkgs.config.permittedInsecurePackages (ADR-0002 review,
-# finding 3). `nixpkgs.config` is types.attrs — it SHALLOW-merges, so two modules each
+# The single writer of nixpkgs.config.permittedInsecurePackages. `nixpkgs.config` is types.attrs — it SHALLOW-merges, so two modules each
 # setting permittedInsecurePackages CLOBBER rather than concatenate, and a host's value
 # can silently drop a feature's permit.
 #

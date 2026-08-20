@@ -1,4 +1,4 @@
-# Conformance domain: the HOME MATRIX and its guards (issue #58, reshaped by ADR-0032).
+# Conformance domain: the HOME MATRIX and its guards (issue #58, reshaped by ADR-0007).
 #
 # The contract's `modes` gives a producer the UPPER BOUND — every session shape a home could be
 # built for. WHICH of those a system actually bakes stays the consuming fleet's topology
@@ -53,7 +53,7 @@ let
   matrix = over { };
 
   # A THREE-mode upper bound — the contract as it would be the day the registry gains `mobile`
-  # (ADR-0032 names it as the shape a third takes). The fleet's rows above are handed over UNEDITED.
+  # (ADR-0007 names it as the shape a third takes). The fleet's rows above are handed over UNEDITED.
   threeModes = modeNames ++ [ "mobile" ];
   grown = over { upperBound = threeModes; };
 
@@ -122,7 +122,7 @@ in
     }
     {
       # A row names MODES. A FEATURE names a grant, and a grant rides the bind — it keys no home
-      # at all (ADR-0032) — so the system would bake every mode while reading as restricted.
+      # at all (ADR-0007) — so the system would bake every mode while reading as restricted.
       name = "home-matrix: fails when a setting names a FEATURE rather than a mode";
       ok =
         !(passes {

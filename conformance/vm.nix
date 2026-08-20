@@ -1,7 +1,7 @@
 # Runtime VM for the display-surface decision (session-agnostic) — the one piece of the
 # contract's regression gate that genuinely needs a booted machine rather than a pure eval (the
 # eval-level decision lives in ./default.nix). Ported into the contract's own suite from its
-# original in-repo location (ADR-0004: the generic suite — including this VM — ships with the
+# original in-repo location (ADR-0002: the generic suite — including this VM — ships with the
 # contract and gets independent CI).
 #
 # It boots ONE single-seat host that grants gui to a user and proves the realization asked for a

@@ -1,4 +1,4 @@
-# Runtime VM for the greeter's provisioning CRUX + session selection (ADR-0010/0012, issue #2).
+# Runtime VM for the greeter's provisioning CRUX + session selection (ADR-0018/0020, issue #2).
 # The one part of the runtime path that needs a booted machine rather than a pure eval: the
 # eval-free auth ordering and the safe-set bind are proven headless in ./default.nix; what only a
 # real host can show is RUNTIME provisioning — materializing an account and realizing it OUTSIDE
@@ -14,9 +14,9 @@
 # empty-sshKey drop, key ordering) are proven WITHOUT a boot in ./account-plan.nix; here the observable
 # clamp (a hostile `docker` dropped from the realized account) is the renderer surfacing that rule.
 # It then proves session SELECTION
-# (ADR-0010 step 8): the launcher picks the seat-default type, a home override flips it, and each
+# (ADR-0021): the launcher picks the seat-default type, a home override flips it, and each
 # execs the host-bound backend. Building a real home needs home-manager (the contract has none,
-# ADR-0004), so the home here is the harness's stub activation package — the real-home end-to-end
+# ADR-0002), so the home here is the harness's stub activation package — the real-home end-to-end
 # lives in examples/fleet (the consumer-renders boundary, like gui-union).
 {
   pkgs,
@@ -53,7 +53,7 @@ let
   identityJson = pkgs.writeText "identity.json" (builtins.toJSON identityAttrs);
 
   # The BUILD-TIME account for the SAME identity + the selected mode, rendered from the ONE shared
-  # accountPlan (ADR-0012). `provision` now EVALUATES this same accountPlan at runtime (via
+  # accountPlan (ADR-0020). `provision` now EVALUATES this same accountPlan at runtime (via
   # contract-account-plan) and renders it, so its realized account must match this record
   # field-for-field — the renderer-faithfulness this VM proves. `provision` adds the greeter-seat
   # marker (`greeter-users`) on top of the record's groups (the standing baseline it enrolls into),
@@ -100,13 +100,13 @@ mkSeatVM {
     # The external user does NOT exist at build time — NixOS users are declarative.
     machine.fail("getent passwd example")
 
-    # RUNTIME provision: the shell-side realization (ADR-0012).
+    # RUNTIME provision: the shell-side realization (ADR-0020).
     machine.succeed("contract-greeter-provision example ${identityJson} ${activationStub} tier1 ${seatMode}")
     machine.succeed("getent passwd example")
 
     # Account fully realized by RENDERING the record the shared accountPlan evaluates for this
     # identity + the safe-set grant (contract-account-plan) — so the realized account matches the
-    # build-time accountPlan record (ADR-0012 build↔runtime parity), field for field:
+    # build-time accountPlan record (ADR-0020 build↔runtime parity), field for field:
     # - GECOS = the plan's description
     machine.succeed("getent passwd example | cut -d: -f5 | grep -qx '${buildTimePlan.description}'")
     # - password = the plan's hashedPassword (so PAM works — not a locked '!' entry)
@@ -129,14 +129,14 @@ mkSeatVM {
     # boot in ./account-plan.nix now that the rule has a single source; the VM no longer carries a
     # second `nokey` fixture for it.)
 
-    # Per-user desktop SELECTION (ADR-0013): no home choice ⇒ the seat default (plasma) launches.
+    # Per-user desktop SELECTION (ADR-0021): no home choice ⇒ the seat default (plasma) launches.
     machine.succeed("contract-greeter-session example /home/example")
     machine.succeed("grep -qx plasma /tmp/desktop-launched")
     # The user's home chooses gnome ⇒ gnome launches instead.
     machine.succeed("echo gnome > /home/example/.contract-desktop")
     machine.succeed("contract-greeter-session example /home/example")
     machine.succeed("grep -qx gnome /tmp/desktop-launched")
-    # A desktop the seat does NOT offer degrades to the default, never breaks the login (ADR-0013).
+    # A desktop the seat does NOT offer degrades to the default, never breaks the login (ADR-0021).
     machine.succeed("echo hyprland > /home/example/.contract-desktop")
     machine.succeed("contract-greeter-session example /home/example")
     machine.succeed("grep -qx plasma /tmp/desktop-launched")

@@ -1,6 +1,6 @@
-# (7) the privileged runtime-provisioning helper: the shell-side realization.nix (ADR-0012).
+# (7) the privileged runtime-provisioning helper: the shell-side realization.nix (ADR-0020).
 # Usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier> <mode>
-# NixOS users are declarative, and a greeter user is never built into the system (ADR-0010), so
+# NixOS users are declarative, and a greeter user is never built into the system (ADR-0018), so
 # realization.nix never runs for them — this IS their realization, run at login. It materializes
 # the (Tier-1 persisted) account and FULLY realizes it from identity.json + the SELECTED MODE:
 # password (the same hash auth verified ⇒ PAM works), authorizedKeys, GECOS, and the groups its
@@ -9,7 +9,7 @@
 # for activation. The activated session is secret-free: the contract handles no secrets beyond the
 # login credential.
 #
-# It is the RUNTIME ADAPTER over accountPlan (ADR-0012), the twin of realization.nix's build-time
+# It is the RUNTIME ADAPTER over accountPlan (ADR-0020), the twin of realization.nix's build-time
 # adapter — and, since issue #31's follow-up, a PURE RENDERER: it owns NO account-combining logic.
 # The four-field rule (clamp ∪ grant, drop-empty-sshKey, GECOS, password) lives in ONE place —
 # `accountPlan` — which this script EVALUATES via the `contract-account-plan` tool (which re-imports
@@ -20,7 +20,7 @@
 # without a boot in conformance/account-plan.nix. What remains here is strictly RENDER: run the
 # evaluator, then write GECOS, the password, authorizedKeys, and the groups (the record's groups ∪
 # the greeter-seat groups — the baseline plus the `greeter-users` seat MARKER, which is seat
-# infrastructure layered on top of the portable account, not part of it, ADR-0010).
+# infrastructure layered on top of the portable account, not part of it, ADR-0018).
 {
   pkgs,
   accountPlanEval,
@@ -51,8 +51,8 @@ pkgs.writeShellApplication {
     [ -x "$activation/activate" ] || { echo "provision: '$activation' is not a home-activation package" >&2; exit 1; }
 
     case "$tier" in
-      tier1) : ;; # persisted (a normal account with a real home, ADR-0006)
-      tier2) echo "provision: tier2 (ephemeral) provisioning is deferred (ADR-0006)" >&2; exit 1 ;;
+      tier1) : ;; # persisted (a normal account with a real home, ADR-0018)
+      tier2) echo "provision: tier2 (ephemeral) provisioning is deferred (ADR-0018)" >&2; exit 1 ;;
       *) echo "provision: unknown tier '$tier'" >&2; exit 1 ;;
     esac
 
@@ -62,7 +62,7 @@ pkgs.writeShellApplication {
         --user-group "$username"
     fi
 
-    # --- runtime adapter over accountPlan (ADR-0012): evaluate, then render ---
+    # --- runtime adapter over accountPlan (ADR-0020): evaluate, then render ---
     # Compute the account record from the ONE shared accountPlan (identity + the safe-set grant),
     # via the contract's own evaluator — no combining logic is reproduced here. Fail-CLOSED: if the
     # evaluation fails (a malformed identity that slipped past auth, a contract bug), abort before
