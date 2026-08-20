@@ -2,7 +2,7 @@
 
 The detail behind the three rules in [`AGENTS.md`](../../AGENTS.md).
 
-The contract flake inputs **only nixpkgs** (ADR-0004), so every dev tool comes from
+The contract flake inputs **only nixpkgs** (ADR-0002), so every dev tool comes from
 `nix develop` rather than from a flake input — there is no `treefmt-nix`, no `git-hooks.nix`.
 
 ## The dev shell

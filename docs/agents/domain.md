@@ -9,12 +9,13 @@ This is a **single-context** repo: one `CONTEXT.md` + `docs/adr/` at the root.
 - **`CONTEXT.md`** at the repo root — the domain glossary.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in.
   [`docs/adr/README.md`](../adr/README.md) is the authoritative index: a one-line decision per
-  ADR, marking which are superseded. Start there rather than guessing at numbers; it names the
-  reading order (`0001` the contract, then `0004` why it's this repo, then `0006`/`0007`/`0008`
-  the greeter + user-flake shape).
+  ADR, grouped by subject. Start there rather than guessing at numbers.
 
-Later ADRs supersede and amend earlier ones — check the index for a supersedes note before
-treating an ADR as current.
+**Every ADR describes the design as it stands.** There are no superseded records and no amendment
+chains — where a decision was reversed, the record that stands carries the reversal under
+*Considered alternatives*. So an ADR can be read as current without checking anything else, and a
+decision that changes is applied by **rewriting** the record it changes, never by appending to it.
+Numbers cited in commits or issues predating 2026-08-20 refer to an older set and will not resolve.
 
 ## File structure
 
