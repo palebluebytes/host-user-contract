@@ -13,7 +13,7 @@
   ...
 }:
 {
-  options.custom.insecurePackages = lib.mkOption {
+  options.contract.insecurePackages = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     default = [ ];
     example = [ "electron-39.8.10" ];
@@ -21,6 +21,6 @@
   };
 
   # The sole writer. Nothing else may set permittedInsecurePackages directly, or the
-  # shallow merge returns: contribute via custom.insecurePackages instead.
-  config.nixpkgs.config.permittedInsecurePackages = lib.unique config.custom.insecurePackages;
+  # shallow merge returns: contribute via contract.insecurePackages instead.
+  config.nixpkgs.config.permittedInsecurePackages = lib.unique config.contract.insecurePackages;
 }
