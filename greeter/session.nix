@@ -39,8 +39,8 @@ pkgs.writeShellApplication {
             esac
           }
 
-          # The user's chosen desktop is surfaced from their home (~/.contract-desktop, materialised from
-          # contract.requests.gui.desktop); absent ⇒ the seat default.
+          # The user's chosen desktop is surfaced from their home (~/.contract-desktop, materialised
+          # by the producer from the gui mode's own `desktop` parameter); absent ⇒ the seat default.
           if [ -f "$home/.contract-desktop" ]; then
             want=$(cat "$home/.contract-desktop")
           else
@@ -51,7 +51,7 @@ pkgs.writeShellApplication {
           dcmd=""
           if ! resolve "$want"; then
             echo "session: desktop '$want' not offered by this seat; using default '$defaultDesktop'" >&2
-            resolve "$defaultDesktop" || { echo "session: no default desktop offered (custom.greeter.desktops/defaultDesktop)" >&2; exit 1; }
+            resolve "$defaultDesktop" || { echo "session: no default desktop offered (contract.greeter.desktops/defaultDesktop)" >&2; exit 1; }
           fi
           [ -n "$dcmd" ] || { echo "session: resolved desktop has no command" >&2; exit 1; }
 
