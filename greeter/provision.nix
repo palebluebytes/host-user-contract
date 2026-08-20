@@ -1,15 +1,15 @@
-# (7) the privileged runtime-provisioning helper: the shell-side realization.nix (ADR-0012).
-# Usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier>
-# NixOS users are declarative, and a greeter user is never built into the system (ADR-0010), so
+# (7) the privileged runtime-provisioning helper: the shell-side realization.nix (ADR-0020).
+# Usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier> <mode>
+# NixOS users are declarative, and a greeter user is never built into the system (ADR-0018), so
 # realization.nix never runs for them — this IS their realization, run at login. It materializes
-# the (Tier-1 persisted) account and FULLY realizes it from identity.json + the safe-set grant:
-# password (the same hash auth verified ⇒ PAM works), authorizedKeys, GECOS, and the user's safe
-# declared groups plus the greeter-seat baseline. Then it activates the built home AS the user.
+# the (Tier-1 persisted) account and FULLY realizes it from identity.json + the SELECTED MODE:
+# password (the same hash auth verified ⇒ PAM works), authorizedKeys, GECOS, and the groups its
+# session shape needs, plus the greeter-seat baseline. Then it activates the built home AS the user.
 # Tier-2 (ephemeral) is deferred. Runs as root (greetd's pre-session context); it drops to the user
 # for activation. The activated session is secret-free: the contract handles no secrets beyond the
 # login credential.
 #
-# It is the RUNTIME ADAPTER over accountPlan (ADR-0012), the twin of realization.nix's build-time
+# It is the RUNTIME ADAPTER over accountPlan (ADR-0020), the twin of realization.nix's build-time
 # adapter — and, since issue #31's follow-up, a PURE RENDERER: it owns NO account-combining logic.
 # The four-field rule (clamp ∪ grant, drop-empty-sshKey, GECOS, password) lives in ONE place —
 # `accountPlan` — which this script EVALUATES via the `contract-account-plan` tool (which re-imports
@@ -20,11 +20,11 @@
 # without a boot in conformance/account-plan.nix. What remains here is strictly RENDER: run the
 # evaluator, then write GECOS, the password, authorizedKeys, and the groups (the record's groups ∪
 # the greeter-seat groups — the baseline plus the `greeter-users` seat MARKER, which is seat
-# infrastructure layered on top of the portable account, not part of it, ADR-0010).
+# infrastructure layered on top of the portable account, not part of it, ADR-0018).
 {
   pkgs,
   accountPlanEval,
-  # The fixed runtime grant (greeterGrants) and the seat's enrolled groups, both frozen to store
+  # What a greeter seat affords (the safe set) and the seat's enrolled groups, both frozen to store
   # JSON by greeter.nix. `provision` hands the grant to the evaluator and unions the seat groups
   # (baseline ∪ the `greeter-users` marker) into the record's groups before enrolling.
   greeterGrantsFile,
@@ -44,14 +44,15 @@ pkgs.writeShellApplication {
     identity=$2
     activation=$3
     tier=$4
+    mode=$5
 
     [ "$(id -u)" = 0 ] || { echo "provision: must run as root" >&2; exit 1; }
     [ -f "$identity" ] || { echo "provision: no identity.json at '$identity'" >&2; exit 1; }
     [ -x "$activation/activate" ] || { echo "provision: '$activation' is not a home-activation package" >&2; exit 1; }
 
     case "$tier" in
-      tier1) : ;; # persisted (a normal account with a real home, ADR-0006)
-      tier2) echo "provision: tier2 (ephemeral) provisioning is deferred (ADR-0006)" >&2; exit 1 ;;
+      tier1) : ;; # persisted (a normal account with a real home, ADR-0018)
+      tier2) echo "provision: tier2 (ephemeral) provisioning is deferred (ADR-0018)" >&2; exit 1 ;;
       *) echo "provision: unknown tier '$tier'" >&2; exit 1 ;;
     esac
 
@@ -61,12 +62,12 @@ pkgs.writeShellApplication {
         --user-group "$username"
     fi
 
-    # --- runtime adapter over accountPlan (ADR-0012): evaluate, then render ---
+    # --- runtime adapter over accountPlan (ADR-0020): evaluate, then render ---
     # Compute the account record from the ONE shared accountPlan (identity + the safe-set grant),
     # via the contract's own evaluator — no combining logic is reproduced here. Fail-CLOSED: if the
     # evaluation fails (a malformed identity that slipped past auth, a contract bug), abort before
     # touching the account rather than realize a half-account.
-    if ! record=$(contract-account-plan "$identity" ${greeterGrantsFile}); then
+    if ! record=$(contract-account-plan "$identity" ${greeterGrantsFile} "$mode"); then
       echo "provision: account-plan evaluation failed for '$username'" >&2
       exit 1
     fi
@@ -79,7 +80,7 @@ pkgs.writeShellApplication {
     hash=$(jq -r '.hashedPassword // empty' <<<"$record")
     [ -n "$hash" ] && printf '%s:%s\n' "$username" "$hash" | chpasswd -e
 
-    # Groups = the record's (clamped ∪ granted) groups ∪ the greeter-seat groups (the baseline plus
+    # Groups = the record's (mode ∪ granted) groups ∪ the greeter-seat groups (the baseline plus
     # the `greeter-users` marker), restricted to groups that exist on the seat (the baseline is
     # pre-realized declaratively; a stray name is skipped, not created). The clamp already happened
     # inside accountPlan — a privileged group declared in identity.json is absent from the record.

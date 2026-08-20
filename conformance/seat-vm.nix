@@ -5,7 +5,7 @@
 # activation stub and the ssh-signing fixtures. It plays the role ./toolkit.nix plays for the eval
 # side: each seat VM file becomes a focused record of what it VARIES — the users/grants, the binding,
 # the assertion — handed to `mkSeatVM`. Built per-VM in ./flake.nix (no host repo, no host bindings,
-# ADR-0004 Q5).
+# ADR-0002 Q5).
 #
 # Two binding-mode postures (CONTEXT.md) share the boot base: the RUNTIME-binding seats — the GREETER
 # seats (greeter-provision / -session / -sequence / -desktop / -bind-loop and the fleet integration
@@ -35,10 +35,10 @@ let
     };
   };
 
-  # The greeter-seat preamble: enable the reference runtime greeter (ADR-0008). Layered on top of the
+  # The greeter-seat preamble: enable the reference runtime greeter (ADR-0017). Layered on top of the
   # boot base for greeter seats only; mkSeatVM imports greeterModule alongside it.
   greeterPreamble = {
-    custom.greeter.enable = true;
+    contract.greeter.enable = true;
   };
 
   # Real DRM/KMS for a live compositor: QEMU virtio-gpu (software-rendered via llvmpipe), exactly as
@@ -88,8 +88,8 @@ let
     sshKey = "ssh-ed25519 AAAAtestkey testuser@example";
   };
 
-  # The ssh-signing fixtures — the host's Tier-1 trust anchor (ADR-0011): a signer keypair built at
-  # test-build time, with its PUBLIC key surfaced for `custom.greeter.trustedSigners`. Owned here so
+  # The ssh-signing fixtures — the host's Tier-1 trust anchor (ADR-0019): a signer keypair built at
+  # test-build time, with its PUBLIC key surfaced for `contract.greeter.trustedSigners`. Owned here so
   # the seat VMs that drive the signed-auth path (the bind-loop / examples-integration VMs, issue
   # #32) bind the same atom rather than each re-authoring the ssh-keygen dance.
   signer = pkgs.runCommand "seat-vm-signer" { nativeBuildInputs = [ pkgs.openssh ]; } ''
@@ -114,6 +114,10 @@ in
       graphical ? false,
       autologin ? null,
       seat ? { },
+      # WHAT THIS MACHINE CAN RUN. Defaults to a seat with a display, because that is what this
+      # harness builds — and because it is now the thing that decides whether a greeter offers a
+      # walk-up user a graphical session at all. A VM that models a headless box passes `[ ]`.
+      modes ? [ "gui" ],
     }:
     # A greeter seat must be handed the greeter module; otherwise `null` would splice into the
     # imports list below and fail with a cryptic module-eval error instead of naming the contract.
@@ -129,6 +133,8 @@ in
         node.pkgsReadOnly = false;
 
         nodes.machine = {
+          contract.modes = modes;
+
           imports = [
             contractModule
             bootBase

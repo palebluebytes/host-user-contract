@@ -3,35 +3,43 @@
 Agent-facing configuration for this repo. See `README.md` for what the project is and
 `docs/adr/` for the design.
 
+## Dev environment
+
+All dev tools come from `nix develop` (the flake inputs **only nixpkgs**), not from flake
+inputs — there is no `treefmt-nix` or `git-hooks.nix`.
+
+- **Work inside `nix develop`** (or direnv).
+- **Format with `nix fmt`** before committing — treefmt over the whole tree.
+- **Commit from inside the shell** — `.githooks/pre-commit` needs those tools on PATH, and a
+  `git commit` from a bare shell is rejected. Via the Bash tool:
+  `nix develop --command git commit …`
+
+Detail — the hook's checks, the curated lint config, shell-program conventions:
+[`docs/agents/dev-environment.md`](docs/agents/dev-environment.md).
+
+## Verifying a change
+
+"Run everything" is `nix flake check` in **three** targets:
+
+```
+nix flake check .              # the contract: synthetic conformance + runtime VMs
+nix flake check examples/users # the reference user fleet
+nix flake check examples/fleet # the reference host fleet
+```
+
+The two fleets carry their own checks because they need home-manager, which the contract does
+not input — so nothing but running all three catches drift between them.
+`.github/workflows/ci.yml` walks the same matrix.
+
+New files must be **`git add`-ed before `nix flake check` sees them** — a flake only reads the
+tracked tree.
+
 ## Agent skills
 
-### Issue tracker
-
-Issues and PRDs live in the repo's GitHub Issues (`palebluebytes/host-user-contract`), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default vocabulary — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context — one `CONTEXT.md` (the domain glossary) + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
-
-## Dev environment, formatting & linting
-
-The contract flake inputs **only nixpkgs** (ADR-0004), so all dev tools come from `nix develop`, not
-from flake inputs (no `treefmt-nix`/`git-hooks.nix`).
-
-- **Work inside `nix develop`** (or direnv): it provides `treefmt nixfmt ruff shfmt statix deadnix
-  shellcheck gh` and points git at `.githooks`.
-- **Format with `nix fmt`** — treefmt over the whole tree: nixfmt (Nix), ruff (Python), shfmt (shell).
-  Config: `treefmt.toml`.
-- **Commit from inside `nix develop`.** The `.githooks/pre-commit` hook runs `treefmt --fail-on-change`
-  + `statix` + `deadnix` + `ruff` + `shellcheck`, and those tools are only on PATH in the dev shell —
-  a `git commit` from a bare shell will be rejected with a clear message. (When committing via the
-  Bash tool, use `nix develop --command git commit …`.)
-- **Lint config is curated**: `statix.toml` ignores `.direnv` and disables four lints that fight the
-  project's deliberate idioms (flat `custom.x.y =` config, explicit assignments, `{ ... }:` module
-  signatures, grouping parens). The baseline is clean — keep it that way.
-- Greeter shell programs are `writeShellApplication` (shellcheck runs at build time); standalone
-  example scripts (e.g. the reference keyFetcher) are shfmt-formatted and shellchecked directly.
+- **Issue tracker** — issues and PRDs live in this repo's GitHub Issues
+  (`palebluebytes/host-user-contract`), via the `gh` CLI.
+  See [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
+- **Triage labels** — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
+  `wontfix`. Each canonical role maps to a label of the same name.
+- **Domain docs** — single-context: one `CONTEXT.md` (the glossary) + `docs/adr/` at the root.
+  See [`docs/agents/domain.md`](docs/agents/domain.md).

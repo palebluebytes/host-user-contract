@@ -1,5 +1,5 @@
 {
-  description = "Reference HOST FLEET — a NixOS machine fleet that consumes the contract by binding the reference user fleet (examples/users) per user, turnkey, via bindContractUser + contract.affordances (ADR-0025). It shows the contract's reason to exist: two independently-owned repos (hosts, users) meeting at the binding. Positive-space reference with its own smoke/coherence checks (docs/adr/0022); it never re-bases the contract's synthetic conformance suite.";
+  description = "Reference HOST FLEET — a NixOS machine fleet that consumes the contract by binding the reference user fleet (examples/users) per user, turnkey, via bindContractUser. It shows the contract's reason to exist: two independently-owned repos (hosts, users) meeting at the binding. Positive-space reference with its own smoke/coherence checks; it never re-bases the contract's synthetic conformance suite.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -38,14 +38,15 @@
       };
 
       # Each host lives in its own file (hosts/<name>.nix) and declares only what is DISTINCTIVE —
-      # which users it binds, what it affords them, whether it is a seat or exposed. It gets the
-      # `contract` and the pinned `users` flake, and binds each user with the canonical
-      # `contract.lib.bindContractUser { usersFlake = users; username }` (ADR-0025/0026) — the
-      # turnkey consumption convention: declare `contract.affordances` once, and each user's grant
-      # is DERIVED as `affordances ∩ offer` (the host's affordance is the absolute veto; the user's
-      # offer in the pinned flake completes it). The SAME user bound under different affordances on
-      # different hosts is what makes any-host×any-user real — ada offers gui and gets it only where
-      # gui is afforded. The contract umbrella + the shared base are merged in here.
+      # what the MACHINE can run (`contract.modes`) and what each PERSON may do (their entry in
+      # `contract.lib.bindContractUsers { source; users; }`). Those are the whole consumer surface,
+      # and they are two surfaces rather than one because they answer different questions: a
+      # display is a fact about hardware, and sudo is a judgement about somebody.
+      #
+      # The SAME user bound on different machines is what makes any-host × any-user real — ada is a
+      # desktop account on desk and a terminal one on agent, from one identity and one source,
+      # because the hardware differs and not because anybody decided anything about her. The
+      # contract umbrella + the shared base are merged here.
       mkHost =
         hostFile:
         lib.nixosSystem {
@@ -75,13 +76,12 @@
         };
 
         # The runtime greeter path END-TO-END: a booted seat greeter-provisions ada from her
-        # `-greeter` home output (a sibling of `ada-contractPackage-base`, built from the same user
-        # with the safe-set grant) and observes her real home activate — the runtime half of the
-        # uniform flake-output consumption convention (declarative binds the contractPackage via
-        # bindContractUser, the greeter builds the greeter home), the
-        # counterpart to the declarative binds above. Focused seat node (like the contract's own
-        # greeter-provision-vm), not the full desk host, so the provisioned account never collides with a
-        # declarative one.
+        # ORDINARY published home (`homes.<system>.ada.gui`, the same artifact a declarative bind
+        # would activate) and observes it activate — the runtime half of one consumption
+        # convention. There is no greeter-specific artifact: a grant can never reach a home, so a
+        # greeter-granted home would have nothing to differ in. Focused seat node (like the
+        # contract's own greeter-provision-vm), not the full desk host, so the provisioned account
+        # never collides with a declarative one.
         fleet-integration = import ./integration-vm.nix {
           # The seat scaffolding (boot base + greeter preamble + greetd wiring) is owned by the
           # contract's own mkSeatVM harness; reach it through the `contract` flake input's source
@@ -97,7 +97,11 @@
               contractModule = contract.nixosModules.default;
               greeterModule = contract.nixosModules.greeter;
             }).mkSeatVM;
-          homeActivation = users.homeConfigurations.ada-greeter.activationPackage;
+          # The nested `homes` output, exactly as a greeter's `homeBuilder` reaches it:
+          # `homes.<system>.<user>.<mode>` — with the MODE the greeter selected. `gui` here because
+          # a greeter seat declares `contract.modes = [ "gui" ]`, so it runs { cli, gui } and ada
+          # publishes both.
+          homeActivation = users.homes.${system}.ada.gui.activationPackage;
           identityJson = "${users}/users/ada/identity.json";
           username = "ada";
         };

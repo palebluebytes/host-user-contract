@@ -1,4 +1,4 @@
-# Runtime VM for package policy and daemon restriction (ADR-0017, issue #17). Proves the
+# Runtime VM for package policy and daemon restriction (ADR-0016, issue #17). Proves the
 # full #17 guarantee: a daemon-restricted user (nix-daemon denied) whose contractPackage
 # declares hello + curl, with allowedPrograms = ["hello"], ends up with:
 #   - hello available in PATH (approved + declared)
@@ -10,7 +10,7 @@
 # manifest declares ["hello", "curl"]. The host sets allowedPrograms = ["hello"], so
 # bindContractPackage builds a profile with only pkgs.hello and links it to ~/.nix-profile.
 #
-# A build-time-binding seat (greeter off, CONTEXT.md): it binds the pre-built package (ADR-0016), so
+# A build-time-binding seat (greeter off, CONTEXT.md): it binds the pre-built package (ADR-0011), so
 # ./seat-vm.nix's `greeter = false` boot base + shared synthetic identity are all it needs.
 {
   pkgs,
@@ -36,11 +36,11 @@ let
     echo "daemon-restricted home activated for $USER" > "$HOME/.contract-activated"
     SH
     chmod +x $out/activate
-    cat > $out/contract-requests.json <<'JSON'
+    cat > $out/contract-manifest.json <<'JSON'
     {
-      "version": 1,
+      "version": 4,
       "username": "testuser",
-      "requests": { "gui": { "desktop": "" } },
+      "mode": "cli",
       "packages": ["hello", "curl"]
     }
     JSON
@@ -55,13 +55,15 @@ mkSeatVM {
       (bindContractPackage {
         inherit contractPackage;
         identity = testIdentity;
+        # A host affording nothing runs the floor and only the floor.
+        runs = [ "cli" ];
         # No nix-daemon grant → testuser is daemon-restricted
         grants = { };
       })
     ];
 
     # Package policy: only hello is approved.
-    custom.host.packagePolicy.allowedPrograms = [ "hello" ];
+    contract.packagePolicy.allowedPrograms = [ "hello" ];
 
     # Restrict the Nix daemon to nix-users only (testuser is NOT in nix-users).
     nix.settings.allowed-users = [ "@nix-users" ];

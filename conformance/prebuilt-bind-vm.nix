@@ -1,11 +1,11 @@
-# Runtime VM for the pre-built binding path (ADR-0016, issue #16). Proves that
-# bindContractPackage correctly materializes a user account, bridges feature requests
+# Runtime VM for the pre-built binding path (ADR-0011, issue #16). Proves that
+# bindContractPackage correctly materializes a user account, confers the grant
 # into the realization, and runs the contractPackage's activate script at system activation.
 # The contractPackage is a synthetic derivation: activate writes a marker file, and
-# contract-requests.json carries a gui grant request. After boot, the account exists,
+# manifest freezes the cli mode. After boot, the account exists,
 # the marker is present, and the gui surface decision reflects the bridged request.
 #
-# A build-time-binding seat (greeter off, CONTEXT.md): it binds the pre-built package (ADR-0016), so
+# A build-time-binding seat (greeter off, CONTEXT.md): it binds the pre-built package (ADR-0011), so
 # ./seat-vm.nix's `greeter = false` boot base + shared synthetic identity are all it needs.
 {
   pkgs,
@@ -22,7 +22,7 @@ let
     testIdentity
     ;
 
-  # A synthetic contractPackage: activate writes a marker; JSON carries a gui.desktop request.
+  # A synthetic contractPackage: activate writes a marker; its manifest freezes the cli mode.
   contractPackage = pkgs.runCommand "prebuilt-bind-vm-contract-package" { } ''
     mkdir -p $out
     cat > $out/activate <<'SH'
@@ -31,11 +31,11 @@ let
     echo "prebuilt activated for $USER" > "$HOME/.contract-activated"
     SH
     chmod +x $out/activate
-    cat > $out/contract-requests.json <<'JSON'
+    cat > $out/contract-manifest.json <<'JSON'
     {
-      "version": 1,
+      "version": 4,
       "username": "testuser",
-      "requests": { "gui": { "desktop": "plasma" } },
+      "mode": "cli",
       "packages": []
     }
     JSON
@@ -49,9 +49,15 @@ mkSeatVM {
     (bindContractPackage {
       inherit contractPackage;
       identity = testIdentity;
-      grants = {
-        gui.enable = true;
-      };
+      # What this host runs — the seat harness declares the gui mode, so `runsWith` gives both.
+      # The manifest freezes `cli`, which is in this set, so the coupling guard accepts.
+      runs = [
+        "cli"
+        "gui"
+      ];
+      # Nothing conferred. An ordinary account on a seat needs no grant at all: its session groups
+      # ride the mode the manifest froze, and this kernel writes that onto the account.
+      grants = { };
     })
   ];
 

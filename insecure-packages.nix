@@ -1,5 +1,4 @@
-# The single writer of nixpkgs.config.permittedInsecurePackages (ADR-0002 review,
-# finding 3). `nixpkgs.config` is types.attrs — it SHALLOW-merges, so two modules each
+# The single writer of nixpkgs.config.permittedInsecurePackages. `nixpkgs.config` is types.attrs — it SHALLOW-merges, so two modules each
 # setting permittedInsecurePackages CLOBBER rather than concatenate, and a host's value
 # can silently drop a feature's permit.
 #
@@ -13,7 +12,7 @@
   ...
 }:
 {
-  options.custom.insecurePackages = lib.mkOption {
+  options.contract.insecurePackages = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     default = [ ];
     example = [ "electron-39.8.10" ];
@@ -21,6 +20,6 @@
   };
 
   # The sole writer. Nothing else may set permittedInsecurePackages directly, or the
-  # shallow merge returns: contribute via custom.insecurePackages instead.
-  config.nixpkgs.config.permittedInsecurePackages = lib.unique config.custom.insecurePackages;
+  # shallow merge returns: contribute via contract.insecurePackages instead.
+  config.nixpkgs.config.permittedInsecurePackages = lib.unique config.contract.insecurePackages;
 }

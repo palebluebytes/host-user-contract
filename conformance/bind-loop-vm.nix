@@ -1,4 +1,4 @@
-# Runtime VM: the FULL real bind loop (ADR-0006, issue #2) — the one truly-runtime step every other
+# Runtime VM: the FULL real bind loop — the one truly-runtime step every other
 # greeter test stops short of. greeter-provision-vm/integration-vm drive `provision`/`session` directly with a
 # pre-built home; this drives the actual `contract-greeter-bind` ORCHESTRATOR end-to-end, exactly as a
 # greetd login does: flake URL + username + password on stdin →
@@ -6,12 +6,12 @@
 #   runtime `nix build`) → provision (account realization) → session launch — activating a
 #   secret-free home (the contract handles no secrets beyond the login credential).
 #
-# Two things it needs that the contract leaves to the host (ADR-0008): a `homeBuilder` binding (here a
+# Two things it needs that the contract leaves to the host: a `homeBuilder` binding (here a
 # reference one) and a desktop binding. The fixture user flake's home is a MINIMAL real derivation — an
 # `$out/activate` script, which is all `provision` requires — with no nixpkgs/home-manager input, so the
 # test isolates the bind LOOP and the runtime build is tiny and offline. (A real home-manager home is
-# already proven by the example flake's `home-build` + `greeter-provision`.) The build runs under the
-# greeter's pinned restricted-eval posture (ADR-0014) with no network: the fixture's builder is STATIC
+# already proven by the example user flake's package builds + `greeter-provision`.) The build runs
+# under the greeter's pinned restricted-eval posture with no network: the builder is STATIC
 # busybox (no ELF interpreter, so it execs in the bare build sandbox a raw derivation gives), pre-seeded
 # via system.extraDependencies along with the fetched repo and the signer.
 #
@@ -25,6 +25,8 @@
   greeterModule,
 }:
 let
+  inherit (pkgs) lib;
+
   seatVM = import ./seat-vm.nix {
     inherit
       pkgs
@@ -38,23 +40,37 @@ let
   username = "alice";
   password = "bind-loop-pw";
 
-  # The reference homeBuilder (the host binding ADR-0008 leaves null): given the fetched src + username,
-  # build the user's home THROUGH their flake and print the activation package path. The REAL-SEAT form
-  # is the one-liner below; a real seat runs it under the greeter's restricted-eval NIX_CONFIG (ADR-0014):
+  # The reference homeBuilder (the host binding the contract leaves null): given the fetched src, the
+  # username and THE MODE THE GREETER SELECTED, build the user's home through their flake and print
+  # the activation package path. The REAL-SEAT form is the one-liner below; a real seat runs it under
+  # the greeter's restricted-eval NIX_CONFIG:
   #
-  #   nix build "$src#homeConfigurations.$user.activationPackage" --no-link --print-out-paths --offline
+  #   nix build "$src#homes.$system.$user.$mode.activationPackage" --no-link --print-out-paths --offline
+  #
+  # A greeter binds an ORDINARY home: there is no greeter-specific artifact, so this is a plain
+  # `nix build` against the nested `homes` output, and the home it gets is the one a declarative bind
+  # would get. The MODE is the greeter's own answer, not this binding's — it reads the user's
+  # published modes off the flake's binding index and intersects them with what the seat runs — so
+  # this script ASSERTS the third argument rather than choosing one. That assertion is the runtime
+  # proof of selection: a greeter that went back to hardcoding a mode fails here.
   #
   # THE ONE CONCESSION (and only here): a *nested test VM* cannot realize a fresh sandboxed `nix build`
   # (its store overlay can't mount build inputs, and the contract pins sandbox=true) — so this test binds
-  # a variant that resolves to the home built at TEST-BUILD time (homeDrv, pre-seeded). That keeps the
+  # a contractPackage that resolves to the home built at TEST-BUILD time (homeDrv, pre-seeded). That keeps the
   # BIND LOOP fully real end-to-end — archive, eval-free Tier-1 auth, provision, session — while the home
-  # BUILD itself is proven separately by the example flake's `home-build`. The variant still consumes
-  # $src/$user, so the orchestrator's contract (hand src+user, get an activation path) is exercised intact.
+  # BUILD itself is proven separately by the example user flake's package builds. The stand-in still
+  # consumes $src/$user/$mode, so the orchestrator's contract (hand src + user + the selected mode,
+  # get an activation path) is exercised intact.
   homeBuilder = pkgs.writeShellScript "reference-home-builder" ''
     set -euo pipefail
     src=$1
     user=$2
+    mode=$3
     [ -f "$src/flake.nix" ] || { echo "homeBuilder: '$src' is not a flake" >&2; exit 1; }
+    [ "$mode" = "${selectedMode}" ] || {
+      echo "homeBuilder: the greeter selected '$mode', but this fixture publishes ${lib.concatStringsSep ", " fixtureModes} and a greeter seat runs both — it must select '${selectedMode}'" >&2
+      exit 1
+    }
     printf '%s\n' ${homeDrv}
   '';
 
@@ -71,7 +87,7 @@ let
   # homeBuilder's real `nix build` instantiates the identical drv and finds the output present — a CACHE
   # HIT, no in-VM build. (Sandboxed `nix build` of a fresh derivation inside a nested test VM cannot
   # reliably mount inputs; a real seat builds for real, and the home BUILD itself is proven by the
-  # example flake's `home-build`. This test's job is the bind LOOP, which it drives fully.)
+  # example user flake's package builds. This test's job is the bind LOOP, which it drives fully.)
   busybox = "${pkgs.pkgsStatic.busybox}/bin/busybox";
   homeCmd = "${busybox} mkdir -p $out && ${busybox} cp ${activateScript} $out/activate && ${busybox} chmod +x $out/activate";
   homeDrv = derivation {
@@ -84,26 +100,52 @@ let
       homeCmd
     ];
   };
+  # The published outputs the builder reaches into, in the shape a real users flake publishes them:
+  # `homes.<system>.<user>.<mode>`, beside the `contractUsers` binding INDEX the greeter reads its
+  # modes off.
+  #
+  # THE FIXTURE PUBLISHES BOTH MODES, which is what makes this a proof of SELECTION rather than of
+  # fallback. A greeter seat affords the safe set, so it runs `{ cli, gui }`; the rich mode must
+  # win. If the greeter ever went back to hardcoding a mode, or lost the index read and fell back
+  # to the floor, it would select `cli` and the homeBuilder above would refuse by name.
+  #
+  # Both keys resolve to the SAME derivation: what is under test is which mode the greeter names,
+  # not what the home contains (a bind-loop fixture is a marker-dropping activate script and
+  # nothing graphical).
+  fixtureModes = [
+    "cli"
+    "gui"
+  ];
+  selectedMode = "gui";
   fixtureFlake = pkgs.writeText "flake.nix" ''
     {
-      outputs = { self }: {
-        homeConfigurations.${username}.activationPackage = derivation {
-          name = "bind-loop-home";
-          system = "${system}";
-          builder = "${busybox}";
-          args = [
-            "sh"
-            "-c"
-            "${homeCmd}"
-          ];
+      outputs = { self }:
+        let
+          home.activationPackage = derivation {
+            name = "bind-loop-home";
+            system = "${system}";
+            builder = "${busybox}";
+            args = [
+              "sh"
+              "-c"
+              "${homeCmd}"
+            ];
+          };
+        in
+        {
+          contractUsers.${system}.${username}.modes = [ ${
+            lib.concatMapStringsSep " " (m: ''"${m}"'') fixtureModes
+          } ];
+          homes.${system}.${username} = {
+            ${lib.concatMapStringsSep "\n          " (m: "${m} = home;") fixtureModes}
+          };
         };
-      };
     }
   '';
 
   # The fetched "user repo": flake.nix + a no-input flake.lock (so archive does not regenerate one and
   # change the signed tree) + identity.json (username + a known hashedPassword) + contract.sig, an SSH
-  # signature over the tree manifest the auth recomputes (ADR-0011). Exactly the shape auth verifies.
+  # signature over the tree manifest the auth recomputes. Exactly the shape auth verifies.
   # Signed by the harness's Tier-1 trust anchor (`signer`), whose public key seeds trustedSigners below.
   userRepo =
     pkgs.runCommand "bind-loop-user-repo"
@@ -148,12 +190,12 @@ mkSeatVM {
       nix.settings.substituters = lib.mkForce [ ];
 
       # BIND the greeter's two host bindings: the homeBuilder and a desktop, plus the Tier-1 trust anchor.
-      custom.greeter.tier = "tier1";
-      custom.greeter.trustedSigners = [ signerPub ];
-      custom.greeter.homeBuilder = "${homeBuilder}";
-      custom.greeter.desktops.marker.command =
+      contract.greeter.tier = "tier1";
+      contract.greeter.trustedSigners = [ signerPub ];
+      contract.greeter.homeBuilder = "${homeBuilder}";
+      contract.greeter.desktops.marker.command =
         "${pkgs.coreutils}/bin/touch /home/${username}/.bind-loop-session";
-      custom.greeter.defaultDesktop = "marker";
+      contract.greeter.defaultDesktop = "marker";
 
       # Make the runtime `nix build` a cache hit by copying the needed paths into the VM store: homeDrv's
       # OUTPUT (what the fixture flake's identical derivation resolves to, + its runtimeShell/coreutils
@@ -175,13 +217,21 @@ mkSeatVM {
     machine.fail("getent passwd ${username}")
 
     # Drive the REAL orchestrator exactly as a greetd login: flake URL + username + login password on
-    # stdin. It archives the flake, authenticates eval-free against the Tier-1 signature, builds the
-    # home via the reference homeBuilder, provisions the account, and launches the session.
-    machine.succeed(
+    # stdin. It archives the flake, authenticates eval-free against the Tier-1 signature, SELECTS a
+    # mode by reading the fixture's binding index, builds that home via the reference homeBuilder,
+    # provisions the account, and launches the session.
+    out = machine.succeed(
         "printf '%s\\n%s\\n%s\\n' "
         "'path:${userRepo}' '${username}' '${password}' "
-        "| contract-greeter-bind"
+        "| contract-greeter-bind 2>&1"
     )
+    print(out)
+
+    # SELECTION, observed: the fixture publishes ${lib.concatStringsSep " and " fixtureModes} and a
+    # greeter seat runs both, so the rich mode must win. The homeBuilder refuses any other answer,
+    # so reaching this line at all already proves it — this asserts the greeter SAID so too, which
+    # is what an operator reads when a login goes wrong.
+    assert "binding '${username}' in mode '${selectedMode}'" in out, out
 
     # The full loop landed: account realized, the BUILT home activated (its marker), the session
     # launched (its marker) — a secret-free session.

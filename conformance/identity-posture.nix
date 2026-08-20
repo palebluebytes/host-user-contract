@@ -1,7 +1,7 @@
 # Conformance domain: the OPT-IN identity posture check (issue #35) and, just as load-bearing,
 # the fact that `loadIdentity` itself imposes NO hash policy.
 #
-# ADR-0019 makes the login-credential posture CONDITIONAL and CONSUMER-OWNED: a private repo may
+# ADR-0004 makes the login-credential posture CONDITIONAL and CONSUMER-OWNED: a private repo may
 # legitimately ship `$6$` sha512crypt, a public/shared one wants yescrypt (`$y$`) because its hash
 # is world-readable. So the strength rule is a repo-authoring choice, not a contract invariant —
 # baking yescrypt into the loader would impose one repo's public posture on every consumer,
@@ -18,7 +18,7 @@ let
   # `referenceIdentity` IS `loadIdentity examples/users/users/ada/identity.json` (../conformance/
   # toolkit.nix) — the loader's own output, reused rather than re-loaded, so this domain reads the
   # one load the suite already makes. Ada ships `$y$` yescrypt: `examples/users` lives in a PUBLIC
-  # repo, and ADR-0019 assigns a public/shared repo the yescrypt posture. So the REAL reference
+  # repo, and ADR-0004 assigns a public/shared repo the yescrypt posture. So the REAL reference
   # identity is the SATISFYING case here, and the rejecting case is synthetic.
   #
   # That is the right way round. The value the suite proves the loader returns untouched is a real
@@ -31,7 +31,7 @@ let
     username = "sixto";
     # A syntactically real sha512crypt hash: `$6$<salt>$<hash>`. Nothing verifies it here — the
     # posture is a PREFIX claim about the algorithm, not a crypt() round-trip. Legal under
-    # ADR-0019's PRIVATE-repo posture, which is exactly why it must fail a `yescrypt` requirement
+    # ADR-0004's PRIVATE-repo posture, which is exactly why it must fail a `yescrypt` requirement
     # and pass a `libc` one: the posture is a parameter, not a global rule.
     hashedPassword = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
   };
@@ -60,7 +60,7 @@ in
 {
   assertions = [
     {
-      name = "identity posture: a yescrypt roster satisfies require = \"yescrypt\" (ADR-0019 public/shared)";
+      name = "identity posture: a yescrypt members satisfies require = \"yescrypt\" (ADR-0004 public/shared)";
       ok = passes {
         identities = [ yescryptIdentity ];
         require = "yescrypt";
@@ -75,9 +75,9 @@ in
         });
     }
     {
-      # One offender in an otherwise-yescrypt roster fails it — the check is over EVERY identity,
-      # which is why a repo derives its roster rather than hardcoding a list.
-      name = "identity posture: one non-yescrypt identity fails the whole roster";
+      # One offender in an otherwise-yescrypt members fails it — the check is over EVERY identity,
+      # which is why a repo derives its members rather than hardcoding a list.
+      name = "identity posture: one non-yescrypt identity fails the whole members";
       ok =
         !(passes {
           identities = [
@@ -89,8 +89,8 @@ in
     }
     {
       # The posture is a PARAMETER, not a hardcoded rule: the same `$6$` identity the yescrypt
-      # requirement rejects is legal under the private-repo posture ADR-0019 allows.
-      name = "identity posture: the same `$6$` identity passes require = \"libc\" (the posture is a parameter, ADR-0019 private repo)";
+      # requirement rejects is legal under the private-repo posture ADR-0004 allows.
+      name = "identity posture: the same `$6$` identity passes require = \"libc\" (the posture is a parameter, ADR-0004 private repo)";
       ok = passes {
         identities = [ sha512Identity ];
         require = "libc";
@@ -118,7 +118,7 @@ in
     {
       # A check over nothing would report "ok" forever — the same vacuity trap the confinement
       # check's positive control closes.
-      name = "identity posture: an empty roster is a hard error, never a vacuous pass";
+      name = "identity posture: an empty members is a hard error, never a vacuous pass";
       ok =
         !(passes {
           identities = [ ];
@@ -134,14 +134,14 @@ in
         });
     }
     {
-      # THE ADR-0019 claim: the loader carries no policy. This must be driven by a NON-yescrypt
+      # THE ADR-0004 claim: the loader carries no policy. This must be driven by a NON-yescrypt
       # hash going through the REAL loader, or it proves nothing — a loader that DID bake in the
       # public-repo posture would accept a `$y$` identity just as happily, so asserting over
       # `referenceIdentity` (now yescrypt, since examples/users is a public repo) would pass
       # vacuously. Hence a dedicated `$6$` fixture, loaded rather than hand-written: the loader
       # neither rejected it (a hash policy would throw, taking this whole domain with it) nor
       # rewrote it. A private repo is not forced onto a public repo's posture.
-      name = "loadIdentity imposes no hash policy: it returns a `$6$` identity.json unchanged (ADR-0019, posture is consumer-owned)";
+      name = "loadIdentity imposes no hash policy: it returns a `$6$` identity.json unchanged (ADR-0004, posture is consumer-owned)";
       ok = lib.hasPrefix "$6$" (loadIdentity ./fixtures/private-repo-identity.json).hashedPassword;
     }
   ];

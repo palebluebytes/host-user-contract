@@ -1,19 +1,26 @@
-# The contract's umbrella modules — one per eval-side (ADR-0004 Q2), split out of
-# kit.nix (thermo-nuclear review). Each is closed over the registry projections + option
-# fragments the kit computes, so it depends on neither `self` nor `inputs`. The host
-# imports these and supplies only the `platform` binding (Q7).
+# The contract's umbrella modules — one per eval-side. Each is closed over the option fragments and
+# registry projections the kit computes, so it depends on neither `self` nor `inputs`, which is
+# what lets the contract be a standalone flake.
 {
   lib,
   realization,
   identityOptions,
-  homeProfileOptions,
   grantedOptions,
-  wantedOptions,
-  featureConfigOptions,
+  modeNames,
+  floorMode,
 }:
 {
-  # System kit: the custom.users schema, the exposed-host marker, and the realization +
-  # insecure aggregator. The host imports this.
+  # System kit: the host's declarations, the account schema, and the realization.
+  #
+  # EVERYTHING THE CONTRACT PUTS ON A HOST LIVES UNDER `contract.*` — the declarations an operator
+  # writes and the values the contract writes back. There is no second prefix: `custom.*` said only
+  # "not upstream NixOS", which is not a fact about anything, whereas `contract.users.<u>.granted`
+  # tells a reader exactly where the value came from.
+  #
+  # The user's own declaration also lives under `contract.*`, in its `user.nix`. That symmetry is
+  # deliberate — each party declares its half of the contract under the same word, on its own
+  # eval-side — and it is why the host's display output is `contract.display.enabled` rather than
+  # `contract.gui.*`, which would shadow the user's gui-mode declaration in a reader's head.
   nixosModule =
     { ... }:
     {
@@ -22,117 +29,124 @@
         ./insecure-packages.nix
       ];
 
-      options.custom.users = lib.mkOption {
+      # THE MACHINE CAPABILITY, and the only thing a host says about itself that is not per-user.
+      #
+      # Which session shapes can this box run? A display is a fact about the hardware, not a
+      # judgement about a person — a headless server does not *decline* to give Ada a desktop, it
+      # *cannot* run one. That is incapacity, and it used to be laundered through the per-user
+      # feature namespace as an `affordance`, where it behaved unlike every other entry: the one
+      # feature in the safe set, the one associated with a mode, the one that meant a fact rather
+      # than a policy.
+      #
+      # FAIL-CLOSED, and deliberately the opposite default to the producer's home matrix. A row of
+      # that matrix names only what a system CANNOT build, because an under-bake is silent and
+      # costs a user their session. Here the risk runs the other way: a host that said nothing and
+      # was assumed to run everything would claim a display it may not have, and every machine in
+      # a fleet would silently acquire each new mode as the contract grew. So a host enumerates
+      # what it runs.
+      #
+      # THE FLOOR IS IMPLICIT. Every host runs it, so writing it changes nothing — `runsWith`
+      # filters the registry rather than concatenating this list, which makes the declaration a
+      # SET rather than a sequence: `[ "gui" ]`, `[ "gui" "cli" ]` and `[ "cli" "gui" ]` are one
+      # declaration, order never reaches a diagnostic, and there is no spelling that excludes the
+      # floor. A host that could refuse the floor would break "any host can enable any user".
+      options.contract.modes = lib.mkOption {
+        type = lib.types.listOf (lib.types.enum modeNames);
+        default = [ ];
+        example = [ "gui" ];
+        description = "Session shapes this machine can run, beyond the floor (`${floorMode}`), which every host runs. A capability of the box, not a policy about anybody: what a given account is allowed to DO is `affordances`, stated per bind.";
+      };
+
+      # A bound account, and the whole of it: WHO the user is, WHICH features this host conferred,
+      # and WHICH session shape it was bound in. Written by a bind; an operator never sets it.
+      #
+      # The `mode` is here because the account needs it: a graphical session's input groups ride
+      # the mode rather than a grant, and `accountPlan` unions all three group sources in one
+      # place. It defaults to the floor so an account assembled by hand — a fixture, a host with
+      # its own binding — is a terminal account rather than an error.
+      options.contract.users = lib.mkOption {
         type = lib.types.attrsOf (
           lib.types.submodule {
             options = {
               identity = identityOptions;
               granted = grantedOptions;
-            }
-            // featureConfigOptions;
+              mode = lib.mkOption {
+                type = lib.types.enum modeNames;
+                default = floorMode;
+                description = "The session shape this account was bound in. Written by a bind; it decides which mode groups the account needs.";
+              };
+            };
           }
         );
         default = { };
-        description = "Per-user identity, grants, and feature configuration.";
+        description = "Per-user identity, grants and bound mode, written by a bind.";
       };
-      # contract.affordances (ADR-0025, issue #25): the HOST's voice — the features this host is
-      # willing to grant to users who offer them, declared ONCE per host. Same `{ <feature>.enable
-      # = bool; }` shape as a grant set (grantedOptions). It is the symmetric counterpart of the
-      # user's `contract.requests` and a generalisation of the greeter's safe set (the safe set is
-      # simply the greeter's affordance). Consumed by `bindContractUser` — the sole public consumer
-      # bind (ADR-0026) — which derives each user's grant as `affordances ∩ offer`: a NECESSARY
-      # condition, the host's absolute veto — a feature not afforded is never granted, whatever a
-      # user offers. There is no unilateral direct-grant path: the public grant model is always
-      # negotiated.
-      options.contract.affordances = lib.mkOption {
-        type = lib.types.submodule { options = grantedOptions; };
-        default = { };
-        description = "Features this host affords to users who offer them (ADR-0025); bindContractUser derives each grant as affordances ∩ offer. Same shape as a grant set; the host's absolute veto.";
-      };
-      options.custom.host.exposed = lib.mkEnableOption "an exposed/agent-facing host — a plain fact a user's home may read (via hostFacts) and adapt to; the contract enforces nothing on it";
-      # Package policy inclusion list (ADR-0017, issue #17): after contractPackage activation,
-      # bindContractPackage replaces ~/.nix-profile with a host-built profile containing the
-      # INTERSECTION of this list and the user's package manifest. Programs the user declared
-      # but the host did not allow are absent; programs not in this list are never imposed. An
-      # empty list (the default) means no package policy — ~/.nix-profile is left as-is after
-      # activation. Each name resolves to `pkgs.<name>` from the host's nixpkgs pin; unknown
-      # names are silently dropped (graceful degradation). Effective for users bound via the
-      # pre-built path (bindContractUser and its bindContractPackage kernel), where a daemon-
-      # restricted user's ~/.nix-profile is rebuilt from this list.
-      options.custom.host.packagePolicy.allowedPrograms = lib.mkOption {
+
+      options.contract.exposed = lib.mkEnableOption "an exposed/agent-facing host — a plain fact a host operator records; the contract enforces nothing on it";
+
+      # Package policy inclusion list: after contractPackage activation, a bind replaces
+      # ~/.nix-profile with a host-built profile containing the INTERSECTION of this list and the
+      # user's package manifest. Programs the user declared but the host did not allow are absent;
+      # programs not in this list are never imposed. An empty list (the default) means no package
+      # policy — ~/.nix-profile is left as-is after activation. Each name resolves to `pkgs.<name>`
+      # from the host's nixpkgs pin; unknown names are silently dropped. It matters most for a
+      # daemon-restricted user, whose ~/.nix-profile is otherwise the only store they can reach.
+      options.contract.packagePolicy.allowedPrograms = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
-        description = "Programs the host allows in user sessions (ADR-0017). Each entry resolves to pkgs.<name> from the host's nixpkgs pin. Non-empty enables profile replacement after contractPackage activation.";
+        description = "Programs the host allows in user sessions. Each entry resolves to pkgs.<name> from the host's nixpkgs pin. Non-empty enables profile replacement after contractPackage activation.";
       };
     };
 
-  # Home kit: the identity + home-profile vocabulary + the user's two-part VOICE — which features
-  # it wants (contract.wants) and their parameters (contract.requests). The home identity value is
-  # populated from the system identity by the host.
+  # Home kit: the identity a home is handed. That is the whole of it.
+  #
+  # The user's VOICE is not here — it lives one level up, in `users/<u>/user.nix`, which is not a
+  # home-manager module (see ./contract-user.nix). A home is what a mode's declaration POINTS AT,
+  # so by the time this module is in scope every question about which modes exist and what they
+  # are parameterised by has been answered, and there is nothing left for a home to declare
+  # outward. What a home still needs is who it belongs to, so `git.userName` and friends can read
+  # it rather than each home re-loading identity.json.
+  #
+  # It stays evaluable by BARE `evalModules` with no home-manager present, which is what keeps the
+  # contract free of a home-manager dependency.
   homeModule = _: {
     options.identity = identityOptions;
-    options.custom.home.profiles = homeProfileOptions;
-
-    # contract.wants (ADR-0028, issue #34): the user's ASK, declared in its own home — WHICH
-    # features this user wants of a host, the counterpart of the host's `contract.affordances`
-    # (and the source of the `offer`, which is this set once harvested and published).
-    # `mkContractUser` HARVESTS it off the evaluated home and publishes it as the binding index's
-    # `offer`, so the user's voice lives in ONE place (the home) rather than split between the home
-    # and the producer's flake. `bindContractUser` then derives the grant as `affordances ∩ offer`.
-    #
-    # Same `{ <feature>.enable = bool; }` shape as a grant set (wantedOptions is DERIVED from
-    # grantedOptions) — one shape across wants/affordances/granted/offer, so the grant algebra
-    # needs no normalising shim. NO freeformType: a want for a feature the contract does not
-    # declare is a typo in the user's own repo, and typos must not silently become "offers nothing".
-    # It defaults to the SAFE SET (the runtime-eligible, non-privileged features): a privileged
-    # feature is only ever offered deliberately, and a user wanting no desktop writes
-    # `contract.wants.gui.enable = false`.
-    #
-    # It must be VARIANT-INVARIANT: `contract.wants` may not depend on `hostFacts.granted`, because
-    # the grant is derived FROM the offer — mkContractUser fails the bake if the harvest differs
-    # across a user's baked variants.
-    options.contract.wants = lib.mkOption {
-      type = lib.types.submodule { options = wantedOptions; };
-      default = { };
-      description = "Features this user asks a host for (ADR-0028); mkContractUser harvests it as the binding index's offer and bindContractUser derives the grant as affordances ∩ offer. Same shape as a grant set; defaults to the safe set.";
-    };
-
-    # contract.requests (ADR-0002/0007, issue #5): the typed, read-only namespace a user's
-    # home module POPULATES to describe host-affecting parameters of the features it
-    # wants (e.g. gui.desktop). The host bridges the GRANTED ones from the pre-built manifest
-    # (bindContractPackage) or a dry-run harvest (traceUser); the user only asks, never writes
-    # system state. Its per-feature shape IS the registry's
-    # feature `config` fragments (featureConfigOptions) — the same parameters carried
-    # system-side as custom.users.<u>.<feature>.* today (ADR-0003), now emitted from the
-    # user's own side. Enforcement (ADR-0002's "validate-intent", with its ignore-overreach half
-    # superseded by ADR-0028): the namespace is FULLY typed — a malformed known request
-    # (wrong-typed gui.desktop), a misspelled param within a known feature, and an unknown feature
-    # key all ERROR. The freeformType that once accepted unknown keys for greeter forward-compat is
-    # gone: version skew is handled at the DATA layer (bridgeRequests folds over the HOST's granted
-    # names, so an unknown key is ignored by construction, and the manifest carries a version), so
-    # the freeform's only remaining effect was hiding typos in the user's own repo. Cross-revision
-    # tolerance lives where skew is real — `traceUser`'s permissive inspector mode.
-    options.contract.requests = lib.mkOption {
-      type = lib.types.submodule { options = featureConfigOptions; };
-      default = { };
-      description = "Host-affecting requests this user emits; the host applies the granted ones (mkIf granted). The user populates it; the host reads it.";
-    };
   };
 
-  # Home helper (ADR-0013): auto-surface the user's DESKTOP CHOICE so the greeter's session
-  # launcher can read it. The greeter runs the session BEFORE evaluating the home's Nix, so it
-  # reads the choice from a dotfile (`~/.contract-desktop`, see contract-greeter-session); this
-  # materialises that file from the home's `contract.requests.gui.desktop`, so the portable-user
-  # choice travels with the home and needs NO manual step. It is SEPARATE from `homeModule` (which
-  # is pure schema the headless tracer evaluates with NO home-manager): this sets `home.file`, a
-  # home-manager option, so a real home imports it ALONGSIDE the umbrella inside home-manager. Inert
-  # when no desktop is requested ⇒ the greeter falls back to the seat default. Package-free: it only
-  # references the `home.file` option path (home-manager declares it), never imports home-manager.
-  homeGreeterDesktopModule =
-    { config, ... }:
-    # gui.desktop is a declared request option (always present, defaulting to ""), so read it
-    # directly — no fallback. The empty default is the "no choice ⇒ seat default" case below.
-    lib.mkIf (config.contract.requests.gui.desktop != "") {
-      home.file.".contract-desktop".text = config.contract.requests.gui.desktop;
+  # The HOME BASELINE: the standing, uniform-across-users home-manager hygiene every produced home
+  # starts from. `mkContractHome` composes it by default, and it is also exposed as
+  # `homeModules.baseline` for a consumer building homes by hand. It lives OUTSIDE
+  # `homeModules.default` because it sets home-manager options: the default umbrella must stay
+  # evaluable by bare evalModules with no home-manager.
+  #
+  # HYGIENE IS A PINNED POSTURE, NOT AN OPINION SET: every line is `lib.mkDefault`, so there is no
+  # opt-out knob — a user module's PLAIN definition wins per-option (prio 100 < 1000), while the
+  # pin still beats an upstream option default (prio 1000 < 1500). What earns a line here is
+  # "uniform across users AND worth pinning against upstream churn"; user intent stays out.
+  homeBaselineModule = _: {
+    # Self-manage: the home-manager CLI rides the home it manages — the one line with live effect
+    # today (home-manager does not enable it by default in a standalone homeManagerConfiguration).
+    programs.home-manager.enable = lib.mkDefault true;
+    # PIN: upstream's default is already `true` (the option's apply maps "sd-switch" -> true), so
+    # this line changes nothing TODAY. It is kept to pin the restart-on-switch semantics against
+    # upstream default churn: a home whose services silently stop restarting on switch is a drift
+    # no test catches.
+    systemd.user.startServices = lib.mkDefault "sd-switch";
+  };
+
+  # The DESKTOP dotfile, as a function of the value rather than a module that reads one.
+  #
+  # A greeter runs the session BEFORE evaluating any of the home's Nix, so it reads the user's
+  # desktop choice from a file in the home (`~/.contract-desktop`, see contract-greeter-session).
+  # This materialises that file, so the portable-user choice travels with the home and needs no
+  # manual step — which is also why it cannot move host-side.
+  #
+  # It takes the desktop NAME because the value does not live in the home: the gui mode's
+  # `desktop` parameter is declared in `users/<u>/user.nix`, and `mkContractHome` hands it here
+  # when it composes the gui home. Empty ⇒ nothing is written, and the seat's default is used.
+  homeDesktopModule =
+    desktop: _:
+    lib.optionalAttrs (desktop != "") {
+      home.file.".contract-desktop".text = desktop;
     };
 }

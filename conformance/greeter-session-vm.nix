@@ -1,5 +1,5 @@
-# Runtime VM for the greeter's SESSION RENDER (ADR-0010 step 8) — proves the bound
-# `custom.greeter.desktops.<name>.command` brings up a LIVE graphical session, the render counterpart
+# Runtime VM for the greeter's SESSION RENDER (ADR-0021) — proves the bound
+# `contract.greeter.desktops.<name>.command` brings up a LIVE graphical session, the render counterpart
 # to greeter-provision-vm's session SELECTION (which only checks which command is chosen).
 #
 # A real compositor needs a logind SEAT session for DRM/KMS access — which greetd establishes
@@ -7,7 +7,7 @@
 # live-session posture: greetd's `initial_session` autologins alice into our `contract-greeter-session`
 # launcher (run as the user, so it execs the backend in place), the same shape production uses. QEMU's
 # virtio-gpu gives real DRM (software-rendered via llvmpipe), exactly as nixpkgs' own cage/sway
-# graphical tests do. The compositor is supplied as a TEST binding (the contract ships none, ADR-0004)
+# graphical tests do. The compositor is supplied as a TEST binding (the contract ships none, ADR-0002)
 # — the consumer-renders boundary, like the gui-union VM supplying SDDM/Plasma.
 #
 # The session command is SELF-CONTAINED: the contract does not know or set the session type (wayland
@@ -55,8 +55,8 @@ mkSeatVM {
   # Offer one desktop (the self-contained Wayland command under test). greetd autologins alice into
   # our launcher, which (running AS alice, in greetd's seat session) resolves + execs it.
   seat = {
-    custom.greeter.desktops.wayland.command = backend;
-    custom.greeter.defaultDesktop = "wayland";
+    contract.greeter.desktops.wayland.command = backend;
+    contract.greeter.defaultDesktop = "wayland";
   };
 
   testScript = ''

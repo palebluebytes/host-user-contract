@@ -1,8 +1,8 @@
 # (8) the session launcher: the greeter SELECTS the desktop, the HOST binds the backend.
 # Usage: contract-greeter-session <username> <home-dir>
-# ADR-0013: the contract resolves the user's chosen DESKTOP (surfaced from the bound home as
+# ADR-0021: the contract resolves the user's chosen DESKTOP (surfaced from the bound home as
 # ~/.contract-desktop, else the seat default) against the desktops the SEAT offers, and execs that
-# desktop's command AS the user in greetd's seat session. The contract ships no desktop (ADR-0004).
+# desktop's command AS the user in greetd's seat session. The contract ships no desktop (ADR-0002).
 {
   pkgs,
   lib,
@@ -11,7 +11,7 @@
 }:
 let
   # The desktops this seat offers, baked into a shell `case` the launcher resolves the user's
-  # requested desktop against (ADR-0013). Each arm sets the launch command; the command is
+  # requested desktop against (ADR-0021). Each arm sets the launch command; the command is
   # self-contained — the seat owns the session type, not the contract (ADR-0021).
   desktopArms = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
@@ -39,19 +39,19 @@ pkgs.writeShellApplication {
             esac
           }
 
-          # The user's chosen desktop is surfaced from their home (~/.contract-desktop, materialised from
-          # contract.requests.gui.desktop); absent ⇒ the seat default.
+          # The user's chosen desktop is surfaced from their home (~/.contract-desktop, materialised
+          # by the producer from the gui mode's own `desktop` parameter); absent ⇒ the seat default.
           if [ -f "$home/.contract-desktop" ]; then
             want=$(cat "$home/.contract-desktop")
           else
             want=$defaultDesktop
           fi
 
-          # An un-offered/unknown desktop degrades to the seat default — never breaks the login (ADR-0013).
+          # An un-offered/unknown desktop degrades to the seat default — never breaks the login (ADR-0021).
           dcmd=""
           if ! resolve "$want"; then
             echo "session: desktop '$want' not offered by this seat; using default '$defaultDesktop'" >&2
-            resolve "$defaultDesktop" || { echo "session: no default desktop offered (custom.greeter.desktops/defaultDesktop)" >&2; exit 1; }
+            resolve "$defaultDesktop" || { echo "session: no default desktop offered (contract.greeter.desktops/defaultDesktop)" >&2; exit 1; }
           fi
           [ -n "$dcmd" ] || { echo "session: resolved desktop has no command" >&2; exit 1; }
 
@@ -59,7 +59,7 @@ pkgs.writeShellApplication {
           # and a systemd-user instance — which is greetd's job (it creates the logind seat session and
           # runs this command as the user). So when already the user (greetd's model) exec in place; only
           # drop privs with runuser when invoked by the root orchestrator (which is NOT a seat session —
-          # that path suits headless/marker backends, not a real GPU session). ADR-0010/0013 step 8.
+          # that path suits headless/marker backends, not a real GPU session). ADR-0021.
           if [ "$(id -un)" = "$username" ]; then
             exec env HOME="$home" bash -c "$dcmd"
           else

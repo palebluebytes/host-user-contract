@@ -1,5 +1,5 @@
-# Conformance domain: the reference greeter module (ADR-0008, issue #2) and the Tier-1 restricted-eval
-# posture it applies (ADR-0014). Eval-level claims (the present-but-unbound litmus, the FIXED safe-set
+# Conformance domain: the reference greeter module — the NORTH-STAR path — and the Tier-1
+# restricted-eval posture it applies. Eval-level claims (the present-but-unbound litmus, the FIXED safe-set
 # grant, the pinned eval posture) plus two EXECUTION proofs built as sub-derivations: the eval-free
 # auth flow and the restricted-eval enforcement. Returns those drvs so ./default.nix builds them.
 {
@@ -7,7 +7,8 @@
   pkgs,
   toolkit,
   greeterModule,
-  greeterGrants,
+  greeterAffordances,
+  runsWith,
   safeSet,
   tier1EvalConfig,
   renderNixConfig,
@@ -15,18 +16,26 @@
 let
   inherit (toolkit) eval;
 
-  # The opt-in greetd + eval-free-bind + provision module. Present-but-UNBOUND must turn nothing on;
-  # ENABLED it wires greetd to the contract bind command with the grant FIXED to the safe set.
+  # The opt-in greetd + eval-free-bind + provision module. Present-but-UNBOUND must turn nothing
+  # on; ENABLED it wires greetd to the contract bind command, conferring the (empty) safe set.
   greeterUnbound = eval [ greeterModule ];
-  greeterBound = eval [
-    greeterModule
-    {
-      custom.greeter.enable = true;
-      custom.greeter.homeBuilder = "/run/current-system/sw/bin/true";
-    }
-  ];
+  seat =
+    modes:
+    eval [
+      greeterModule
+      {
+        contract.modes = modes;
+        contract.greeter.enable = true;
+        contract.greeter.homeBuilder = "/run/current-system/sw/bin/true";
+      }
+    ];
+  # A seat WITH a display, and one without. The pair is the point: what a greeter offers a stranger
+  # is now a property of the machine, so these two must differ — and before the machine capability
+  # existed they could not.
+  greeterBound = seat [ "gui" ];
+  greeterHeadless = seat [ ];
 
-  # The auth-flow EXECUTION test (ADR-0008 condition 1, the CANONICAL eval-free auth): pull the
+  # The auth-flow EXECUTION test (the CANONICAL eval-free auth): pull the
   # actual shipped `contract-greeter-auth` script out of the enabled greeter's systemPackages and
   # run it against the reference user ada's identity.json. It must accept the right password and
   # reject a wrong one / a mismatched username — having read only data (`jq` + libc crypt), never
@@ -67,14 +76,14 @@ let
           echo "FAIL: a mismatched username was accepted" >&2; exit 1
         fi
 
-        # --- sha512crypt hash format (issue #22, ADR-0019) ---
+        # --- sha512crypt hash format ---
         # The auth script re-hashes with libc crypt (via perl), which is ALGORITHM-AGNOSTIC: it
         # reads the stored `$id$` prefix and applies the matching KDF, exactly as /etc/shadow does.
         # Proving that needs both branches driven, so the two fixtures are deliberately split by
         # algorithm:
         #   - ada (above) carries $y$ yescrypt — the REAL reference identity, since examples/users
-        #     is a public repo and ADR-0019 assigns a public repo the yescrypt posture;
-        #   - this synthetic fixture carries $6$ sha512crypt — legal under ADR-0019's PRIVATE-repo
+        #     is a public repo, and a public repo takes the yescrypt posture;
+        #   - this synthetic fixture carries $6$ sha512crypt — legal under the PRIVATE-repo
         #     posture, and the branch a roaming user from a private repo will arrive with.
         # A format-handling regression on either therefore cannot pass conformance unnoticed. The
         # cleartext is the same canonical secret; only the stored format differs.
@@ -97,10 +106,10 @@ let
           echo "FAIL: a wrong password was accepted against the sha512crypt fixture" >&2; exit 1
         fi
 
-        # --- Tier 1: the repo must be SIGNED by a host-trusted key (ADR-0006) ---
+        # --- Tier 1: the repo must be SIGNED by a host-trusted key ---
         # Build a signed source: the example identity.json + an SSH signature over the tree
         # manifest (exactly what the auth script recomputes and verifies), plus the allowed-signers
-        # file a host would derive from custom.greeter.trustedSigners.
+        # file a host would derive from contract.greeter.trustedSigners.
         ssh-keygen -q -t ed25519 -N "" -C trusted -f trusted
         ssh-keygen -q -t ed25519 -N "" -C attacker -f attacker
         mkdir signed
@@ -131,7 +140,7 @@ let
         echo "eval-free auth flow OK" ; touch $out
       '';
 
-  # The restricted-eval EXECUTION test (ADR-0014): prove the contract's PINNED Tier-1 posture, when
+  # The restricted-eval EXECUTION test: prove the contract's PINNED Tier-1 posture, when
   # rendered to NIX_CONFIG exactly as the greeter hands it to the homeBuilder, actually RESTRICTS a
   # real Nix eval — not just that the attrset spells the right words. We run the very renderer the
   # greeter uses (renderNixConfig tier1EvalConfig) into NIX_CONFIG, then evaluate a hostile
@@ -176,19 +185,19 @@ in
 
   assertions = [
     {
-      # The greeter grant (ADR-0006/0008): default-open over the safe set — it enables exactly
+      # What a greeter affords: default-open over the safe set — it enables exactly
       # the runtime-eligible features, no operator choice, no more.
-      name = "greeterGrants: enables exactly the safe set (default-open, nothing beyond it)";
+      name = "greeterAffordances: exactly the safe set (default-open, nothing beyond it)";
       ok =
-        (lib.sort (a: b: a < b) (lib.attrNames greeterGrants) == lib.sort (a: b: a < b) safeSet)
-        && lib.all (n: greeterGrants.${n}.enable) (lib.attrNames greeterGrants);
+        (lib.sort (a: b: a < b) (lib.attrNames greeterAffordances) == lib.sort (a: b: a < b) safeSet)
+        && lib.all (n: greeterAffordances.${n}) (lib.attrNames greeterAffordances);
     }
     {
-      # ADR-0008 conformance condition (3): a greeter grants AT MOST the safe set, so a
+      # A greeter affords AT MOST the safe set, so a
       # runtime-bound user can never receive a privileged-group feature — escalation is
       # impossible by construction, not by a deny rule.
-      name = "greeterGrants: grants no privileged-group feature (no escalation)";
-      ok = lib.all (f: !(lib.elem f (lib.attrNames greeterGrants))) [
+      name = "greeterAffordances: affords no privileged-group feature (no escalation)";
+      ok = lib.all (f: !(lib.elem f (lib.attrNames greeterAffordances))) [
         "containers"
         "sudo"
         "virtualization"
@@ -196,7 +205,7 @@ in
       ];
     }
     {
-      # ADR-0008 litmus: the greeter ships in the eval but a host that does not enable it gets
+      # The litmus: the greeter ships in the eval but a host that does not enable it gets
       # nothing — greetd stays off, no seat is bound.
       name = "greeter: present-but-unbound turns nothing on (greetd disabled)";
       ok = !greeterUnbound.services.greetd.enable;
@@ -208,22 +217,55 @@ in
         && lib.hasInfix "contract-greeter-bind" greeterBound.services.greetd.settings.default_session.command;
     }
     {
-      # ADR-0008 condition 3: the runtime grant is FIXED to the safe set — not an operator choice,
+      # The runtime affordance is FIXED to the safe set — not an operator choice,
       # impossible to widen here. So a greeter login can never receive a privileged feature.
-      name = "greeter: the runtime grant is fixed to greeterGrants (the safe set), unwidenable";
+      name = "greeter: what a seat affords is fixed to the safe set, unwidenable";
       ok =
-        greeterBound.custom.greeter.grants == greeterGrants
-        && !(lib.elem "containers" (lib.attrNames greeterBound.custom.greeter.grants));
+        greeterBound.contract.greeter.affordances == greeterAffordances
+        && !(lib.elem "containers" (lib.attrNames greeterBound.contract.greeter.affordances));
     }
     {
-      # The home BUILD is the host's binding (ADR-0008 "the host supplies only bindings") —
+      # …and therefore what a seat RUNS. Derived from the affordances by the same function a
+      # declarative bind uses, so the two paths cannot come to different answers about what this
+      # machine can run — which is what makes a walk-up login and a declared one the same
+      # experience. Because `gui` is the one feature conferring no privileged group, a greeter seat
+      # runs the graphical mode for everybody: "gui by default", with nothing declared on either
+      # side.
+      name = "greeter: the modes a seat runs are derived from what it affords (the same derivation a bind uses)";
+      ok =
+        greeterBound.contract.greeter.runs == runsWith [ "gui" ]
+        && lib.elem "gui" greeterBound.contract.greeter.runs;
+    }
+    {
+      # THE BUG THE MACHINE/PERSON SPLIT FIXES, pinned so it cannot come back: a greeter on a
+      # machine that declares no display must not claim to run a graphical session. Before
+      # `contract.modes` existed there was no way to express this — the run set was a CONSTANT
+      # (`runsFor safeSet`), identical on every host — so a headless seat would select a walk-up
+      # user's gui home and fail at the `nix build`, at a login prompt, with a raw error.
+      name = "greeter: a seat that declares no display runs the floor alone";
+      ok = greeterHeadless.contract.greeter.runs == runsWith [ ];
+    }
+    {
+      # SELECTION IS SINGLE-SOURCED. The greeter does not re-spell `selectModeOver` in shell: it
+      # ships `contract-select-mode`, which evaluates the contract's own kernel at login. The
+      # wiring is what needs asserting here — that the tool is actually on the seat — because a
+      # rule with two spellings is a rule with two behaviours, and the one it replaced had already
+      # drifted on the two-incomparable-modes case. The kernel's own cases are proven at eval level
+      # in ./modes.nix; that the greeter USES it is proven by the bind-loop VM.
+      name = "greeter: a seat ships the mode-selection evaluator (selection is not re-spelled in shell)";
+      ok = lib.any (
+        p: lib.hasInfix "contract-select-mode" "${p}"
+      ) greeterBound.environment.systemPackages;
+    }
+    {
+      # The home BUILD is the host's binding ("the host supplies only bindings") —
       # null by default because it needs home-manager, which the contract does not depend on.
       name = "greeter: the home builder is an unbound host binding (null by default)";
-      ok = greeterUnbound.custom.greeter.homeBuilder == null;
+      ok = greeterUnbound.contract.greeter.homeBuilder == null;
     }
     {
-      # ADR-0014: the contract PINS the Tier-1 eval posture. accept-flake-config=false is the
-      # un-widenable linchpin (ADR-0011 applied to eval: a repo cannot self-certify its eval by
+      # The contract PINS the Tier-1 eval posture. accept-flake-config=false is the
+      # un-widenable linchpin (a repo cannot self-certify its eval by
       # declaring its own nixConfig); the rest are restrict-eval, no IFD, and a sandboxed build.
       name = "tier1 eval: the posture forbids the repo widening its own eval (accept-flake-config=false)";
       ok = tier1EvalConfig.accept-flake-config == false;
@@ -249,7 +291,7 @@ in
       # The greeter EXPOSES the posture it will apply (read-only introspection, like `grants`) — fixed
       # to the contract's tier1EvalConfig, so an operator can audit the eval floor a login builds under.
       name = "greeter: it exposes the pinned tier1 eval posture, unwidenable (== tier1EvalConfig)";
-      ok = greeterBound.custom.greeter.tier1EvalConfig == tier1EvalConfig;
+      ok = greeterBound.contract.greeter.tier1EvalConfig == tier1EvalConfig;
     }
   ];
 }

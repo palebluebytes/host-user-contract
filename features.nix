@@ -1,78 +1,57 @@
-# The feature registry — the SINGLE source of truth for the contract's feature
-# vocabulary (ADR-0001, mechanic 2). One entry per feature; every other feature
-# surface the contract exposes (the `granted.*` grant options, `featureGroups`, the
-# user-owned `featureConfig` options, the imported feature modules, and the derived
-# safe set) is a PROJECTION of this map — see contract/default.nix. Adding a feature
-# is a single edit here, and the keys can never drift across the projections because
-# there is only one set of keys.
+# The FEATURE registry — the SINGLE source of truth for the contract's feature vocabulary. One
+# entry per feature; every other feature surface the contract exposes (the host's `affordances`
+# argument, the account's `granted.*` options, `featureGroups`, the privileged-group clamp list and
+# the derived safe set) is a PROJECTION of this map. Adding a feature is a single edit here, and
+# the keys can never drift across the projections because there is only one set of keys.
+#
+# A FEATURE is a POWER a host confers on a PERSON at activation — policy about an account, decided
+# per bind. It is deliberately NOT the other kind of thing a host has to say: whether this MACHINE
+# can run a graphical session is a capability of the box, not a judgement about anybody, and it is
+# declared once as `contract.modes` (see `modes.nix`). Collapsing the two put a machine capability
+# in a per-user policy namespace, where it behaved unlike every other entry here.
+#
+# EVERY FEATURE IN THIS REGISTRY IS PRIVILEGED, and that is a property worth reading off the file
+# rather than a coincidence: with the display capability gone, what is left is exactly the set of
+# powers that need a deliberate, per-person decision. It is why `safeSet` — the features a greeter
+# may confer on a stranger — is currently EMPTY, and why a greeter grants nothing at all.
 #
 # The contract handles NO secrets beyond the login credential: a feature never pulls a
 # secret onto a host and the contract never re-keys or owns user key material (a user's
 # own home secrets ride the user's own key, provisioned by the user's own home module).
 #
 # Per-entry shape (all fields optional except `grant`):
-#   grant            : mkEnableOption description for `custom.users.<u>.granted.<f>`
+#   grant            : mkEnableOption description for `contract.users.<u>.granted.<f>`
 #   privilegedGroups : groups the grant confers that are SECURITY-CRITICAL — a user can
 #                      never self-escalate into these by declaring them in identity.extraGroups;
 #                      the realization clamps them out and only restores them via a grant.
 #                      A feature with any privilegedGroups is build-time-only (excluded from
-#                      the safe set and never auto-granted by the greeter). kit.nix derives
+#                      the safe set and never auto-afforded by the greeter). kit.nix derives
 #                      the system-wide `privilegedGroups` clamp list from these.
 #   groups           : NON-PRIVILEGED groups the grant confers — self-declaration in
-#                      identity.extraGroups is safe, but the grant is still the canonical
-#                      path. Features with only these may be runtime-eligible (safe set).
-#   config           : user-owned option fragment merged into `custom.users.<u>` — the
-#                      feature's *parameters* (host-affecting ones aggregate, ADR-0003).
-#   homeAffecting    : this grant may change the CONTENT of a user's home, so a home may see it
-#                      in `hostFacts.granted` and fan out on it — and a producer bakes a variant
-#                      per subset of these (ADR-0028). Absent/false (the default) means the grant
-#                      confers host-side powers ONLY (a privileged group), so it rides the bind
-#                      and can never multiply variants. Declared, not derived: "does a grant reach
-#                      home content?" is a property of the feature, not of its group list — a
-#                      privileged feature could one day ship home content, and a group-conferring
-#                      one need not. kit.nix derives the `homeAffecting` public surface from these.
-{ lib }:
+#                      identity.extraGroups is safe, but the grant is still the canonical path. A
+#                      feature with ONLY these is runtime-eligible (the safe set), which no entry
+#                      is today. Session-shaped groups (a display's input devices) are NOT here:
+#                      they belong to the MODE that needs them (`modes.nix`).
+#
+# A feature has NO PARAMETERS. It is a bare capability — a set of groups a host confers — and the
+# one parameter the contract ever carried (`gui.desktop`) turned out to describe a SESSION rather
+# than a capability, so it lives on the gui MODE (`modes.nix`) where the thing it parameterises is.
+# That is why `contract.users.<u>` carries only an identity, a grant set and the mode it was bound
+# in: there is nothing else about
+# a feature for a bind to bridge.
+#
+# EVERY GRANT RIDES THE BIND. A grant is a host-side effect conferred on the ACCOUNT at activation,
+# over whatever home already exists — so a grant can NEVER change a home, and one home serves
+# granted and ungranted alike, for every feature without exception. There is no per-feature flag
+# saying otherwise. What CANNOT be conferred at activation is home CONTENT, which cannot be
+# injected into a sealed derivation; that is a MODE, and homes are keyed by mode rather than by a
+# combination of grants.
 {
-  # gui: desktop environment. Its host effects are two contract-neutral things only —
-  # the display-surface-needed flag (realization → custom.gui.surface.enabled) and the
-  # non-privileged input groups below. Everything device/package/layout-specific (uinput,
-  # keyboard layout, app permits, the display backend AND the session type) is a HOST
-  # binding (gui-desktop.nix + the user's glue), so the contract has no gui *module* and is
-  # display-server-agnostic (ADR-0021). In the safe set: no secret, no privileged group.
-  gui = {
-    grant = "the GUI feature for this user (host grant)";
-    # The one feature with a HOME channel (ADR-0028): it carries user-emitted request params and a
-    # desktop's home content, so a home may legitimately branch on the gui grant — hence a home may
-    # SEE it in hostFacts.granted, and a producer whose home fans out bakes a gui variant.
-    homeAffecting = true;
-    groups = [
-      "input"
-      "uinput"
-      "plugdev"
-      "dialout"
-    ];
-    config = {
-      # gui.desktop: which DESKTOP this user logs into (ADR-0013). FREE-FORM and DE-agnostic by
-      # design — the contract carries the user's opaque preference (so it travels with the home:
-      # same desktop on any seat that offers it, the portable-user north star); the SEAT maps the
-      # name to a real DE and its launch (custom.greeter.desktops at a greeter), and an
-      # un-offered/empty name degrades to the seat default. NEVER names a system package. The
-      # session type (wayland/x11) is NOT a contract concern at all — the seat's launch owns it
-      # (ADR-0021); the contract carries only the desktop NAME.
-      gui.desktop = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-        description = "Desktop this user logs into; a free-form name the seat maps to an offered desktop and its launch (ADR-0013). Empty ⇒ the seat default. Session type is the seat's concern, not the contract's (ADR-0021).";
-      };
-    };
-  };
-
   # containers: privileged container-runtime access — the docker/podman groups. Both are
   # root-equivalent (the docker socket runs containers that mount the host fs as root), so a user
-  # can never obtain them by declaring them in identity.extraGroups; only this grant does. Split
-  # from the retired `workstation` role (ADR-0024), which coarsely bundled docker/podman AND wheel:
-  # container access is now its own atomic capability, composed with `sudo` (wheel) rather than
-  # fused to it, so "containers without sudo" (a hardened build account) is expressible.
+  # can never obtain them by declaring them in identity.extraGroups; only this grant does. Container
+  # access is its own atomic capability, composed with `sudo` (wheel) rather than fused to it, so
+  # "containers without sudo" (a hardened build account) is expressible.
   containers = {
     grant = "container runtime (docker/podman) access for this user (host grant)";
     privilegedGroups = [
@@ -83,19 +62,18 @@
 
   # sudo: administrative (wheel) access and nothing more — the MINIMAL privileged grant. Each
   # privileged-group feature confers ONE concern's groups (contrast `containers` above, docker/
-  # podman), so a host composes them (`sudo` + `containers`) instead of granting one coarse role
-  # — the retired `workstation` fused all three (ADR-0024). wheel is privileged, so like every
-  # privileged-group feature it is build-time-only and excluded from the safe set — never a
-  # greeter auto-grant. A user can never obtain wheel by declaring it in identity; the clamp
-  # drops it (ADR-0001 threat model) and only this grant restores it.
+  # podman), so a host composes them (`sudo` + `containers`) instead of granting one coarse role.
+  # wheel is privileged, so like every privileged-group feature it is build-time-only and excluded
+  # from the safe set — never afforded by a greeter. A user can never obtain wheel by declaring it
+  # in identity; the clamp drops it and only this grant restores it.
   sudo = {
     grant = "wheel/sudo administrative access for this user (host grant)";
     privilegedGroups = [ "wheel" ];
   };
 
-  # virtualization: the privileged disk/libvirtd/qemu-libvirtd groups, split out of gui
-  # (slice 11) so gui stays in the safe set — these are build-time-only, never auto-
-  # granted at a greeter. (kvm is reserved in kit.nix but not yet conferred by any feature.)
+  # virtualization: the privileged disk/libvirtd/qemu-libvirtd groups. Build-time-only, and never
+  # afforded at a greeter — running VMs is a power somebody decided you should have, not a property
+  # of the machine. (kvm is reserved in kit.nix but not yet conferred by any feature.)
   virtualization = {
     grant = "privileged virtualization groups for this user (host grant)";
     privilegedGroups = [
@@ -108,10 +86,10 @@
   # nix-daemon: access to the Nix daemon socket for this user. Confers `nix-users` group
   # membership — the host wires `nix.settings.allowed-users = ["@nix-users"]` so only
   # members of this group may talk to the daemon. `nix-users` is in `privilegedGroups`
-  # (so the clamp drops self-declared daemon access), making this build-time-only — the
-  # greeter NEVER auto-grants daemon access (ADR-0017). A user denied this feature is
-  # daemon-restricted: they cannot build derivations, install packages, or add store paths
-  # beyond what the host placed there when activating their contractPackage.
+  # (so the clamp drops self-declared daemon access), making this build-time-only — a greeter NEVER
+  # affords daemon access. A user without this feature is daemon-restricted: they cannot build
+  # derivations, install packages, or add store paths beyond what the host placed there when
+  # activating their contractPackage.
   nix-daemon = {
     grant = "access to the Nix daemon for this user (host grant)";
     privilegedGroups = [ "nix-users" ];
