@@ -144,6 +144,25 @@ mkSeatVM {
     # Tier 2 (ephemeral) provisioning is designed-for but DEFERRED — the helper refuses it.
     machine.fail("contract-greeter-provision someone-else ${identityJson} ${activationStub} tier2 ${seatMode}")
 
+    # ARITY IS THE INTERFACE: five positional arguments, in a fixed order. A drifted caller must be
+    # told SO — this guard exists for legibility, not for catching drift earlier, since the fleet VM
+    # already caught it.
+    #
+    # So the claim is about the MESSAGE, not just the exit status: `set -u` already failed a
+    # four-argument call with `$5: unbound variable`, so a bare `machine.fail` would pass against
+    # the very behaviour this replaced and prove nothing (ADR-0022 — a negative claim that cannot
+    # fail for the right reason is vacuous). stderr is captured to a file rather than piped, because
+    # the helper runs under `pipefail` and a pipeline would conflate "refused" with "grep found it".
+    # The five-argument call above is the positive control: this arity, and only this one, works.
+    machine.fail("contract-greeter-provision example ${identityJson} ${activationStub} tier1 2> /tmp/arity-few.err")
+    machine.succeed("grep -q 'expected 5 arguments, got 4' /tmp/arity-few.err")
+    machine.succeed("grep -q 'usage: contract-greeter-provision' /tmp/arity-few.err")
+
+    # …and the other direction, which `set -u` could never catch: a SIXTH argument was silently
+    # ignored, so a caller passing one had no way to learn it was not being read.
+    machine.fail("contract-greeter-provision example ${identityJson} ${activationStub} tier1 ${seatMode} extra 2> /tmp/arity-many.err")
+    machine.succeed("grep -q 'expected 5 arguments, got 6' /tmp/arity-many.err")
+
     print(machine.succeed("id example; getent passwd example"))
   '';
 }
