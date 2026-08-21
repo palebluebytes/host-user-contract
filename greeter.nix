@@ -5,19 +5,13 @@
 # display. Nothing about the USER is declared in advance on either side: they are a stranger to
 # this machine until they type their URL.
 #
-# This is the "reference & replaceable program" half: the greetd integration, the eval-free auth
-# flow, mode selection, and the privileged runtime-provisioning helper. It is opt-in
-# (`contract.greeter.enable`) — a seat host enables it, a headless host simply never does (incapacity,
-# not a ban). It is the ONE place the contract ships scripts that reference real packages; that does
-# NOT break the package-free invariant, because those packages come from the HOST's `pkgs` at
-# module-eval time — the contract FLAKE still inputs only nixpkgs `lib`. A host may disable this
-# module and supply its own greeter program (its own UI, greetd integration, provisioning policy) as
-# long as it honours the canonical mechanism:
-#   (1) authenticate EVAL-FREE on identity.json before any user Nix runs,
-#   (2) SELECT the session shape from what the user publishes and what this seat runs, build that
-#       home output (the homeBuilder binding, under the tier's restricted-eval posture) and realize
-#       the account via `provision`,
-#   (3) confer AT MOST the safe set — which is empty, so: confer nothing.
+# This is the "reference & replaceable program" half (ADR-0017): the greetd integration, the
+# eval-free auth flow, mode selection, and the privileged runtime-provisioning helper. Opt-in
+# (`contract.greeter.enable`) — a headless host simply never enables it, which is incapacity, not a
+# ban. It is the ONE place the contract ships scripts that reference real packages, and that does
+# NOT break the package-free invariant: those packages come from the HOST's `pkgs` at module-eval
+# time, so the contract FLAKE still inputs only nixpkgs `lib` (ADR-0002). A host may swap this
+# module for its own program as long as it honours ADR-0017's three conformance conditions.
 #
 # The flow ("data before code" — authenticate on inert data before running any Nix) is one
 # program per step, each in ./greeter/ so this module stays a thin schema + wiring layer:
@@ -31,14 +25,12 @@
 #   7. provision: FULLY realize the account + activate the home — CRUX        — ./greeter/provision.nix
 #   8. launch the session — the user's chosen DESKTOP                        — ./greeter/session.nix
 #
-# Runtime grant effects are a STANDING greeter-seat baseline, not a per-login rebuild: this module
-# declares the safe set's group memberships + a `greeter-users` marker group, and `provision`
-# enrolls the account into them. `provision` is the runtime, shell-side equivalent of
-# `realization.nix`: it fully realizes the account from identity.json + the selected mode's groups
-# (password, authorizedKeys, GECOS, the CLAMPED safe groups) so a greeter user realizes
-# IDENTICALLY to a build-time one — modulo the `greeter-users` seat marker, which is seat
-# infrastructure layered on top, not part of the portable account — the portable-user north star:
-# same identity, any seat, same experience.
+# Runtime grant effects are a STANDING greeter-seat baseline, not a per-login rebuild (ADR-0018):
+# this module declares the safe set's group memberships + a `greeter-users` marker group, and
+# `provision` enrolls the account into them. `provision` is the runtime, shell-side equivalent of
+# `realization.nix`, so a greeter user realizes IDENTICALLY to a build-time one — modulo the
+# `greeter-users` marker, which is seat infrastructure rather than part of the portable account
+# (ADR-0020).
 {
   lib,
   modeRegistry,

@@ -1,14 +1,9 @@
 # The diagnostic module: the ONE owner of what the contract says when it refuses.
 #
 # An error message is the contract's interface at the moment it matters most — the reader has
-# already lost, and the message is the whole of what they get. It was also the least consistent
-# surface here: 32 hand-rolled `assertMsg`/`throw` sites across `lib.nix` and `check-kit.nix`, with
-# FOUR conventions for naming the offending function (a `context` argument, a hardcoded literal, a
-# `name ?` parameter, and one function naming its caller), list rendering inlined fifteen times, two
-# separators, three quoting styles, and one recurring rationale retyped five times.
-#
-# So the shape is stated once and the sites state only their own facts. Every diagnostic answers the
-# same four questions, in the same order:
+# already lost, and the message is the whole of what they get. So the SHAPE is stated once here and
+# the sites state only their own facts. Every diagnostic answers the same four questions, in the
+# same order:
 #
 #   who      which function is refusing — the PUBLIC name a caller knows it by, which is not always
 #            the function raising the error (the home-matrix kernel is internal, so it says
