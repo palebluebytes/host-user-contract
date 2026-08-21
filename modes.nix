@@ -5,36 +5,28 @@
 # names, the key a home is published under) is a PROJECTION of this map.
 #
 # A MODE is the SESSION SHAPE a home is BUILT FOR — and, on the host side, a CAPABILITY OF THE
-# MACHINE. Those are the same vocabulary because they are the same question asked from two ends:
-# "can this box run a graphical session?" and "was this home built for one?" A host that cannot run
-# a shape simply does not offer it, which is incapacity rather than policy — and that is exactly
-# what distinguishes a mode from a FEATURE (`features.nix`), which is a power somebody decided a
-# particular person should have.
-#
-# THE TWO REGISTRIES TOUCH NOWHERE. A mode used to name the feature a host afforded in order to run
-# it, which meant a machine capability had to be laundered through a per-user policy namespace; the
-# host now declares its modes directly, so there is no association left to keep in step.
+# MACHINE. One vocabulary, because they are one question asked from two ends, and incapacity rather
+# than policy, which is what distinguishes a mode from a FEATURE (ADR-0007). THE TWO REGISTRIES
+# TOUCH NOWHERE: no entry here names a feature.
 #
 # Modes are MUTUALLY EXCLUSIVE — a home is built for exactly one — which is why N modes yield at
-# most N homes per user rather than 2ⁿ, and why `homes` is keyed by a mode NAME rather than a set.
+# most N homes per user rather than 2ⁿ, and why `homes` is keyed by a mode NAME rather than a set
+# (ADR-0012).
 #
 # Per-entry shape:
 #   description : what this session shape IS, in the user's own vocabulary. It is the description
 #                 of the user's `contract.<mode>.enable` option, so the word a user reads when
 #                 declaring a mode and the word the contract uses for it are one string.
-#   floor       : OPTIONAL, default false. This mode is the FLOOR — the one every host runs, that
-#                 every selection falls back to, and that no host has to declare. EXACTLY ONE mode
-#                 carries it; zero or two is a named error (`floorOf` in lib.nix), because a
-#                 selection with no floor has no fallback and one with two has no answer.
+#   floor       : OPTIONAL, default false. This mode is the FLOOR (ADR-0007). EXACTLY ONE mode
+#                 carries it; zero or two is a named error (`floorOf` in lib.nix).
 #   groups      : OPTIONAL. Groups an account needs IN ORDER TO RUN this session shape. They ride
-#                 the SELECTED MODE, not a grant: a graphical session needs its input devices by
-#                 virtue of being graphical, and nobody should have to decide that per person.
-#                 Non-privileged by construction — a mode is a capability, never a power, so a
-#                 privileged group here would be an escalation the clamp exists to stop.
+#                 the SELECTED MODE, not a grant (ADR-0006). Non-privileged by construction — a
+#                 mode is a capability, never a power, so a privileged group here would be an
+#                 escalation the filter exists to stop.
 #   display     : OPTIONAL, default false. Running this mode needs a shared DISPLAY SURFACE on the
 #                 host. A registry FLAG rather than a literal in the realization, for the same
 #                 reason `floor` is one: a mode name inside the derivation would make this map
-#                 decorative and a third mode a code change.
+#                 decorative (ADR-0009).
 #   options     : OPTIONAL. The mode's own PARAMETERS, merged into `contract.<mode>` beside
 #                 `enable` and `configuration`. Parameters live on the thing they parameterise: a
 #                 desktop NAME is a property of the graphical session, not of the account.
@@ -60,8 +52,8 @@
   # than a judgement about who is running it.
   gui = {
     description = "the GUI mode — a graphical desktop session";
-    # The input devices a graphical session drives. All non-privileged: self-declaring them in
-    # identity.extraGroups would be safe, and the clamp leaves them alone.
+    # The input devices a graphical session drives. All non-privileged, so the privileged-group
+    # filter `accountPlan` runs over them leaves them alone (ADR-0006).
     groups = [
       "input"
       "uinput"

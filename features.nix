@@ -5,53 +5,29 @@
 # the keys can never drift across the projections because there is only one set of keys.
 #
 # A FEATURE is a POWER a host confers on a PERSON at activation — policy about an account, decided
-# per bind. It is deliberately NOT the other kind of thing a host has to say: whether this MACHINE
-# can run a graphical session is a capability of the box, not a judgement about anybody, and it is
-# declared once as `contract.modes` (see `modes.nix`). Collapsing the two put a machine capability
-# in a per-user policy namespace, where it behaved unlike every other entry here.
-#
-# EVERY FEATURE IN THIS REGISTRY IS PRIVILEGED, and that is a property worth reading off the file
-# rather than a coincidence: with the display capability gone, what is left is exactly the set of
-# powers that need a deliberate, per-person decision. It is why `safeSet` — the features a greeter
-# may confer on a stranger — is currently EMPTY, and why a greeter grants nothing at all.
-#
-# The contract handles NO secrets beyond the login credential: a feature never pulls a
-# secret onto a host and the contract never re-keys or owns user key material (a user's
-# own home secrets ride the user's own key, provisioned by the user's own home module).
+# per bind. It is deliberately NOT what a MACHINE can run, which is `modes.nix` (ADR-0007). Every
+# feature here is PRIVILEGED and has NO PARAMETERS, which is why `safeSet` is empty and a greeter
+# confers nothing at all (ADR-0008). A feature never carries a secret (ADR-0003).
 #
 # Per-entry shape (all fields optional except `grant`):
 #   grant            : mkEnableOption description for `contract.users.<u>.granted.<f>`
-#   privilegedGroups : groups the grant confers that are SECURITY-CRITICAL — a user can
-#                      never self-escalate into these by declaring them in identity.extraGroups;
-#                      the realization clamps them out and only restores them via a grant.
-#                      A feature with any privilegedGroups is build-time-only (excluded from
-#                      the safe set and never auto-afforded by the greeter). kit.nix derives
-#                      the system-wide `privilegedGroups` clamp list from these.
-#   groups           : NON-PRIVILEGED groups the grant confers — self-declaration in
-#                      identity.extraGroups is safe, but the grant is still the canonical path. A
-#                      feature with ONLY these is runtime-eligible (the safe set), which no entry
-#                      is today. Session-shaped groups (a display's input devices) are NOT here:
-#                      they belong to the MODE that needs them (`modes.nix`).
+#   privilegedGroups : groups the grant confers that are SECURITY-CRITICAL. A feature declaring any
+#                      is build-time-only — excluded from the safe set, never auto-afforded by the
+#                      greeter. `kit.nix` derives the system-wide privileged-group list from these.
+#   groups           : NON-PRIVILEGED groups the grant confers. A feature with ONLY these is
+#                      runtime-eligible (the safe set), which no entry is today. Session-shaped
+#                      groups (a display's input devices) are NOT here: they belong to the MODE
+#                      that needs them (`modes.nix`).
 #
-# A feature has NO PARAMETERS. It is a bare capability — a set of groups a host confers — and the
-# one parameter the contract ever carried (`gui.desktop`) turned out to describe a SESSION rather
-# than a capability, so it lives on the gui MODE (`modes.nix`) where the thing it parameterises is.
-# That is why `contract.users.<u>` carries only an identity, a grant set and the mode it was bound
-# in: there is nothing else about
-# a feature for a bind to bridge.
-#
-# EVERY GRANT RIDES THE BIND. A grant is a host-side effect conferred on the ACCOUNT at activation,
-# over whatever home already exists — so a grant can NEVER change a home, and one home serves
-# granted and ungranted alike, for every feature without exception. There is no per-feature flag
-# saying otherwise. What CANNOT be conferred at activation is home CONTENT, which cannot be
-# injected into a sealed derivation; that is a MODE, and homes are keyed by mode rather than by a
-# combination of grants.
+# EVERY GRANT RIDES THE BIND, over whatever home already exists — so a grant can NEVER change a
+# home, and one home serves granted and ungranted alike, for every feature without exception. There
+# is no per-feature flag saying otherwise (ADR-0012).
 {
   # containers: privileged container-runtime access — the docker/podman groups. Both are
-  # root-equivalent (the docker socket runs containers that mount the host fs as root), so a user
-  # can never obtain them by declaring them in identity.extraGroups; only this grant does. Container
-  # access is its own atomic capability, composed with `sudo` (wheel) rather than fused to it, so
-  # "containers without sudo" (a hardened build account) is expressible.
+  # root-equivalent (the docker socket runs containers that mount the host fs as root), so this
+  # grant is the only way to obtain them. Container access is its own atomic capability, composed
+  # with `sudo` (wheel) rather than fused to it, so "containers without sudo" (a hardened build
+  # account) is expressible (ADR-0008).
   containers = {
     grant = "container runtime (docker/podman) access for this user (host grant)";
     privilegedGroups = [
