@@ -47,11 +47,12 @@ let
     ;
   inherit (kit.internal)
     diag
-    featureNamesWith
-    floorWith
-    selectionWith
-    homeMatrixWith
-    memberChecksWith
+    featureNamesUnguarded
+    floorUnguarded
+    selectionUnguarded
+    homeMatrixUnguarded
+    bindModeUnguarded
+    memberChecksUnguarded
     userOptions
     floorOf
     runsWith
@@ -182,16 +183,17 @@ let
     # discards the message everywhere else in this suite (issue #64).
     (import ./diagnostics.nix { inherit lib diag; })
     # …and the other half: that the guards whose MESSAGE is the diagnosis fill that shape with the
-    # right facts — the offenders named, never a count (issue #64).
+    # right facts — the offenders named in the `problem` clause, never a count (issue #64).
     (import ./refusals.nix {
       inherit
         lib
         diag
-        homeMatrixWith
-        selectionWith
-        memberChecksWith
-        featureNamesWith
-        floorWith
+        homeMatrixUnguarded
+        selectionUnguarded
+        bindModeUnguarded
+        memberChecksUnguarded
+        featureNamesUnguarded
+        floorUnguarded
         ;
     })
     (import ./matrix.nix { inherit lib toolkit; })

@@ -36,6 +36,32 @@ let
   # which is the point: what is proven here is that they refuse at all, and `say` above is what
   # proves what they would have said.
   refuses = thunk: !(builtins.tryEval thunk).success;
+
+  # A guard chain with nothing wrong, and two things that are — for the `firstFailing`/`mustAll`
+  # claims at the end. Two bad ones because "the FIRST failure is reported" needs a second to not
+  # report.
+  passing = [
+    {
+      ok = true;
+      who = "who";
+      problem = "unreachable";
+    }
+    {
+      ok = true;
+      who = "who";
+      problem = "also unreachable";
+    }
+  ];
+  firstBad = {
+    ok = false;
+    who = "who";
+    problem = "the first thing wrong";
+  };
+  secondBad = {
+    ok = false;
+    who = "who";
+    problem = "the second thing wrong";
+  };
 in
 {
   assertions = [
@@ -277,6 +303,71 @@ in
           problem = "there is no source";
         }
       );
+    }
+
+    # ── firstFailing / firstRefusal / mustAll: a guard chain as data ─────────────────────────
+    # The seam every `…Unguarded` in the repo is built on, and `conformance/refusals.nix` reads
+    # through. Its own properties are provable here for the same reason the rest of this file is:
+    # a chain that has not been asserted on is just a list.
+    #
+    # Nothing wrong means NO refusal — the direction every `…Unguarded` control depends on, and the
+    # one that would make the whole of `refusals.nix` vacuous if it were wrong.
+    {
+      name = "diagnostics: a chain with nothing wrong yields no failing check and no message";
+      ok = diag.firstFailing passing == null && diag.firstRefusal passing == null;
+    }
+    # The empty chain is the same answer, not an error. `lib.head [ ]` would throw, so this is the
+    # base case being right rather than merely untested.
+    {
+      name = "diagnostics: an empty chain yields no refusal";
+      ok = diag.firstFailing [ ] == null && diag.firstRefusal [ ] == null;
+    }
+    # FIRST failure wins, in written order — which is the whole of what the `assert` chains this
+    # replaced guaranteed, and what lets a site order its checks most-specific-first.
+    {
+      name = "diagnostics: the FIRST failing check is the one reported, not a later one";
+      ok =
+        (diag.firstFailing (
+          passing
+          ++ [
+            firstBad
+            secondBad
+          ]
+        )).problem == "the first thing wrong";
+    }
+    # …and it SHORT-CIRCUITS: nothing after the first failure is forced. Not an optimisation — a
+    # site's later checks may assume what an earlier one established (a matrix row cannot be scanned
+    # for non-booleans until it is known to be an attrset), so evaluating them all would replace a
+    # named diagnosis with a raw eval error. Proven by putting a check that THROWS when forced after
+    # the failing one: reaching a message at all is the claim.
+    {
+      name = "diagnostics: no check after the first failure is forced";
+      ok =
+        (diag.firstFailing [
+          firstBad
+          {
+            ok = throw "this check was forced";
+            who = "who";
+            problem = "unreachable";
+          }
+        ]).problem == "the first thing wrong";
+    }
+    # `firstRefusal` is `say` over that check — the same message a lone `must` would have raised, so
+    # a site does not change what it says by moving into a chain.
+    {
+      name = "diagnostics: a chain's refusal is exactly what `say` makes of its failing check";
+      ok =
+        diag.firstRefusal [ firstBad ] == diag.say {
+          who = "who";
+          problem = "the first thing wrong";
+        };
+    }
+    # `mustAll` is the assert over it, in both directions — passing as literal `true` so it is
+    # usable as an `assert` condition, and refusing otherwise.
+    {
+      name = "diagnostics: mustAll passes as `true` when every check holds, and refuses when one does not";
+      ok =
+        diag.mustAll passing == true && diag.mustAll [ ] == true && refuses (diag.mustAll [ firstBad ]);
     }
   ];
 }
