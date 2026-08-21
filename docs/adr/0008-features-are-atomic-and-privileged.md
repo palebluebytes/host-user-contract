@@ -39,6 +39,21 @@ remains is exactly the set of powers that need a deliberate, per-person decision
 | `virtualization` | `disk`, `libvirtd`, `qemu-libvirtd` | running VMs is a power somebody granted |
 | `nix-daemon` | `nix-users` | build derivations and add store paths — see [0016](0016-program-scope.md) |
 
+### A group may be protected before a feature grants it
+
+The registry is not the only source of protected group names. `kit.nix` also carries
+`reservedPrivilegedGroups` — today `[ "kvm" ]` — folded into the aggregate `privilegedGroups`
+alongside every feature's own. Each entry is a **todo**: a group nothing grants yet, protected in
+advance so it cannot arrive unnoticed, and moved into a feature's `privilegedGroups` when that
+feature is written rather than left listed here.
+
+It reaches exactly one thing: the **privileged-group filter**
+(`grantLib.withoutPrivileged`), which keeps a privileged name added to `modes.nix` from reaching
+every account in that mode with no grant ([0006](0006-identity-describes-a-person.md)). It does
+**not** reach the safe set below, which reads each feature's own registry entry rather than the
+aggregate — so a reserved group can never make a feature look unsafe, and adding one is not a
+change to what a greeter may confer.
+
 ## Privilege is build-time-only, and the safe set is therefore empty
 
 **Runtime-eligibility is derived, never declared.** A feature is in the `safeSet` iff it confers no
