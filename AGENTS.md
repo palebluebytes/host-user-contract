@@ -22,14 +22,18 @@ Detail — the hook's checks, the curated lint config, shell-program conventions
 "Run everything" is `nix flake check` in **three** targets:
 
 ```
-nix flake check .              # the contract: synthetic conformance + runtime VMs
-nix flake check examples/users # the reference user fleet
-nix flake check examples/fleet # the reference host fleet
+nix flake check .                # the contract: synthetic conformance + runtime VMs
+nix flake check ./examples/users # the reference user fleet
+nix flake check ./examples/fleet # the reference host fleet
 ```
 
 The two fleets carry their own checks because they need home-manager, which the contract does
 not input — so nothing but running all three catches drift between them.
 `.github/workflows/ci.yml` walks the same matrix.
+
+The **`./` prefix is required** on the fleet targets: without it Nix reads `examples/fleet` as a
+registry lookup and fails with `cannot find flake 'flake:examples/fleet' in the flake registries`,
+which looks like a broken environment rather than a mistyped path.
 
 New files must be **`git add`-ed before `nix flake check` sees them** — a flake only reads the
 tracked tree.
