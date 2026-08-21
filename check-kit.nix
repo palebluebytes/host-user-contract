@@ -6,13 +6,16 @@
 # `pkgs` (for the trivial `runCommand` witness) and — for the confinement check — the caller's OWN
 # home builder. Every check fails LOUDLY at eval with a named message, the same posture as every
 # other contract guard, so a failing check reports WHICH claim broke rather than a build log.
-{ lib }:
-let
+{
+  lib,
   # How this file phrases every refusal (./diagnostics.nix) — the same owner `lib.nix` uses, so a
   # consumer meets one voice whether the contract refuses to bake or a check refuses its material.
   # NOTE the `who` here is the check's own `name`, which is the CONSUMER's label for a check it
   # owns — a different thing from a contract function naming itself, and deliberately kept.
-  diag = import ./diagnostics.nix { inherit lib; };
+  # Injected by `kit.nix`, so this is the same instance the suite unit-tests (issue #64).
+  diag,
+}:
+let
   inherit (diag) showList showName;
   # The negative space itself (ADR-0001): system options a confined user home must be unable to
   # NAME. Each is a real NixOS/sops option a user might reach for to escalate; the home umbrella

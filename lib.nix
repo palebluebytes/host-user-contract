@@ -17,11 +17,13 @@
   manifest,
   grantLib,
   userOptions,
+  # How this file phrases every refusal (./diagnostics.nix): one prefix rule, one list rendering,
+  # one vacuity rationale. Sites below hand facts, never punctuation. INJECTED rather than imported
+  # here, exactly as `grantLib` is, so the module the conformance suite unit-tests through
+  # `kit.internal` is the SAME instance this file refuses through (issue #64).
+  diag,
 }:
 let
-  # How this file phrases every refusal (./diagnostics.nix): one prefix rule, one list rendering,
-  # one vacuity rationale. Sites below hand facts, never punctuation.
-  diag = import ./diagnostics.nix { inherit lib; };
   inherit (diag) showList showName;
 
   # ── FEATURE projections ──────────────────────────────────────────────────────────────────────

@@ -6,6 +6,13 @@
 { lib }:
 let
   registry = import ./features.nix;
+  # THE DIAGNOSTIC MODULE — the one owner of what the contract says when it refuses. Imported HERE
+  # and injected into everything that refuses (./lib.nix, ./check-kit.nix) rather than imported
+  # separately by each, so "one voice" is one instance rather than a convention two files keep. It
+  # rides `internal` for the same reason the other kernels do: its shape rules (the `<who>: `
+  # prefix, one terminator per clause, `[a, b]`) are the only part of a refusal the suite can prove
+  # directly, since `tryEval` discards the message a real guard raises (issue #64).
+  diag = import ./diagnostics.nix { inherit lib; };
   # The MODE registry — the second single source beside the feature one, and the backbone of the
   # user-facing surface: a user's whole declaration is a projection of it.
   modeRegistry = import ./modes.nix { inherit lib; };
@@ -75,7 +82,7 @@ let
   manifest = import ./manifest.nix { inherit lib; };
 
   # The check kit: the proofs a CONSUMER runs over its own repo (ADR-0025).
-  checkKit = import ./check-kit.nix { inherit lib; };
+  checkKit = import ./check-kit.nix { inherit lib diag; };
 
   # --- the two substantial pieces, split out for focus ---
   contractLib = import ./lib.nix {
@@ -86,6 +93,7 @@ let
       manifest
       grantLib
       userOptions
+      diag
       ;
   };
   modules = import ./modules.nix {
@@ -241,6 +249,13 @@ in
   # this attrset is load-bearing at runtime and must not be renamed to something that says "for the
   # tests".
   internal = {
+    # The DIAGNOSTIC MODULE itself. Every refusal in this repo is `diag.say`'s output, and
+    # `tryEval` — which is how the suite drives all 50 refusal paths — returns `{ success = false;
+    # value = false; }` and DISCARDS the message. So the shape rules are unprovable at the guards
+    # and provable here: exposed so the suite unit-tests the constructor directly (issue #64). This
+    # is not a consumer surface — how the contract phrases its own refusals is not a facility to
+    # build on — which is exactly why it is `internal` and not `lib`.
+    inherit diag;
     # The floor kernel behind `floorMode`, taking a mode registry explicitly. Internal because no
     # consumer needs it — `floorMode` is the answer — and exposed because its two failure
     # directions are only demonstrable against a synthetic registry (see lib.nix).
