@@ -9,18 +9,13 @@
 # for activation. The activated session is secret-free: the contract handles no secrets beyond the
 # login credential.
 #
-# It is the RUNTIME ADAPTER over accountPlan (ADR-0020), the twin of realization.nix's build-time
-# adapter — and, since issue #31's follow-up, a PURE RENDERER: it owns NO account-combining logic.
-# The four-field rule (clamp ∪ grant, drop-empty-sshKey, GECOS, password) lives in ONE place —
-# `accountPlan` — which this script EVALUATES via the `contract-account-plan` tool (which re-imports
-# the contract and runs the same pure function build-time realization uses). This replaces the jq
-# re-spelling that issue #31 had to keep in step by booting a VM; there is now a single source, so
-# the greeter-provision VM proves this renderer SURFACES the record faithfully, not that two
-# spellings agree, and the rule's own guarantees (the clamp, the empty-sshKey drop) are proven
-# without a boot in conformance/account-plan.nix. What remains here is strictly RENDER: run the
-# evaluator, then write GECOS, the password, authorizedKeys, and the groups (the record's groups ∪
-# the greeter-seat groups — the baseline plus the `greeter-users` seat MARKER, which is seat
-# infrastructure layered on top of the portable account, not part of it, ADR-0018).
+# It is the RUNTIME ADAPTER over accountPlan and a PURE RENDERER owning NO account-combining logic
+# (ADR-0020): it EVALUATES `accountPlan` via the `contract-account-plan` tool, then writes what
+# comes back. So what remains here is strictly RENDER — GECOS, the password, authorizedKeys, and
+# the groups (the record's groups ∪ the greeter-seat groups: the baseline plus the `greeter-users`
+# seat MARKER, which is seat infrastructure layered on top of the portable account rather than part
+# of it, ADR-0018). The rule's own guarantees — the clamp, the empty-sshKey drop — are proven
+# without a boot in conformance/account-plan.nix.
 {
   pkgs,
   accountPlanEval,

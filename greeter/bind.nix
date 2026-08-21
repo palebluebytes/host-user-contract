@@ -1,8 +1,8 @@
-# The orchestrator greetd runs: ties the eval-free ordering together (the replaceable UI half).
-# The prompt loop here is the reference UI; a host may swap regreet/its own front end as long as it
-# preserves the ordering. The home BUILD (step 5/6) is delegated to the host's `homeBuilder`
-# binding — it needs home-manager, which the contract does not ship. The session it activates is
-# always secret-free: the contract handles no secrets beyond the login credential.
+# The orchestrator greetd runs: ties the eval-free ordering together (ADR-0018) — and the
+# replaceable UI half, so a host may swap regreet or its own front end as long as it preserves that
+# ordering (ADR-0017). The home BUILD (step 5/6) is delegated to the host's `homeBuilder` binding,
+# since it needs home-manager (ADR-0002). The session it activates is always secret-free
+# (ADR-0003).
 {
   pkgs,
   lib,
@@ -45,12 +45,11 @@ pkgs.writeShellApplication {
     homeBuilder=${lib.escapeShellArg (toString homeBuilder)}
     system=${lib.escapeShellArg system}
 
-    # The restricted-eval posture the home is built under, DISPATCHED BY TIER: a host-signed repo
-    # is still built under a restricted eval it cannot widen. Selected by tier so the posture is
-    # honestly tier-scoped — tier1 uses the contract's canonical, conformance-checked
-    # tier1EvalConfig; tier2 (untrusted, ephemeral) is DEFERRED and refused here, before any build,
-    # rather than silently building under tier1's floor. accept-flake-config=false is applied to
-    # the fetch too (below), so the repo's own nixConfig is ignored even while locking.
+    # The restricted-eval posture the home is built under, DISPATCHED BY TIER (ADR-0019): a
+    # host-signed repo is still built under an eval posture it cannot widen. Tier-scoped on purpose
+    # — tier2 (untrusted, ephemeral) is DEFERRED and refused HERE, before any build, rather than
+    # silently building under tier1's floor. accept-flake-config=false is applied to the fetch too
+    # (below), so the repo's own nixConfig is ignored even while locking.
     case "$tier" in
       tier1) evalConfig=${lib.escapeShellArg tier1NixConfig} ;;
       *) echo "greeter: no eval posture defined for tier '$tier' (tier2 deferred)" >&2; exit 1 ;;
