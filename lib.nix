@@ -46,15 +46,11 @@ let
   grantedNamesOf = grantLib.grantedNames;
   grantsOf = names: lib.genAttrs names (_: true);
 
-  # A per-user entry in `bindContractUsers` is mostly AFFORDANCES — one key per feature — plus a
-  # small fixed set of keys that are settings about the bind rather than powers. Keeping them in
-  # one attrset is what makes `cleo = { containers = true; }` read as well as it does, and the
-  # price is that "is this key a feature or a setting?" needs an answer that cannot drift.
-  #
-  # So it is a NAME COLLISION that has to be impossible, not merely unlikely: a feature called
-  # `source` would silently become a setting and the account would come up unpowered. The invariant
-  # below makes it unwriteable — adding such a feature fails the contract's own eval, not a
-  # consumer's.
+  # A per-user entry in `bindContractUsers` holds AFFORDANCES — one key per feature — and a small
+  # fixed set of bind SETTINGS in the same attrset, which is what makes `cleo = { containers =
+  # true; }` read as well as it does. The price is a name collision that has to be impossible
+  # rather than unlikely, so the invariant below makes it unwriteable: adding a feature named
+  # `source` fails the contract's own eval, not a consumer's (ADR-0015).
   bindSettings = [ "source" ];
   featureNames =
     assert diag.must {
@@ -78,8 +74,8 @@ let
   # homes per user rather than 2ⁿ, and there is no combination anywhere downstream to label.
   modeNames = lib.attrNames modeRegistry;
 
-  # floorOf: the ONE mode a registry declares as its FLOOR — the mode every host runs, the fallback
-  # of every selection, and the reason `runs` never comes out empty.
+  # floorOf: the ONE mode a registry declares as its FLOOR (ADR-0007) — and the reason `runs` never
+  # comes out empty.
   #
   # Takes the registry EXPLICITLY, as `homeMatrixOver` takes its upper bound and for the same
   # reason: the contract's own registry has exactly one floor by construction, so the two failures
@@ -109,36 +105,24 @@ let
   # below names no mode, so that a literal `"cli"` never makes the flag decorative.
   floorMode = floorOf modeRegistry;
 
-  # runsWith: the modes a host RUNS, from the machine capability it declared.
+  # runsWith: the modes a host RUNS, from the machine capability it declared (ADR-0009).
   #
   #   runs = { the floor } ∪ { m | m is declared }
   #
-  # It FILTERS THE REGISTRY rather than concatenating the declaration, and three properties fall
-  # out of that one choice: the answer is always in registry order, so no diagnostic's wording
-  # depends on how a host wrote its list; duplicates and a redundantly-declared floor collapse for
-  # free; and the declaration reads as a SET rather than a sequence — `[ "gui" ]`,
-  # `[ "gui" "cli" ]` and `[ "cli" "gui" ]` are one declaration. There is deliberately no spelling
-  # that EXCLUDES the floor: a host that could refuse it would have no fallback for selection and
-  # would break "any host can enable any user".
+  # It FILTERS THE REGISTRY rather than concatenating the declaration, which is what makes the
+  # declaration a SET and the floor unexcludable. One property worth naming here because only the
+  # code shows it: the answer comes out in REGISTRY order, so no diagnostic's wording below depends
+  # on how a host wrote its list.
   #
-  # No feature is consulted. A mode used to name the feature a host afforded in order to run it,
-  # which meant a machine capability had to be laundered through a per-user policy namespace; the
-  # host now declares its modes directly, so the two registries touch nowhere at all.
+  # No feature is consulted — the two registries touch nowhere (ADR-0007).
   runsWith = declared: lib.filter (m: m == floorMode || lib.elem m declared) modeNames;
 
-  # selectModeOver: THE SELECTION, as a kernel over an explicit floor.
+  # selectModeOver: THE SELECTION (ADR-0013), as a kernel over an explicit floor — `runs ∩
+  # published`, a non-floor mode wins, two of them is a hard error, otherwise the floor.
   #
-  #   1. `modes = runs ∩ published`. Empty ⇒ a hard error naming both sets.
-  #   2. A NON-FLOOR mode in that set wins. TWO non-floor modes ⇒ a hard error: a host claiming two
-  #      rich modes must say which it means.
-  #   3. Otherwise the floor.
-  #
-  # NO MODE NAME APPEARS IN THE ALGORITHM. The floor is a parameter read off the registry flag; a
-  # literal here would make the flag decorative and a second mode's arrival a code change.
-  #
-  # Both the declarative bind and the greeter select through this, which is what makes a roaming
-  # user's experience the same on either path: the same intersection, the same tie-break, the same
-  # fallback.
+  # NO MODE NAME APPEARS IN THE ALGORITHM, which is why the floor is a parameter rather than read
+  # from the registry here: a literal would make the registry flag decorative. Both the declarative
+  # bind and the greeter select through this one kernel (ADR-0020).
   selectModeOver =
     {
       who,
