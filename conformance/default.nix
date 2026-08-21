@@ -47,6 +47,11 @@ let
     ;
   inherit (kit.internal)
     diag
+    featureNamesWith
+    floorWith
+    selectionWith
+    homeMatrixWith
+    memberChecksWith
     userOptions
     floorOf
     runsWith
@@ -176,6 +181,19 @@ let
     # The SHAPE of a refusal, proven at the constructor — the one place it can be, since `tryEval`
     # discards the message everywhere else in this suite (issue #64).
     (import ./diagnostics.nix { inherit lib diag; })
+    # …and the other half: that the guards whose MESSAGE is the diagnosis fill that shape with the
+    # right facts — the offenders named, never a count (issue #64).
+    (import ./refusals.nix {
+      inherit
+        lib
+        diag
+        homeMatrixWith
+        selectionWith
+        memberChecksWith
+        featureNamesWith
+        floorWith
+        ;
+    })
     (import ./matrix.nix { inherit lib toolkit; })
     (import ./account-plan.nix { inherit lib floorMode accountPlan; })
     (import ./contract-package.nix {
