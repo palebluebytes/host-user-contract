@@ -373,6 +373,102 @@ let
     };
     okWitness pkgs name;
 
+  # THE ADAPTER'S OWN TRAPS, held apart from its fold (`diag.firstRefusal`, issue #64) — the
+  # material `mkMemberChecks` reads before it builds anything, and the refusals it would raise over
+  # it. The coverage guard is the reason this split is worth the two extra lines: a member the
+  # mapper skipped loses its home-eval check entirely, and a missing check reads EXACTLY like a
+  # passing one, so its message is the only thing that says otherwise — and `tryEval` discards it.
+  memberChecksWith =
+    { members, homes }:
+    let
+      shapelyHomes = lib.isAttrs homes;
+      systems = lib.optionals shapelyHomes (lib.attrNames homes);
+      memberNames = lib.optionals (lib.isAttrs members) (lib.attrNames members);
+      # The system entries that ARE `{ <user> = …; }` attrsets, and the ones that are not. Split once,
+      # by PARTITION rather than two negated filters: the coverage fold below can only ask a
+      # well-formed entry who it holds, and reporting a malformed entry as "holds nobody" would name the
+      # wrong mistake — so the two sets must stay exact complements, and a partition makes that
+      # structural instead of a rule two hand-written predicates have to keep agreeing on.
+      byEntryShape = lib.partition (sys: lib.isAttrs homes.${sys}) systems;
+      wellFormedSystems = byEntryShape.right;
+      malformedSystems = byEntryShape.wrong;
+      # Every system × member the handed homes do NOT hold. Checked here rather than left to the
+      # raw `attribute missing` a lookup would throw, because the diagnosis is specific: the members
+      # is the authority on who exists, so a member with no homes is a gap in the mapper that built
+      # them, not a member that should be skipped.
+      uncovered = lib.concatMap (
+        sys: map (n: "${sys}/${n}") (lib.filter (n: !(homes.${sys} ? ${n})) memberNames)
+      ) wellFormedSystems;
+    in
+    {
+      inherit systems;
+      # Ordered deliberately, as in the helpers: report a SHAPE that cannot be read before reading
+      # it, and a set that would check NOBODY before reporting anything about what it checked. The
+      # order is load-bearing rather than tidy — the coverage fold can only ask a well-formed entry
+      # who it holds — which is why `firstRefusal` short-circuits.
+      checks = [
+        {
+          ok = lib.isAttrs members;
+          who = "mkMemberChecks";
+          problem = "the member set is not an attrset";
+          fix =
+            "It is `mkMembers`'s own value (`{ <name> = { name; dir; identity; }; }`), keyed by "
+            + "member name, not a list of members.";
+        }
+        {
+          ok = members != { };
+          who = "mkMemberChecks";
+          problem = "the member set is empty";
+          why = diag.vacuity {
+            subject = "member set";
+            verbs = "check";
+          };
+          fix =
+            "Derive it from the users directory (`mkMembers { usersDir = ./users; }`), which "
+            + "refuses an empty one at the source.";
+        }
+        {
+          ok = shapelyHomes;
+          who = "mkMemberChecks";
+          problem = "`homes` is not an attrset";
+          fix =
+            "It is the consumer's per-system homes, keyed by system: "
+            + "`{ <system> = { <user> = { <mode> = home; }; }; }`.";
+        }
+        {
+          ok = homes != { };
+          who = "mkMemberChecks";
+          problem = "`homes` names no system";
+          why = diag.vacuity {
+            subject = "`homes`";
+            verbs = "check";
+          };
+          fix = "Its key set is what the home-eval checks run over.";
+        }
+        {
+          ok = malformedSystems == [ ];
+          who = "mkMemberChecks";
+          problem = "the `homes` entr(y/ies) for ${showList malformedSystems} are not attrsets";
+          fix =
+            "Each system's entry must be `{ <user> = { <mode> = home; }; }`, this repo's own built "
+            + "homes for that system.";
+        }
+        {
+          ok = uncovered == [ ];
+          who = "mkMemberChecks";
+          problem = "no built homes for ${showList uncovered}";
+          why =
+            "The MEMBER SET says who exists, so every member needs a home on every system in "
+            + "`homes`. A member the mapper skipped would otherwise lose its home-eval check "
+            + "entirely, which reads exactly like a passing one.";
+          fix =
+            "Build `homes` from the member set itself — or, if this fleet deliberately builds "
+            + "different members on different systems, call the three helpers per user instead of "
+            + "folding over the member set.";
+        }
+      ];
+    };
+
   # mkMemberChecks (issue #60): the MEMBER-SET ADAPTER over the three helpers above — ONE call takes
   # a consumer's members plus its own material (its home builder, its per-system homes, the
   # credential posture it has chosen) and yields the whole per-user check set, named. The fold is
@@ -425,86 +521,9 @@ let
       positiveControl ? defaultPositiveControl,
     }:
     let
-      shapelyHomes = lib.isAttrs homes;
-      systems = lib.optionals shapelyHomes (lib.attrNames homes);
-      memberNames = lib.optionals (lib.isAttrs members) (lib.attrNames members);
-      # The system entries that ARE `{ <user> = …; }` attrsets, and the ones that are not. Split once,
-      # by PARTITION rather than two negated filters: the coverage fold below can only ask a
-      # well-formed entry who it holds, and reporting a malformed entry as "holds nobody" would name the
-      # wrong mistake — so the two sets must stay exact complements, and a partition makes that
-      # structural instead of a rule two hand-written predicates have to keep agreeing on.
-      byEntryShape = lib.partition (sys: lib.isAttrs homes.${sys}) systems;
-      wellFormedSystems = byEntryShape.right;
-      malformedSystems = byEntryShape.wrong;
-      # Every system × member the handed homes do NOT hold. Checked here rather than left to the
-      # raw `attribute missing` a lookup would throw, because the diagnosis is specific: the members
-      # is the authority on who exists, so a member with no homes is a gap in the mapper that built
-      # them, not a member that should be skipped.
-      uncovered = lib.concatMap (
-        sys: map (n: "${sys}/${n}") (lib.filter (n: !(homes.${sys} ? ${n})) memberNames)
-      ) wellFormedSystems;
+      inherit (memberChecksWith { inherit members homes; }) systems checks;
     in
-    # Ordered deliberately, as in the helpers: report a SHAPE that cannot be read before reading it,
-    # and a set that would check NOBODY before reporting anything about what it checked.
-    assert diag.must {
-      ok = lib.isAttrs members;
-      who = "mkMemberChecks";
-      problem = "the member set is not an attrset";
-      fix =
-        "It is `mkMembers`'s own value (`{ <name> = { name; dir; identity; }; }`), keyed by member "
-        + "name, not a list of members.";
-    };
-    assert diag.must {
-      ok = members != { };
-      who = "mkMemberChecks";
-      problem = "the member set is empty";
-      why = diag.vacuity {
-        subject = "member set";
-        verbs = "check";
-      };
-      fix =
-        "Derive it from the users directory (`mkMembers { usersDir = ./users; }`), which refuses "
-        + "an empty one at the source.";
-    };
-    assert diag.must {
-      ok = shapelyHomes;
-      who = "mkMemberChecks";
-      problem = "`homes` is not an attrset";
-      fix =
-        "It is the consumer's per-system homes, keyed by system: "
-        + "`{ <system> = { <user> = { <mode> = home; }; }; }`.";
-    };
-    assert diag.must {
-      ok = homes != { };
-      who = "mkMemberChecks";
-      problem = "`homes` names no system";
-      why = diag.vacuity {
-        subject = "`homes`";
-        verbs = "check";
-      };
-      fix = "Its key set is what the home-eval checks run over.";
-    };
-    assert diag.must {
-      ok = malformedSystems == [ ];
-      who = "mkMemberChecks";
-      problem = "the `homes` entr(y/ies) for ${showList malformedSystems} are not attrsets";
-      fix =
-        "Each system's entry must be `{ <user> = { <mode> = home; }; }`, this repo's own built "
-        + "homes for that system.";
-    };
-    assert diag.must {
-      ok = uncovered == [ ];
-      who = "mkMemberChecks";
-      problem = "no built homes for ${showList uncovered}";
-      why =
-        "The MEMBER SET says who exists, so every member needs a home on every system in `homes`. "
-        + "A member the mapper skipped would otherwise lose its home-eval check entirely, which "
-        + "reads exactly like a passing one.";
-      fix =
-        "Build `homes` from the member set itself — or, if this fleet deliberately builds "
-        + "different members on different systems, call the three helpers per user instead of "
-        + "folding over the member set.";
-    };
+    assert diag.mustAll checks;
     lib.mapAttrs' (
       n: member:
       lib.nameValuePair (checkNames.confinement n) (mkConfinementCheck {
@@ -542,5 +561,8 @@ in
     mkIdentityPostureCheck
     mkHomeEvalCheck
     mkMemberChecks
+    # …and the adapter's traps WITHOUT its assert, so the suite can read the refusals rather than
+    # only observe that they fire (issue #64).
+    memberChecksWith
     ;
 }

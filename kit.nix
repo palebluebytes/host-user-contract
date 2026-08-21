@@ -269,6 +269,21 @@ in
     # The home-matrix kernel, taking the upper bound to narrow instead of closing over `modes`: the
     # suite cannot otherwise prove that a contract which GAINS a mode extends every system's bake.
     inherit (contractLib) homeMatrixOver;
+    # THE LOAD-BEARING REFUSALS, AS DATA (issue #64). Each is a kernel above WITHOUT its assert —
+    # the guard chain (or, for selection, the refusal) it would raise, returned rather than thrown.
+    # Exposed because a message is otherwise unprovable: `tryEval` is the only way a test can drive
+    # a refusal and it discards what was said, so the suite could assert that these fire and never
+    # that they name the offenders they promise to name. These four were chosen because their
+    # message IS the diagnosis — a non-mode matrix key bakes the full set while reading as
+    # restricted, an uncovered member's missing check reads exactly like a passing one, and
+    # selection's two refusals have different owners and different fixes.
+    inherit (contractLib)
+      featureNamesWith
+      floorWith
+      selectionWith
+      homeMatrixWith
+      ;
+    inherit (checkKit) memberChecksWith;
     # The package-level kernels the public surface bakes and binds THROUGH.
     inherit (contractLib)
       mkContractPackage

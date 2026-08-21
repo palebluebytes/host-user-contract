@@ -54,19 +54,36 @@ let
   # rather than unlikely, so the invariant below makes it unwriteable: adding a feature named
   # `source` fails the contract's own eval, not a consumer's (ADR-0015).
   bindSettings = [ "source" ];
-  featureNames =
-    assert diag.must {
-      ok = lib.intersectLists bindSettings (lib.attrNames registry) == [ ];
-      who = "features";
-      problem =
-        "feature(s) ${showList (lib.intersectLists bindSettings (lib.attrNames registry))} collide "
-        + "with a per-user bind setting";
-      why =
-        "A `bindContractUsers` entry holds affordances and settings in ONE attrset, so a feature "
-        + "sharing a name with a setting would be read as the setting and silently confer nothing.";
-      fix = "Rename the feature, or rename the setting in `bindSettings` (lib.nix).";
+  # Over an EXPLICIT registry, and split from its guard (`diag.firstRefusal`, issue #64), for the
+  # two reasons `floorOf` below is: the contract's own registry satisfies this by construction, so
+  # the failure is only demonstrable against a synthetic one — and this message will be read exactly
+  # once, by whoever named a feature `source`, with no context for it.
+  featureNamesWith =
+    reg:
+    let
+      collisions = lib.intersectLists bindSettings (lib.attrNames reg);
+    in
+    {
+      names = lib.attrNames reg;
+      checks = [
+        {
+          ok = collisions == [ ];
+          who = "features";
+          problem = "feature(s) ${showList collisions} collide with a per-user bind setting";
+          why =
+            "A `bindContractUsers` entry holds affordances and settings in ONE attrset, so a "
+            + "feature sharing a name with a setting would be read as the setting and silently "
+            + "confer nothing.";
+          fix = "Rename the feature, or rename the setting in `bindSettings` (lib.nix).";
+        }
+      ];
     };
-    lib.attrNames registry;
+  featureNames =
+    let
+      it = featureNamesWith registry;
+    in
+    assert diag.mustAll it.checks;
+    it.names;
 
   # ── MODE projections ─────────────────────────────────────────────────────────────────────────
 
@@ -82,26 +99,41 @@ let
   # Takes the registry EXPLICITLY, as `homeMatrixOver` takes its upper bound and for the same
   # reason: the contract's own registry has exactly one floor by construction, so the two failures
   # this guards — none, and more than one — are only demonstrable against a synthetic registry.
-  floorOf =
+  #
+  # Its VERDICT and its GUARD are held apart (`diag.firstRefusal`, issue #64): the message names the
+  # offending modes in both directions — which registry has no floor, and which two claim to be it —
+  # and `tryEval` discards that, so the suite can only read it here.
+  floorWith =
     reg:
     let
       floors = lib.filter (m: reg.${m}.floor or false) (lib.attrNames reg);
     in
-    assert diag.must {
-      ok = lib.length floors == 1;
-      who = "modes";
-      problem =
-        if floors == [ ] then
-          "no mode is the floor (modes: ${showList (lib.attrNames reg)})"
-        else
-          "more than one mode is the floor: ${showList floors}";
-      why =
-        "Exactly one mode is the floor: it is what a host runs when it affords nothing and what "
-        + "selection falls back to, so a registry with none leaves a headless host running no mode "
-        + "at all, and one with two leaves the fallback undecided.";
-      fix = "Set `floor = true;` on exactly one entry of `modes.nix`.";
+    {
+      floor = lib.head floors;
+      checks = [
+        {
+          ok = lib.length floors == 1;
+          who = "modes";
+          problem =
+            if floors == [ ] then
+              "no mode is the floor (modes: ${showList (lib.attrNames reg)})"
+            else
+              "more than one mode is the floor: ${showList floors}";
+          why =
+            "Exactly one mode is the floor: it is what a host runs when it affords nothing and "
+            + "what selection falls back to, so a registry with none leaves a headless host "
+            + "running no mode at all, and one with two leaves the fallback undecided.";
+          fix = "Set `floor = true;` on exactly one entry of `modes.nix`.";
+        }
+      ];
     };
-    lib.head floors;
+  floorOf =
+    reg:
+    let
+      it = floorWith reg;
+    in
+    assert diag.mustAll it.checks;
+    it.floor;
 
   # The contract's own floor. Read off the registry FLAG, never by name: the selection algorithm
   # below names no mode, so that a literal `"cli"` never makes the flag decorative.
@@ -125,7 +157,13 @@ let
   # NO MODE NAME APPEARS IN THE ALGORITHM, which is why the floor is a parameter rather than read
   # from the registry here: a literal would make the registry flag decorative. Both the declarative
   # bind and the greeter select through this one kernel (ADR-0020).
-  selectModeOver =
+  #
+  # The VERDICT and the two REFUSALS are held apart (`diag.firstRefusal`, issue #64), because here
+  # the message is the whole diagnosis: "this user runs nothing this host runs" and "the producer
+  # built nothing here for a mode both sides wanted" are the same `tryEval` failure and have
+  # different owners and different fixes. `selectionWith` returns either a `mode` or a `refusal`;
+  # `selectModeOver` below is that plus the throw, and is what every caller uses.
+  selectionWith =
     {
       who,
       subject,
@@ -146,31 +184,41 @@ let
       show = "this host runs ${showList runs}; ${showName subject} publishes ${showList published} here";
     in
     if candidates == [ ] then
-      diag.stop {
-        inherit who;
-        problem = "no mode is common to the host and ${showName subject} — ${show}";
-        why =
-          "A mode is what a home IS, so a mismatch is a REFUSAL rather than a silently lesser home. "
-          + "Every SEAT still binds every user: what refuses is an operator naming a user whose "
-          + "session shape this host cannot run.";
-        fix =
-          "Afford the feature that mode is run under, or bind a user that enables one of the modes "
-          + "this host runs.";
+      {
+        refusal = {
+          inherit who;
+          problem = "no mode is common to the host and ${showName subject} — ${show}";
+          why =
+            "A mode is what a home IS, so a mismatch is a REFUSAL rather than a silently lesser "
+            + "home. Every SEAT still binds every user: what refuses is an operator naming a user "
+            + "whose session shape this host cannot run.";
+          fix =
+            "Afford the feature that mode is run under, or bind a user that enables one of the "
+            + "modes this host runs.";
+        };
       }
     else if lib.length rich > 1 then
-      diag.stop {
-        inherit who;
-        problem = "more than one rich mode is available for ${showName subject}: ${showList rich} — ${show}";
-        why =
-          "Rich modes are incomparable by design — a phone and a desktop are not ordered against "
-          + "each other — so a host offering two of them has not said which session it means, and "
-          + "no ordering exists here to break the tie.";
-        fix = "Narrow the host's affordances, or the user's enabled modes, to one of them.";
+      {
+        refusal = {
+          inherit who;
+          problem = "more than one rich mode is available for ${showName subject}: ${showList rich} — ${show}";
+          why =
+            "Rich modes are incomparable by design — a phone and a desktop are not ordered against "
+            + "each other — so a host offering two of them has not said which session it means, "
+            + "and no ordering exists here to break the tie.";
+          fix = "Narrow the host's affordances, or the user's enabled modes, to one of them.";
+        };
       }
-    else if rich != [ ] then
-      lib.head rich
     else
-      floor;
+      { mode = if rich != [ ] then lib.head rich else floor; };
+
+  # THE SELECTION as every caller meets it: the verdict, or the refusal raised.
+  selectModeOver =
+    args:
+    let
+      it = selectionWith args;
+    in
+    it.mode or (diag.stop it.refusal);
 
   # The HOME MATRIX kernel: narrow an upper bound of MODES to what each system bakes, and guard the
   # narrowing. `homeMatrixOver` takes the bound explicitly; the public `mkHomeMatrix` below is this
@@ -187,7 +235,12 @@ let
   # admitting something; fail-OPEN where the risk is omitting it. Under-baking is silent and
   # costly; over-baking wastes build time and nothing else. A contract that gains a MODE therefore
   # bakes it EVERYWHERE — on the restricted systems too — with no edit in any consumer repo.
-  homeMatrixOver =
+  #
+  # Its WORK and its GUARD CHAIN are held apart (`diag.firstRefusal`, issue #64). The mode-row guard
+  # is the sharpest message in this file: write a key that is not a mode and the system silently
+  # bakes the full set while READING as restricted, so the message is the whole difference between
+  # that and a diagnosis — and `tryEval` discards it.
+  homeMatrixWith =
     {
       # The fleet's whole home matrix, in ONE fact: `{ <system> = { <mode> = bool; }; }` — which
       # systems this repo bakes, and, per system, which modes its SEATS can run. A mode a row
@@ -216,57 +269,72 @@ let
       byNonMode = lib.filter (sys: nonModesIn sys != [ ]) systemNames;
       emptied = lib.filter (sys: matrix.${sys} == [ ]) systemNames;
     in
-    # Ordered so a broken declaration reports before any verdict about the modes, most specific
-    # first: no systems at all, then a row of the wrong shape, then a non-boolean setting, then a
-    # setting that names nothing the contract runs — and only then the one verdict about what IS
-    # baked.
-    assert diag.must {
-      ok = systems != { };
-      who = "mkHomeMatrix";
-      problem = "the matrix is empty";
-      why = diag.vacuity { subject = "matrix"; };
-      fix =
-        "`systems` is `{ <system> = { <mode> = bool; }; }`: one entry per system this repo builds "
-        + "for, `{ }` for a system whose seats can run every mode the contract names.";
+    {
+      inherit matrix;
+      # Ordered so a broken declaration reports before any verdict about the modes, most specific
+      # first: no systems at all, then a row of the wrong shape, then a non-boolean setting, then a
+      # setting that names nothing the contract runs — and only then the one verdict about what IS
+      # baked. The order is load-bearing rather than tidy — a row cannot be scanned for non-booleans
+      # until it is known to be an attrset — which is why `firstRefusal` short-circuits.
+      checks = [
+        {
+          ok = systems != { };
+          who = "mkHomeMatrix";
+          problem = "the matrix is empty";
+          why = diag.vacuity { subject = "matrix"; };
+          fix =
+            "`systems` is `{ <system> = { <mode> = bool; }; }`: one entry per system this repo "
+            + "builds for, `{ }` for a system whose seats can run every mode the contract names.";
+        }
+        {
+          ok = malformedRows == [ ];
+          who = "mkHomeMatrix";
+          problem = "the row(s) for ${showList malformedRows} are not attrsets";
+          fix =
+            "Each system's row is `{ <mode> = bool; }`, and `{ }` for a system that can run every "
+            + "mode the contract names.";
+        }
+        {
+          ok = byNonBool == [ ];
+          who = "mkHomeMatrix";
+          problem = "non-boolean mode setting(s): ${diag.showPer nonBoolIn byNonBool}";
+          why = "Each mode in a row is a BOOL — `false` where that system's seats cannot run it.";
+          fix = "An omitted mode is usable, so a row states only what it takes away.";
+        }
+        {
+          ok = byNonMode == [ ];
+          who = "mkHomeMatrix";
+          problem = "setting(s) that are not MODES: ${diag.showPer nonModesIn byNonMode}";
+          why =
+            "The modes of this contract are ${showList upperBound} — a home is built for exactly "
+            + "one of them. A FEATURE (`sudo`, `gui`) names a grant, which rides the bind and "
+            + "never keys a home at all, so the system would build every mode while reading as "
+            + "restricted.";
+          fix = "Name the MODES a system's seats cannot run.";
+        }
+        {
+          ok = emptied == [ ];
+          who = "mkHomeMatrix";
+          problem = "system(s) ${diag.showPer unusableIn emptied} build NO home at all";
+          why =
+            "Those modes cut every entry of the upper bound ${showList upperBound}. "
+            + diag.vacuity {
+              subject = "row";
+              verbs = "publish, bind and check";
+            };
+          fix = "Leave a system out of the matrix entirely if this fleet does not build for it.";
+        }
+      ];
     };
-    assert diag.must {
-      ok = malformedRows == [ ];
-      who = "mkHomeMatrix";
-      problem = "the row(s) for ${showList malformedRows} are not attrsets";
-      fix =
-        "Each system's row is `{ <mode> = bool; }`, and `{ }` for a system that can run every mode "
-        + "the contract names.";
-    };
-    assert diag.must {
-      ok = byNonBool == [ ];
-      who = "mkHomeMatrix";
-      problem = "non-boolean mode setting(s): ${diag.showPer nonBoolIn byNonBool}";
-      why = "Each mode in a row is a BOOL — `false` where that system's seats cannot run it.";
-      fix = "An omitted mode is usable, so a row states only what it takes away.";
-    };
-    assert diag.must {
-      ok = byNonMode == [ ];
-      who = "mkHomeMatrix";
-      problem = "setting(s) that are not MODES: ${diag.showPer nonModesIn byNonMode}";
-      why =
-        "The modes of this contract are ${showList upperBound} — a home is built for exactly one "
-        + "of them. A FEATURE (`sudo`, `gui`) names a grant, which rides the bind and never keys a "
-        + "home at all, so the system would build every mode while reading as restricted.";
-      fix = "Name the MODES a system's seats cannot run.";
-    };
-    assert diag.must {
-      ok = emptied == [ ];
-      who = "mkHomeMatrix";
-      problem = "system(s) ${diag.showPer unusableIn emptied} build NO home at all";
-      why =
-        "Those modes cut every entry of the upper bound ${showList upperBound}. "
-        + diag.vacuity {
-          subject = "row";
-          verbs = "publish, bind and check";
-        };
-      fix = "Leave a system out of the matrix entirely if this fleet does not build for it.";
-    };
-    matrix;
+
+  # THE HOME MATRIX as every caller meets it: the subtraction, guarded.
+  homeMatrixOver =
+    args:
+    let
+      it = homeMatrixWith args;
+    in
+    assert diag.mustAll it.checks;
+    it.matrix;
 
   # mkHomeMatrix: the PUBLIC per-system home matrix — `homeMatrixOver` closed over the contract's
   # own mode names, which is what makes a registry that gains a mode reach every consumer's
@@ -1405,6 +1473,14 @@ in
     selectModeOver
     homeMatrixOver
     mkHomeMatrix
+    # The three kernels above, WITHOUT their assert — the refusals they would raise, as data
+    # (issue #64). Each is the `…With` half of the split its own comment describes, exported for
+    # the same reason the kernels themselves are: the message is only readable here, because
+    # `tryEval` discards it at the guard.
+    featureNamesWith
+    floorWith
+    selectionWith
+    homeMatrixWith
     runsWith
     evalUserFile
     enabledModesOf
