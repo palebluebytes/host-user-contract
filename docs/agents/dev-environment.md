@@ -39,7 +39,7 @@ keyFetcher) are shfmt-formatted and shellchecked directly.
 `statix.toml` ignores `.direnv` and disables four lints that fight the project's deliberate
 idioms:
 
-- flat `custom.x.y =` config (rather than nested attrsets),
+- flat `contract.x.y =` config (rather than nested attrsets),
 - explicit assignments,
 - `{ ... }:` module signatures,
 - grouping parens.
