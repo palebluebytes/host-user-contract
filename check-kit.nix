@@ -1,16 +1,11 @@
-# The contract's CHECK KIT (issue #35) — proofs a CONSUMER runs over its OWN repo, shipped so
-# every user/host repo calls one function instead of re-deriving a technique it can get subtly
-# wrong. Distinct from `conformance/`, which proves the contract's own promises in isolation:
-# these checks can only be run where the consumer's real material lives (its actual module
-# imports, its actual members of identities, its actual per-system home matrix), which is exactly
-# why the contract cannot make them for anyone and must hand them over as functions.
+# The contract's CHECK KIT (issue #35) — the proofs a CONSUMER runs over its OWN repo, and the
+# technique rather than the verdict, because the material is on the far side of the boundary
+# (ADR-0025). Distinct from `conformance/`, which proves the contract's own promises in isolation.
 #
-# Lib-only and package-free (ADR-0002): this file is a pure function of `lib`. Each check takes
-# the caller's `pkgs` (for the trivial `runCommand` witness) and — crucially for the confinement
-# check — the caller's OWN home builder, so the contract never needs home-manager to prove a
-# home-manager module set. Every check fails LOUDLY at eval with a named message, the same
-# posture as every other contract guard (`assert lib.assertMsg …`), so a failing check reports
-# WHICH claim broke rather than a build log to read.
+# Lib-only and package-free (ADR-0002): a pure function of `lib`. Each check takes the caller's
+# `pkgs` (for the trivial `runCommand` witness) and — for the confinement check — the caller's OWN
+# home builder. Every check fails LOUDLY at eval with a named message, the same posture as every
+# other contract guard, so a failing check reports WHICH claim broke rather than a build log.
 { lib }:
 let
   # How this file phrases every refusal (./diagnostics.nix) — the same owner `lib.nix` uses, so a
@@ -46,11 +41,10 @@ let
   };
 
   # The credential postures — exactly the TWO ADR-0004 names, as prefix rules over
-  # `identity.json`'s `hashedPassword` (a crypt hash's `$id$` prefix IS its algorithm label):
-  # "**Private repo** — any libc-`crypt` hash (`$6$` sha512crypt is fine) … **Public / shared
-  # repo** — **yescrypt** (`$y$`)". No third posture is invented here: a posture a repo can ask
-  # for is a decision ADR-0004 made, and this table only spells each one once so no repo
-  # hand-writes a `$y$` comparison. Each carries its remedy, so a failure says how to fix itself.
+  # `identity.json`'s `hashedPassword` (a crypt hash's `$id$` prefix IS its algorithm label). No
+  # third posture is invented here: which postures exist is ADR-0004's decision, and this table
+  # only spells each one once so no repo hand-writes a `$y$` comparison. Each carries its remedy,
+  # so a failure says how to fix itself.
   credentialPostures = {
     # Public / shared repo: the hash is world-readable, so it must be memory-hard.
     yescrypt = {
@@ -82,21 +76,21 @@ let
   # point at — single-sourced so the two cannot drift into different shapes.
   okWitness = pkgs: name: pkgs.runCommand "${name}-ok" { } "touch $out";
 
-  # The two HOOK DEFAULTS the checks below share, stated once. `defaultForce` is home-manager's
-  # activation derivation path — the home shape ~every consumer has — and `defaultPositiveControl`
-  # a legitimate home-manager option (a session variable: no packages, no closure). Single-sourced
-  # because three functions now name them (`mkConfinementCheck`, `mkHomeEvalCheck`, and the
-  # members adapter that forwards both): a second copy would drift the day home-manager renames an
-  # attribute, leaving one check forcing a home the others do not.
+  # The two HOOK DEFAULTS the checks below share (ADR-0025: hooks, never assumptions — the
+  # contract cannot know a consumer's home shape). `defaultForce` is home-manager's activation
+  # derivation path; `defaultPositiveControl` a legitimate home-manager option (a session variable:
+  # no packages, no closure). Single-sourced because three functions name them: a second copy would
+  # drift the day home-manager renames an attribute, leaving one check forcing a home the others do
+  # not. Both reference home-manager names the contract never evaluates — keep them in step.
   defaultForce = home: home.activationPackage.drvPath;
   defaultPositiveControl = {
     home.sessionVariables.CONTRACT_CONFINEMENT_CONTROL = "ok";
   };
 
-  # The per-user check NAMES the members adapter publishes under (issue #60), stated once. Each was
-  # previously spelled TWICE per call site — as the `checks.<system>` attribute AND as the check's
-  # own `name`, which is what its failure message reports — so a renamed check could report itself
-  # under a name no `nix flake check -L` output would show. One definition, both uses.
+  # The per-user check NAMES the members adapter publishes under (issue #60), stated once. Each is
+  # spelled twice per call site — as the `checks.<system>` attribute AND as the check's own `name`,
+  # which is what its failure message reports — so two copies would let a renamed check report
+  # itself under a name no `nix flake check -L` output would show. One definition, both uses.
   checkNames = {
     confinement = user: "home-confinement-${user}";
     homeEval = user: "home-eval-${user}";
@@ -104,17 +98,13 @@ let
     identityPosture = "identity-posture";
   };
 
-  # mkConfinementCheck (issue #35): prove a consumer's REAL module set has no system channel.
+  # mkConfinementCheck (issue #35): prove a consumer's REAL module set has no system channel — the
+  # half of the promise `conformance/confinement.nix` cannot make, since it can only run where the
+  # consumer's own imports are (ADR-0025, which also carries both vacuity directions and why the
+  # positive control is asserted first).
   #
-  # `conformance/confinement.nix` proves the contract UMBRELLA is confined — the right proof for
-  # the contract's own suite, and only half the promise. A consumer needs the other half: that its
-  # own imports (a shared home module, a sops-nix backend, an overlay's module) did not smuggle a
-  # system channel back in. That proof can only run where those imports are, so the contract ships
-  # the technique instead of the verdict.
-  #
-  # SIGNATURE — the caller passes its own home BUILDER, which is what keeps this package-free and
-  # home-manager-free (ADR-0002): the contract never imports home-manager, it only applies a
-  # function the consumer supplies. A typical user repo already has one:
+  # SIGNATURE — the caller passes its own home BUILDER, which is what keeps this package-free
+  # (ADR-0002). A typical user repo already has one:
   #
   #     contract.lib.mkConfinementCheck {
   #       inherit pkgs;
@@ -123,28 +113,12 @@ let
   #
   # `buildHome` takes a LIST of extra modules (the check appends exactly one probe at a time) and
   # returns the consumer's evaluated home. `force` then forces that home hard enough to run the
-  # module system's unmatched-definition check — by default `activationPackage.drvPath`, the
-  # home-manager shape ~every consumer has; a hand-rolled `evalModules` home overrides it (e.g.
-  # `force = c: c.some.declared.option`). It is a hook rather than an assumption because the
-  # contract cannot know the consumer's home shape, and a home that is never forced would make the
-  # whole check vacuous.
-  #
-  # It CANNOT pass vacuously, in either direction — the two ways this check is got wrong by hand:
-  #   - reject-everything (a broken builder, a typo'd path): every out-of-universe probe "fails to
-  #     evaluate" and the check looks green. The POSITIVE CONTROL closes this — a legitimate home
-  #     option must still evaluate. This is the part people forget, so it is not optional here.
-  #   - force-nothing (a lazily-returned home): every probe "evaluates" and the negative claims
-  #     fail loudly. So an under-forcing `force` breaks the check LOUDLY rather than silently.
+  # module system's unmatched-definition check; a hand-rolled `evalModules` home overrides the
+  # default (e.g. `force = c: c.some.declared.option`).
   #
   # An eval failure `tryEval` cannot catch (an infinite recursion from a module set that is BROKEN
   # rather than merely permissive) propagates raw: still a failing check, but reported as the
   # underlying error instead of the messages below.
-  #
-  # COVERAGE NOTE — `conformance/confinement.nix` drives this function's logic through a synthetic
-  # home-manager-free builder (it has to: ADR-0002). The two DEFAULTS a real consumer relies on —
-  # `force = home.activationPackage.drvPath` and the `home.sessionVariables` positive control —
-  # are therefore only exercised where home-manager actually exists, i.e. in a consumer repo's own
-  # `checks`. Keep them in step with home-manager's option names.
   mkConfinementCheck =
     {
       buildHome,
@@ -193,15 +167,10 @@ let
     };
     okWitness pkgs name;
 
-  # mkIdentityPostureCheck (issue #35): assert every identity in a repo's OWN members carry the
-  # login-credential posture that repo has chosen (ADR-0004).
-  #
-  # OPT-IN BY CONSTRUCTION, and that is the whole design. ADR-0004 makes the posture conditional
-  # and consumer-owned — a private repo may legitimately ship `$6$` sha512crypt; a public/shared
-  # repo wants yescrypt because its hash is world-readable. So `loadIdentity` imposes NO hash
-  # policy: baking yescrypt into the loader would impose one repo's public posture on every
-  # consumer, including the untrusted roaming single-user flakes the greeter exists for. A repo
-  # states its own posture, once, by calling this:
+  # mkIdentityPostureCheck (issue #35): assert every identity in a repo's OWN members carries the
+  # login-credential posture that repo has chosen. OPT-IN BY CONSTRUCTION, because ADR-0004 makes
+  # the posture consumer-owned and `loadIdentity` therefore imposes none. A repo states its own,
+  # once, by calling this:
   #
   #     contract.lib.mkIdentityPostureCheck {
   #       inherit pkgs;
@@ -209,13 +178,12 @@ let
   #       require = "yescrypt";
   #     }
   #
-  # `require` has NO DEFAULT: the contract does not pick a repo's posture, so the caller must say
-  # which one it is asserting. Known postures are `credentialPostures` above (ADR-0004's two:
-  # `yescrypt`, `libc`); an unknown name is a loud error naming them, since a posture typo must
-  # never read as "checked". `identities` is a LIST of loaded identities (`lib.attrValues` an
-  # attrset members) — derive it from the users directory rather than hardcoding it, so a newly
-  # added user is covered instead of silently skipped; an empty list is a hard error rather than a
-  # vacuous pass.
+  # `require` has NO DEFAULT (ADR-0025): the caller must say which posture it is asserting. Known
+  # ones are `credentialPostures` above; an unknown name is a loud error naming them, since a
+  # posture typo must never read as "checked". `identities` is a LIST of loaded identities
+  # (`lib.attrValues` an attrset members) — derive it from the users directory rather than
+  # hardcoding it, so a newly added user is covered instead of silently skipped; an empty list is
+  # a hard error rather than a vacuous pass.
   mkIdentityPostureCheck =
     {
       identities,
@@ -289,10 +257,9 @@ let
     okWitness pkgs name;
 
   # mkHomeEvalCheck (issue #49, decision #43): prove ONE user's every published home EVALUATES
-  # on every system the repo builds it for — the members-generic replacement for the hand-written
-  # cross-arch eval checks each user's `checks.nix` used to carry. A consumer's mapper applies it
-  # per user over the derived members (failure attribution rides the check name), so a typical
-  # user ships no check file at all:
+  # on every system the repo builds it for. A consumer's mapper applies it per user over the
+  # derived members (failure attribution rides the check name), so a typical user ships no check
+  # file at all:
   #
   #     contract.lib.mkHomeEvalCheck {
   #       inherit pkgs;
@@ -313,9 +280,8 @@ let
   # check exists to surface (the reasoning the old hand-written checks documented).
   #
   # COVERAGE NOTE — like `mkConfinementCheck`, `conformance/home-eval.nix` drives this logic
-  # through synthetic homes (it has to: ADR-0002). The `activationPackage.drvPath` default over a
-  # REAL home-manager home is therefore only exercised in a consumer repo's own `checks` — keep it
-  # in step with home-manager's attribute names.
+  # through synthetic homes, so the `activationPackage.drvPath` default over a REAL home-manager
+  # home is only exercised in a consumer repo's own `checks` (ADR-0025).
   mkHomeEvalCheck =
     {
       homesFor,
@@ -356,11 +322,9 @@ let
     # anti-vacuity, and only then evaluability — a check that forced nothing must report the
     # emptied entry, not read as "every home evaluates".
     #
-    # The anti-vacuous assert EXTENDS issue #49's clause ("for every system in `systems`,
-    # `homesFor sys` is a non-empty attrset") to the list itself, which that wording passes over:
-    # `systems = [ ]` satisfies it for-all-vacuously, so the same emptied-entry hazard one level up
-    # would read as green forever. Same species, same verdict — a derived system list that filters
-    # down to nothing is a mapper bug, not a passing check.
+    # The anti-vacuous assert covers the LIST as well as each entry: "every system's homes are
+    # non-empty" is satisfied for-all-vacuously by `systems = [ ]`, so the same emptied-entry
+    # hazard one level up would read as green forever.
     assert diag.must {
       ok = systems != [ ];
       who = name;
@@ -406,15 +370,11 @@ let
     };
     okWitness pkgs name;
 
-  # mkMemberChecks (issue #60): the MEMBER-SET ADAPTER over the three helpers above — ONE call takes a
-  # consumer's members plus its own material (its home builder, its per-system homes, the credential
-  # posture it has chosen) and yields the whole per-user check set, named.
-  #
-  # The helpers are members-generic for a reason: a hand-listed set always misses the entry someone
-  # forgot to add. Applying them by hand re-introduced exactly that at the call site — two
-  # `mapAttrs'` folds over the members, each check's name spelled twice, and two closures threaded
-  # per user, re-typed in every consumer. The mapping is not a fleet's fact; it is the same fold
-  # every consumer of the kit performs, so the contract performs it:
+  # mkMemberChecks (issue #60): the MEMBER-SET ADAPTER over the three helpers above — ONE call takes
+  # a consumer's members plus its own material (its home builder, its per-system homes, the
+  # credential posture it has chosen) and yields the whole per-user check set, named. The fold is
+  # not a fleet's fact; it is the same one every consumer of the kit performs, so the contract
+  # performs it:
   #
   #     checks.<system> = packages.<system> // contract.lib.mkMemberChecks {
   #       inherit pkgs members homes;
@@ -424,46 +384,33 @@ let
   #
   # yielding `home-confinement-<user>` and `home-eval-<user>` per member, plus one
   # `identity-posture` over the whole members — every name from `checkNames` above, so a call site
-  # spells none of them.
-  #
-  # It REPLACES nothing. The three helpers stay public and separately callable: a single-user repo
-  # has no members to adapt, and a repo that wants confinement alone should call for confinement
-  # alone. This is the members fold over them, and it is written in terms of exactly the same
-  # public arguments those calls take.
+  # spells none of them. It REPLACES nothing; the three helpers stay public and separately callable
+  # (ADR-0025).
   #
   # SIGNATURE — what stays the consumer's, stays the consumer's:
-  #   `members`    the ADR-0014 members (`mkMembers`, issue #57), the authority on WHO is
-  #               checked. Derived, so a user added to the directory is covered the moment it
-  #               exists; an EMPTY one is a hard error, since a check set over nobody is green
-  #               forever.
+  #   `members`   the ADR-0014 members (`mkMembers`, issue #57), the authority on WHO is checked.
   #   `homes`     the consumer's per-system homes AS IT ALREADY HOLDS THEM —
   #               `{ <system>.<user>.<mode> = home; }`. The systems checked are its own key set, so
   #               "which systems this fleet bakes" is read off the material rather than handed a
   #               second time and trusted to agree.
   #   `buildHome` `member: extraModules: home` — the consumer's own builder, curried per member.
-  #               Same package-free injection `mkConfinementCheck` takes (ADR-0002): the contract
-  #               applies a function it never imports.
-  #   `require`   the credential posture, with NO DEFAULT here either. ADR-0004 makes it
-  #               consumer-owned, and an adapter that picked one would impose a posture on every
-  #               repo that adopted the adapter — precisely what the helper refuses to do.
-  #   `force` / `positiveControl` — forwarded to the helpers unchanged, defaulting to the same
-  #               home-manager hooks, so a hand-rolled (or synthetic) home is still checkable
-  #               through the adapter rather than only through the helpers.
+  #               The same injection `mkConfinementCheck` takes (ADR-0002).
+  #   `require`   the credential posture, with NO DEFAULT here either (ADR-0004, ADR-0025).
+  #   `force` / `positiveControl` — forwarded to the helpers unchanged, so a hand-rolled (or
+  #               synthetic) home is still checkable through the adapter rather than only through
+  #               the helpers.
   #
-  # Every anti-vacuity guard the helpers carry survives, because the adapter adds no `tryEval` and
-  # no filtering: it passes the material through. What it adds is the traps that only exist ONE
-  # LEVEL UP, where the fold is — a member set with no members, homes naming no system, and homes that
-  # do not cover the members. Each of those yields a check set that is merely SMALLER, and a missing
-  # check is indistinguishable from a passing one in `nix flake check` output. (Plus the two SHAPE
-  # guards those diagnoses need to stay honest: a member set or a homes entry that is not an attrset gets
-  # told so, rather than being reported as empty or iterated over.)
+  # Every anti-vacuity guard the helpers carry survives: the adapter adds no `tryEval` and no
+  # filtering, it passes the material through. What it adds is the traps that only exist ONE LEVEL
+  # UP, where the fold is — an empty member set, homes naming no system, homes that do not cover the
+  # members (ADR-0025) — plus the two SHAPE guards those diagnoses need to stay honest, since an
+  # entry that cannot be read must not be reported as empty.
   #
-  # The coverage rule is worth stating outright, because it is the one thing the adapter asks of a
-  # consumer that the helpers do not: every member bakes on every system in `homes`. That is the
-  # shape `mkHomeMatrix` already implies — its rows are per SYSTEM, not per user — and it is what
-  # makes "who is unchecked" answerable at all. A fleet that genuinely bakes different members on
-  # different systems is outside this fold and calls the three helpers per user, which is one more
-  # reason they stay public.
+  # THE COVERAGE RULE is the one thing the adapter asks of a consumer that the helpers do not:
+  # every member bakes on every system in `homes`. That is the shape `mkHomeMatrix` already implies
+  # — its rows are per SYSTEM, not per user — and it is what makes "who is unchecked" answerable at
+  # all. A fleet that genuinely bakes different members on different systems is outside this fold
+  # and calls the three helpers per user.
   mkMemberChecks =
     {
       members,
