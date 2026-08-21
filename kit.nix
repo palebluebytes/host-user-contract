@@ -53,8 +53,8 @@ let
   # The grant option fragment: ONE BOOL PER FEATURE, `{ <feature> = bool; }`. It is the shape of
   # every grant-ish value in the contract — what a host affords at a bind, and what an account was
   # granted — so the grant algebra needs no normalising shim anywhere. There is no `.enable` suffix:
-  # a feature never carried a second flag, and features are ATOMIC (a host composes `sudo` with
-  # `containers` rather than granting one coarse role), so a word that never varied was ceremony.
+  # a feature never carried a second flag, and features are ATOMIC (ADR-0008), so a word that never
+  # varied was ceremony.
   grantedOptions = lib.mapAttrs (_: f: lib.mkEnableOption f.grant) registry;
 
   # The shared account plan (issue #30): the single pure `accountPlan (identity, grants) → account
@@ -74,11 +74,7 @@ let
   # `mkContractPackage` writes through and `bindContractPackage` reads through.
   manifest = import ./manifest.nix { inherit lib; };
 
-  # The check kit: the proofs a CONSUMER runs over its own repo — its real module set stays
-  # confined, its own members carry the credential posture it has chosen, and everything it bakes
-  # evaluates. Lib-only and package-free like everything else here (each check takes the caller's
-  # `pkgs`, and the confinement one takes the caller's home BUILDER, so the contract never needs
-  # home-manager).
+  # The check kit: the proofs a CONSUMER runs over its own repo (ADR-0025).
   checkKit = import ./check-kit.nix { inherit lib; };
 
   # --- the two substantial pieces, split out for focus ---
@@ -164,24 +160,20 @@ in
     # ── PRODUCER (a users repo) ──────────────────────────────────────────────────────────────
     # mkMembers: the MEMBER-SET derivation over a users directory —
     # `{ <name> = { name; dir; identity; declaration; }; }`, the contract's one answer to "who is
-    # in this users repo, and what does each one say". The layout rule, the identity resolution and
-    # the declaration eval live here rather than in each producer's own `readDir`, and members are
-    # what everything downstream takes, so no path is re-derived and no file read twice.
+    # in this users repo, and what does each one say" (ADR-0014).
     mkMembers = args: contractLib.mkMembers (args // { inherit (identityJson) loadIdentity; });
 
     # mkHomeMatrix: the per-system HOME MATRIX over `contract.modes`. The caller declares its whole
     # matrix as one fact — `{ <system> = { <mode> = bool; }; }`, a row per system it bakes, each
     # row naming only the modes that system's seats CANNOT run — and gets the subtraction plus its
     # guards. Which modes a fleet bakes stays the fleet's; the SHAPE of the declaration is the
-    # contract's, because an under-bake is silent and an omitted mode must therefore default to
-    # BAKED.
+    # contract's (ADR-0012).
     inherit (contractLib) mkHomeMatrix;
 
     # mkContractFleet `{ members; homeMatrix; pkgsFor; buildHome }` → the whole published surface
     # (`{ homes; packages; contractUsers; systems; pkgsBySystem; }`). The fleet-level producer, and
     # the one a multi-user repo calls: it owns the members × system × mode fold, the output merges
-    # and the once-per-system `pkgs`. Package-free by injection — `buildHome` is the consumer's
-    # closure, so this never names `mkContractHome` and a home built without it still bakes here.
+    # and the once-per-system `pkgs`. Package-free by injection (ADR-0014).
     mkContractFleet =
       args: contractLib.mkContractFleet (args // { inherit (identityJson) loadIdentity; });
 
@@ -196,10 +188,9 @@ in
 
     # mkContractHome: the producer HOME builder — the contract-owned composition (umbrella +
     # baseline + the desktop dotfile + the mode's own `configuration` + the identity/home.* inline
-    # module + the hostFacts specialArg). Package-free by INJECTION: the consumer passes
-    # `home-manager.lib.homeManagerConfiguration` verbatim, so the contract applies a builder it
-    # never imports. A caller passes only its own side: `{ homeManagerConfiguration; pkgs; member
-    # (or memberDir); mode; stateVersion; … }`.
+    # module + the hostFacts specialArg), applying the consumer's own
+    # `homeManagerConfiguration` verbatim (ADR-0014). A caller passes only its own side:
+    # `{ homeManagerConfiguration; pkgs; member (or memberDir); mode; stateVersion; … }`.
     mkContractHome =
       args:
       contractLib.mkContractHome (
@@ -227,18 +218,13 @@ in
     inherit (contractLib) enabledModesOf;
 
     # ── The CHECK KIT — the proofs only a consumer can run, over material only it has ─────────
+    # ADR-0025; `check-kit.nix` carries each signature.
     #   - mkConfinementCheck: does this repo's REAL module set still have no system channel?
-    #     (The contract's own suite can only prove the umbrella; a consumer's own imports are where
-    #     a channel gets smuggled back in.) Takes the consumer's home BUILDER, so the contract
-    #     proves a home-manager module set without depending on home-manager.
     #   - mkIdentityPostureCheck: does this repo's own members carry the credential posture THIS
-    #     repo has chosen? Opt-in and parameterized (`require`), because the posture is
-    #     consumer-owned — which is also why `loadIdentity` imposes no hash policy.
+    #     repo has chosen?
     #   - mkHomeEvalCheck: does everything this repo BAKES for one user actually evaluate, on every
     #     system it bakes for?
-    #   - mkMemberChecks: all three applied across a whole member set in ONE call, with the check
-    #     names single-sourced. The three stay separately callable — a single-user repo has no
-    #     member set to adapt, and a repo wanting one proof calls for one proof.
+    #   - mkMemberChecks: all three applied across a whole member set in ONE call.
     inherit (checkKit)
       mkConfinementCheck
       mkIdentityPostureCheck
@@ -256,18 +242,14 @@ in
   # tests".
   internal = {
     # The floor kernel behind `floorMode`, taking a mode registry explicitly. Internal because no
-    # consumer needs it: `floorMode` is the answer. Exposed here because the contract's own
-    # registry has exactly one floor by construction, so the guard's two failure directions — no
-    # floor, and two — are only demonstrable against a synthetic registry.
+    # consumer needs it — `floorMode` is the answer — and exposed because its two failure
+    # directions are only demonstrable against a synthetic registry (see lib.nix).
     inherit (contractLib) floorOf;
     # The run-set derivation: what a machine DECLARED → the modes it runs. Exposed so the suite can
-    # state "a gui-declaring host runs { cli, gui }; one that declares nothing runs { cli }" as a
-    # claim about the derivation itself rather than only through a whole bind — and so it can pin
-    # that the declaration is a SET (order and duplicates change nothing).
+    # claim things about the derivation itself rather than only through a whole bind.
     inherit (contractLib) runsWith;
     # The SELECTION kernel, taking the floor explicitly. The registry has ONE non-floor mode, so
-    # "two rich modes is a hard error" — the rule that keeps incomparable modes from being silently
-    # ordered — is only demonstrable against a synthetic world.
+    # "two rich modes is a hard error" is only demonstrable against a synthetic world.
     inherit (contractLib) selectModeOver;
     # The home-matrix kernel, taking the upper bound to narrow instead of closing over `modes`: the
     # suite cannot otherwise prove that a contract which GAINS a mode extends every system's bake.

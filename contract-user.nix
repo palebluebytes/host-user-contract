@@ -17,17 +17,14 @@
 #   };
 #
 # WHICH SESSION SHAPES THIS USER RUNS IN, and for each one the home to build and that shape's own
-# parameters. Nothing else. In particular a user does NOT say which FEATURES it wants: which groups
-# an account lands in is the host's decision alone, declared where the host binds the user
-# (`bindContractUser { affordances = …; }`). A user that could veto a grant would be a second
-# authority over the same value with nothing forcing the two to agree, and the veto a user actually
-# needs — "never give me a desktop" — is already expressible here by not enabling the gui mode.
+# parameters. Nothing else — in particular a user does NOT say which FEATURES it wants, and the
+# veto it actually needs ("never give me a desktop") is expressible here by not enabling the gui
+# mode (ADR-0010).
 #
-# IT IS NOT A HOME-MANAGER MODULE. It is evaluated by bare `evalModules` with no home-manager
-# present (the contract does not depend on home-manager), which is what lets the producer read a
-# user's published modes without building anything and lets a greeter learn them from a plain
-# `nix eval`. The home-manager content lives behind `configuration`, which is a deferredModule and
-# so is never forced by that read.
+# IT IS NOT A HOME-MANAGER MODULE. Evaluated by bare `evalModules` with no home-manager present
+# (ADR-0002), which is what lets the producer read a user's published modes without building
+# anything and lets a greeter learn them from a plain `nix eval`. The home-manager content lives
+# behind `configuration`, a deferredModule, so it is never forced by that read.
 { lib, modeRegistry }:
 {
   options.contract = lib.mapAttrs (

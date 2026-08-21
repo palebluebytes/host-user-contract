@@ -14,20 +14,13 @@
 #                               the `trustedKeys`, in that order;
 #   - extraGroups ............. what the MODE needs ∪ what the GRANT confers.
 #
-# TWO GROUP SOURCES, AND NOTHING SELF-DECLARED. An account's groups are decisions somebody else
-# made: what the session shape needs in order to run at all (a graphical session's input devices,
-# which ride the MODE because needing them is a property of running that session), and what the
-# host afforded this person (which rides the GRANT because it is a judgement about them).
+# TWO GROUP SOURCES, AND NOTHING SELF-DECLARED — what the SESSION needs ∪ what the HOST afforded,
+# with no third and no untrusted input left to filter (ADR-0006).
 #
-# There is no third source. An identity used to carry `extraGroups` — group names a user wrote into
-# their own public record — filtered by a deny-list of privileged names, so anything outside that
-# list reached the account unconditionally. That is gone: a user cannot put themselves in a group,
-# so there is no untrusted group input left to filter.
-#
-# The mode's own groups still run through the privileged filter, and that is not vestigial — it is
+# The mode's own groups still run through the privileged filter, and that is not vestigial: it is
 # the one line stopping a privileged name added to `modes.nix` from reaching every account in that
-# mode with no grant. The registry is contract-owned, so the conformance suite catches it loudly
-# too; this makes the failure SAFE as well as loud.
+# mode with no grant. The conformance suite catches such an addition loudly; this makes the same
+# failure SAFE as well as loud.
 #
 # `grants` is `{ <feature> = bool; }` (i.e. `contract.users.<u>.granted`); `mode` is the session
 # shape this account was bound in; `identity` is the resolved identity record. Pure: no `config`,

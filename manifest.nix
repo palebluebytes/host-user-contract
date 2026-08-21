@@ -6,37 +6,19 @@
 # producer writes THROUGH `writeManifest` and the consumer reads THROUGH `readManifest`, so neither
 # re-encodes the shape independently.
 #
-# WHAT THE MANIFEST FREEZES is the MODE the home was built for. That is precisely the thing a bind
-# cannot change — a grant is conferred on the account at activation and can never reach into a
-# sealed home, so there is nothing about a grant worth freezing, while activating a graphical home
-# on a machine with no display is a mismatch worth refusing by name.
-#
-# There is NO backward-compatibility read. A manifest is produced and consumed through this one
-# module; a version it does not recognise is a hard, named error rather than a shape guessed at.
+# WHAT THE MANIFEST FREEZES is the MODE the home was built for — precisely the thing a bind cannot
+# change, and so the thing worth asserting about (ADR-0012). There is NO backward-compatibility
+# read: a manifest is produced and consumed through this one module.
 #
 # THE VERSION IS THE CONTRACT'S ONE VERSION — ./version.nix, the release version release-please
-# owns. There is no second, narrower "wire format" number: the producer↔consumer agreement is not
-# four JSON fields, it is also what `activate` expects, what `accountPlan` computes and which groups
-# a mode confers, and a field-set counter sees none of that.
-#
-# COMPATIBILITY IS BY MAJOR VERSION, not by exact match. A manifest is accepted when it shares this
-# contract's COMPATIBILITY LINE — semver's caret rule, the leftmost non-zero component:
-#
-#   1.2.0 and 1.9.3   same line ("1")     accepted
-#   1.9.3 and 2.0.0   different           refused
-#   0.3.1 and 0.3.9   same line ("0.3")   accepted
-#   0.3.9 and 0.4.0   different           refused
-#
-# So a package built by an older contract keeps working until a MAJOR release, and routine releases
-# — a fix, a feature, a docs typo — never invalidate anything already published. Pre-1.0 the minor
-# takes the major's role, which is why `bump-patch-for-minor-pre-major` is on: the compatibility
-# digit has to mean "breaking", and a feature that breaks nothing must not move it.
+# owns — and compatibility is by MAJOR release rather than exact match, so a package built by an
+# older contract keeps binding until one (ADR-0024).
 #
 # THE DISCIPLINE THIS BUYS AND REQUIRES: changing this file's FIELD SET is a breaking change and
 # must be committed as one (`feat!:` or a `BREAKING CHANGE:` footer). That is what moves the
 # compatibility line and refuses the packages the change would otherwise mis-read. Add a field
 # quietly under `fix:` and old packages will be accepted against a reader that expects it.
-# See docs/adr/0024.
+# (Stated here on purpose: ADR-0024 puts it at the point of the decision, and this is that point.)
 { lib }:
 let
   # The contract's one version, read from the file release-please owns. `writeManifest` stamps it;

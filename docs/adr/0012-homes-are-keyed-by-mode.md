@@ -48,11 +48,15 @@ there is no second statement for a first to disagree with.
 
 ## The manifest freezes the mode
 
-`contract-manifest.json`, v4:
+`contract-manifest.json`:
 
 ```json
-{ "version": 4, "username": "ada", "packages": [ … ], "mode": "gui" }
+{ "version": "0.0.0", "username": "ada", "packages": [ … ], "mode": "gui" }
 ```
+
+The `version` is **the contract's own release version**, not a counter over this field set — see
+[0024](0024-versioned-releases.md), which records why a separate "wire format" number was built and
+then removed.
 
 The mode is precisely the thing a bind **cannot** change, and therefore precisely the thing worth
 asserting about: activating a graphical home on a machine with no display is a mismatch worth
@@ -61,7 +65,7 @@ Selection satisfies that by construction; the guard covers the internal path whe
 called directly.
 
 **There is no backward-compatibility read.** A manifest is written and read through one module, so
-an unrecognised version is a named refusal rather than a shape guessed at from whichever fields
+an incompatible version is a named refusal rather than a shape guessed at from whichever fields
 happen to be present.
 
 ## Consequences
