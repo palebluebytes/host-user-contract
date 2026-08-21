@@ -61,6 +61,12 @@ carry the whole shape.
 | [0022](0022-oracle-and-reference-fleets.md) | The oracle and the reference fleets |
 | [0023](0023-no-classification-of-home-content.md) | Negative result: the contract does not classify home content |
 
+## VII — Publication
+
+| ADR | Decision |
+| --- | --- |
+| [0024](0024-versioned-releases.md) | The contract has one version, and it is the release version |
+
 ## Writing a new record
 
 - **One decision per record**, stated in the title as a claim rather than a topic.

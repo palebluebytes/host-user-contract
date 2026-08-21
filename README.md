@@ -60,6 +60,17 @@ inputs.users.inputs.contract.follows = "contract";
 }
 ```
 
+That input pins `main`, which is the recommended pin: your `flake.lock` already holds the exact
+revision, so updates happen when you run `nix flake update` and never behind your back. Tagged
+releases exist alongside it, each carrying a generated [`CHANGELOG.md`](CHANGELOG.md).
+
+**Compatibility is by major version.** A contractPackage your users repo published keeps binding on
+a host that has moved on — until a major release, which is refused by name. Pre-1.0 the minor plays
+the major's part, so `0.3.1` and `0.3.9` are compatible while `0.4.0` is not
+([ADR-0024](docs/adr/0024-versioned-releases.md)). Keeping
+`inputs.users.inputs.contract.follows = "contract"` (above) sidesteps the question entirely: both
+sides are then the same contract.
+
 Each name appears once, as the key of its own settings. It is **not** the account's name — that
 comes from the user's own `identity.json`, and the producer refuses to publish a user whose key and
 identity disagree, so the two are one answer. The name does **selection**: a users repo holds more

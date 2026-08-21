@@ -277,6 +277,20 @@ present.
 - **`contractPackage` vs `activationPackage`** — `contractPackage` is the contract-level
   content-addressed flake output (activation + manifest sidecar); `activationPackage` is
   home-manager's own term for the derivation that activates the home. `contractPackage` wraps it.
+- **the contract version** — ONE number (`version.nix`, owned by release-please). It is the repo's
+  release version *and* what a manifest declares *and* what `readManifest` refuses a mismatch on.
+  There is no separate "wire format" version: a counter over the manifest's field set would gate
+  only those fields, while the producer↔consumer agreement is also the activation, the account plan
+  and the mode groups ([0024](docs/adr/0024-versioned-releases.md)). Say **the contract version**,
+  never "the manifest version" or "the release version" as if they were different things.
+- **compatibility line** — a version's leftmost non-zero component (`1.9.3` → `1`; `0.3.9` → `0.3`),
+  the part a BREAKING change moves. Two versions are compatible exactly when their lines match, so a
+  published package keeps binding until a **major** release. Say *compatible* / *incompatible*, never
+  "same version": an older release on the line is accepted, and that is the guarantee.
+- **an incompatible version is a refusal, not a warning** — a manifest off this contract's line is a
+  hard, named error. There is no migration path and no advisory mode: a major release moved the
+  agreement, and a bind would assemble an account against realization code the home was never built
+  for. `users.inputs.contract.follows = "contract"` sidesteps it — both sides become one contract.
 
 ## Load-bearing invariants
 

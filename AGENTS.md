@@ -34,6 +34,26 @@ not input — so nothing but running all three catches drift between them.
 New files must be **`git add`-ed before `nix flake check` sees them** — a flake only reads the
 tracked tree.
 
+## Commits are the changelog
+
+Commit subjects are **load-bearing**, not housekeeping: release-please reads Conventional Commits
+on `main` to compute the version bump and generate `CHANGELOG.md` (ADR-0024).
+
+- **`type(scope): subject`** — a subject that doesn't parse is silently dropped from the changelog.
+- **Mark breaks** with `!` or a `BREAKING CHANGE:` footer. This is load-bearing beyond the
+  changelog: a break moves the **compatibility line**, and that is the only thing that makes a host
+  refuse an already-published contractPackage. Pre-1.0 a break bumps the minor; a plain `feat:`
+  bumps only the patch, because the compatibility digit must mean "breaking" and nothing else.
+- **Changing `manifest.nix`'s field set is always a break.** Adding, removing or retyping a manifest
+  field under `fix:` or `refactor:` leaves old packages passing a reader that expects the new shape.
+  Commit it as `feat!:`.
+- **Visible in the changelog:** `feat`, `fix`, `perf`, `refactor`, `docs`. **Hidden:** `test`,
+  `chore`, `ci`, `build`, `style`.
+- **Never hand-edit** `CHANGELOG.md`, `.release-please-manifest.json`, `version.nix`, or the
+  `version` field in `conformance/fixtures/*/contract-manifest.json` — release-please owns all four
+  and moves them together. The fixtures must track the version because `readManifest` gates on it;
+  if they ever fall behind, the byte-equality check fails on `main` and one regeneration fixes it.
+
 ## Agent skills
 
 - **Issue tracker** — issues and PRDs live in this repo's GitHub Issues
