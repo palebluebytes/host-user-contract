@@ -18,6 +18,7 @@ an earlier section — read the sections, not the number ranges.
 | [0001](0001-host-user-contract.md) | Hosts and users live in separate repos, bound by a shared contract |
 | [0002](0002-contract-is-a-standalone-flake.md) | The contract is a standalone flake that depends only on nixpkgs `lib` |
 | [0003](0003-no-secrets-beyond-the-credential.md) | The contract handles no secrets beyond the login credential |
+| [0026](0026-one-option-prefix-per-party.md) | Both parties declare under `contract.*`, each on its own eval-side |
 
 ## II — What a user is
 

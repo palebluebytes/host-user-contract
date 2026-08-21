@@ -12,14 +12,8 @@
   # System kit: the host's declarations, the account schema, and the realization.
   #
   # EVERYTHING THE CONTRACT PUTS ON A HOST LIVES UNDER `contract.*` — the declarations an operator
-  # writes and the values the contract writes back. There is no second prefix: `custom.*` said only
-  # "not upstream NixOS", which is not a fact about anything, whereas `contract.users.<u>.granted`
-  # tells a reader exactly where the value came from.
-  #
-  # The user's own declaration also lives under `contract.*`, in its `user.nix`. That symmetry is
-  # deliberate — each party declares its half of the contract under the same word, on its own
-  # eval-side — and it is why the host's display output is `contract.display.enabled` rather than
-  # `contract.gui.*`, which would shadow the user's gui-mode declaration in a reader's head.
+  # writes and the values a bind writes back — and so does the user's own declaration, in its
+  # `user.nix`, on the other eval-side (ADR-0026).
   nixosModule =
     { ... }:
     {
