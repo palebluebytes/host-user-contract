@@ -1,5 +1,5 @@
 # Multi-language formatting for the contract, run via `nix fmt` (treefmt over nixpkgs tools — no extra
-# flake inputs, ADR-0004). Nix is the deliverable; the Python/shell formatters stand ready for any
+# flake inputs, ADR-0002). Nix is the deliverable; the Python/shell formatters stand ready for any
 # example or host-side code a future addition brings.
 
 [formatter.nix]

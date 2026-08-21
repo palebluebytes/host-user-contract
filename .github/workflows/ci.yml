@@ -1,7 +1,7 @@
 # CI — walk the three `nix flake check` targets that make up "all of it": the contract flake (the
 # synthetic conformance oracle + its VMs) and the two reference fleets (docs/adr/0022). The fleet
 # checks cannot live under the contract flake's checks — they need home-manager, which the contract
-# does not input (ADR-0004) — so nothing but this matrix catches drift between the three.
+# does not input (ADR-0002) — so nothing but this matrix catches drift between the three.
 name: CI
 
 on:

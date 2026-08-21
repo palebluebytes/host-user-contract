@@ -1,4 +1,4 @@
-# The `identity.json` convention (ADR-0010, issue #5) — the contract owns the path, the
+# The `identity.json` convention (ADR-0005, issue #5) — the contract owns the path, the
 # schema, and a loader for a user's PUBLIC identity, carried as DATA (not Nix). A host or
 # greeter reads the same file with `jq` to authenticate BEFORE evaluating any of the user's
 # Nix (ADR-0005, data-before-code: eval is not a sandbox), while the user's home module
@@ -7,8 +7,8 @@
 # The schema is DERIVED from identity.nix — the single identity source — exactly as every
 # feature surface is a projection of the registry (kit.nix). So it cannot drift: there is no
 # second field list to keep in sync. `loadIdentity` is lossless and total over identity.nix
-# (issue #5 schema reconciliation: `trustedKeys`/`extraGroups` are read by realization.nix
-# and so MUST be carriable here, not just the five fields ADR-0010 first named), and an
+# (issue #5 schema reconciliation: `trustedKeys` is read by realization.nix and so MUST be
+# carriable here, not just the fields ADR-0005 names in its sketch of the schema), and an
 # unknown key is a loud error (a typo-net), never a silently-dropped field.
 { lib, identityOptions }:
 let
