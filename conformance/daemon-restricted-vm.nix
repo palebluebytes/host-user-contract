@@ -17,6 +17,10 @@
   contractModule,
   system,
   bindContractPackage,
+  # The live contract version, interpolated rather than written out: this synthetic package stands
+  # in for one THIS contract built, and `readManifest` refuses any other version. Read at eval, so
+  # unlike a committed fixture there is nothing here to keep in step by hand.
+  contractVersion,
 }:
 let
   inherit
@@ -38,7 +42,7 @@ let
     chmod +x $out/activate
     cat > $out/contract-manifest.json <<'JSON'
     {
-      "version": 4,
+      "version": "${contractVersion}",
       "username": "testuser",
       "mode": "cli",
       "packages": ["hello", "curl"]

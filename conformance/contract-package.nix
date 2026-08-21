@@ -24,7 +24,8 @@
   writeManifest,
   readManifest,
   manifestFileName,
-  manifestVersion,
+  contractVersion,
+  versionsCompatible,
 }:
 let
   inherit (toolkit) eval referenceIdentity;
@@ -102,7 +103,7 @@ let
         manifest=${contractPackage}/${manifestFileName}
         jq . "$manifest"
 
-        jq -e '.version == ${toString manifestVersion}' "$manifest"
+        jq -e '.version == ${builtins.toJSON contractVersion}' "$manifest"
         jq -e '.username == "testuser"'                 "$manifest"
         jq -e '.mode == "cli"'                          "$manifest"
         jq -e '.packages | contains(["hello"])'         "$manifest"
@@ -188,9 +189,37 @@ let
   # A manifest written at a version this contract does not read. There is no compatibility read:
   # the producer and the host are pinned to different contract revisions, and guessing at the shape
   # would put a user's account together out of fields nobody agreed on.
+  # A manifest from a DIFFERENT major line. Compatibility is by major version, so this is the shape
+  # that must be refused: the agreement itself moved, and these fields can no longer be trusted to
+  # mean what this reader expects. "999.0.0" is off every line this repo will plausibly reach.
   wrongVersion = builtins.tryEval (
-    readManifest (writeManifest (guiFields // { version = manifestVersion - 1; }))
+    readManifest (writeManifest (guiFields // { version = "999.0.0"; }))
   );
+
+  # The BACKWARD-COMPATIBILITY guarantee, which is the whole point of comparing lines rather than
+  # exact versions: a package built by an older release on this contract's line still binds. The
+  # older version is derived from the live one — bump nothing, drop the last component to zero —
+  # so this proves the guarantee wherever the repo's version happens to sit.
+  olderOnSameLine =
+    let
+      parts = builtins.splitVersion contractVersion;
+      at = i: if builtins.length parts > i then builtins.elemAt parts i else "0";
+    in
+    if at 0 != "0" then "${at 0}.0.0" else "${at 0}.${at 1}.0";
+  sameLineAccepted = builtins.tryEval (
+    (readManifest (writeManifest (guiFields // { version = olderOnSameLine; }))).version
+  );
+
+  # The rule itself, proved against fixed pairs so it does not depend on where the repo's version
+  # sits. `0.0.x` is degenerate on purpose: nothing is stable before 0.1.
+  compatibilityRule = [
+    (versionsCompatible "1.2.0" "1.9.3")
+    (!versionsCompatible "1.9.3" "2.0.0")
+    (versionsCompatible "0.3.1" "0.3.9")
+    (!versionsCompatible "0.3.9" "0.4.0")
+    (!versionsCompatible "0.0.1" "0.0.2")
+    (!versionsCompatible "0.9.9" "1.0.0")
+  ];
   # The committed fixture JSON vs. writeManifest's output for the same fields — byte equality
   # proves the fixture is generated, not hand-maintained (a plain readFile of realized paths).
   fixtureIsGenerated =
@@ -288,14 +317,21 @@ in
     }
     {
       name = "manifest round-trip: writeManifest stamps the current version";
-      ok = roundTrip.version == manifestVersion;
+      ok = roundTrip.version == contractVersion;
     }
     {
-      # No compatibility read, deliberately: a manifest this contract does not recognise means the
-      # producer and the host are on different revisions, and a shape guessed at would assemble an
-      # account out of fields nobody agreed on.
-      name = "manifest version: a manifest written at another version is a hard, named error";
+      # Compatibility is by MAJOR version. Across a major boundary the agreement itself moved, and
+      # guessing would assemble an account out of fields nobody agreed on.
+      name = "manifest version: a manifest from another major line is a hard, named error";
       ok = !wrongVersion.success;
+    }
+    {
+      name = "manifest version: an OLDER release on the same major line still binds (backward compatible)";
+      ok = sameLineAccepted.success && sameLineAccepted.value == olderOnSameLine;
+    }
+    {
+      name = "manifest version: compatibility is the leftmost non-zero component (semver caret)";
+      ok = lib.all (x: x) compatibilityRule;
     }
     {
       name = "fixture generation: reference-contract-package is byte-identical to writeManifest output";

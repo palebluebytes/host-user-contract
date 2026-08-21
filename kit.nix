@@ -291,7 +291,8 @@ in
       writeManifest
       readManifest
       manifestFileName
-      manifestVersion
+      contractVersion
+      versionsCompatible
       ;
     # The out-of-universe probe set: the negative space `mkConfinementCheck` probes with, exposed
     # so the umbrella's own proof reads the SAME list rather than keeping a second copy of "what a

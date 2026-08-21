@@ -58,7 +58,8 @@ let
     writeManifest
     readManifest
     manifestFileName
-    manifestVersion
+    contractVersion
+    versionsCompatible
     outOfUniverseProbes
     ;
 
@@ -184,7 +185,8 @@ let
         writeManifest
         readManifest
         manifestFileName
-        manifestVersion
+        contractVersion
+        versionsCompatible
         ;
     })
     (import ./contract-home.nix {

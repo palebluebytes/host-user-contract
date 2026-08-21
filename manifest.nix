@@ -13,10 +13,59 @@
 #
 # There is NO backward-compatibility read. A manifest is produced and consumed through this one
 # module; a version it does not recognise is a hard, named error rather than a shape guessed at.
+#
+# THE VERSION IS THE CONTRACT'S ONE VERSION — ./version.nix, the release version release-please
+# owns. There is no second, narrower "wire format" number: the producer↔consumer agreement is not
+# four JSON fields, it is also what `activate` expects, what `accountPlan` computes and which groups
+# a mode confers, and a field-set counter sees none of that.
+#
+# COMPATIBILITY IS BY MAJOR VERSION, not by exact match. A manifest is accepted when it shares this
+# contract's COMPATIBILITY LINE — semver's caret rule, the leftmost non-zero component:
+#
+#   1.2.0 and 1.9.3   same line ("1")     accepted
+#   1.9.3 and 2.0.0   different           refused
+#   0.3.1 and 0.3.9   same line ("0.3")   accepted
+#   0.3.9 and 0.4.0   different           refused
+#
+# So a package built by an older contract keeps working until a MAJOR release, and routine releases
+# — a fix, a feature, a docs typo — never invalidate anything already published. Pre-1.0 the minor
+# takes the major's role, which is why `bump-patch-for-minor-pre-major` is on: the compatibility
+# digit has to mean "breaking", and a feature that breaks nothing must not move it.
+#
+# THE DISCIPLINE THIS BUYS AND REQUIRES: changing this file's FIELD SET is a breaking change and
+# must be committed as one (`feat!:` or a `BREAKING CHANGE:` footer). That is what moves the
+# compatibility line and refuses the packages the change would otherwise mis-read. Add a field
+# quietly under `fix:` and old packages will be accepted against a reader that expects it.
+# See docs/adr/0024.
 { lib }:
 let
-  # The current manifest version. `writeManifest` emits it; `readManifest` refuses anything else.
-  currentVersion = 4;
+  # The contract's one version, read from the file release-please owns. `writeManifest` stamps it;
+  # `readManifest` accepts anything on the same compatibility line. Imported here rather than passed
+  # in because this module cannot reach `flake.nix` (a flake's outputs are not an importable
+  # expression) and `kit.nix` cannot take a second parameter — the greeter re-imports the kit at
+  # login with only `lib` in hand (ADR-0020), so a new parameter would break a seat.
+  currentVersion = import ./version.nix;
+
+  # The COMPATIBILITY LINE of a version: its leftmost non-zero component, which is the part a
+  # breaking change moves. Two versions are compatible exactly when these are equal. `0.0.x` is
+  # deliberately degenerate — every patch is its own line — because pre-0.1 nothing is stable yet.
+  lineOf =
+    version:
+    let
+      parts = builtins.splitVersion version;
+      at = i: if builtins.length parts > i then builtins.elemAt parts i else "0";
+      major = at 0;
+      minor = at 1;
+    in
+    if major != "0" then
+      major
+    else if minor != "0" then
+      "${major}.${minor}"
+    else
+      "${major}.${minor}.${at 2}";
+
+  # Two versions are compatible exactly when they share a compatibility line.
+  compatible = a: b: lineOf a == lineOf b;
 
   # The seam filename inside a contractPackage — single-sourced so the producer writes and the
   # consumer reads the SAME name.
@@ -27,9 +76,15 @@ in
   # this module's value rather than re-spelling it.
   manifestFileName = fileName;
 
-  # The version, exposed for the same reason: a fixture that wants to author a WRONG version must
-  # be able to say "not this one" without hardcoding the right one.
-  manifestVersion = currentVersion;
+  # THE contract version, exposed so a fixture or a VM can stamp the live value rather than
+  # hardcoding a string that changes on every release. Named `contractVersion` and not
+  # `manifestVersion` on purpose: it does not version the manifest, it versions the contract — the
+  # manifest merely declares it (CONTEXT.md, "the contract version").
+  contractVersion = currentVersion;
+
+  # The compatibility predicate, exposed so the conformance suite can prove the RULE against fixed
+  # pairs rather than against wherever the repo's version happens to sit today.
+  versionsCompatible = compatible;
 
   # writeManifest: serialize the manifest field set to a store path at eval time
   # (`builtins.toFile`, no IFD). Returns the JSON file's store path, which the producer copies into
@@ -62,10 +117,14 @@ in
     let
       raw = lib.importJSON manifestFile;
     in
-    assert lib.assertMsg (raw.version or null == currentVersion)
+    # Compatible, not identical: a package built by any release on this contract's compatibility
+    # line is accepted, so routine releases never invalidate what is already published. A version
+    # off the line means a MAJOR release happened between the two sides — the agreement itself
+    # changed, and the fields here can no longer be trusted to mean what this reader expects.
+    assert lib.assertMsg (raw ? version && compatible raw.version currentVersion)
       "contract: ${fileName} declares version ${
         builtins.toJSON (raw.version or null)
-      }, but this contract reads version ${toString currentVersion}. The producer and the host are pinned to different contract revisions; align them.";
+      }, which is not compatible with this contract's version ${builtins.toJSON currentVersion} (compatibility is by major version: ${builtins.toJSON (lineOf currentVersion)}.x). A major release happened between the producer that built this package and the host reading it, so the activation, the account plan and the mode groups may all have moved. Rebuild the package against this host's contract, or pin the host to a release on the package's line — `users.inputs.contract.follows = \"contract\"` keeps them in step by construction.";
     {
       inherit (raw)
         version

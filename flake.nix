@@ -6,14 +6,9 @@
   outputs =
     { self, nixpkgs }:
     let
-      # The contract's RELEASE version — the repo's publication version, owned by release-please
-      # (docs/adr/0024). The annotation comment is the bump target: release-please rewrites the
-      # string on this line and nothing else, so do not edit it by hand.
-      #
-      # This is NOT `manifest.manifestVersion`. That one versions the producer↔consumer wire format
-      # and refuses a mismatch; this one tells a human whether `nix flake update` is about to break
-      # them. They move independently, and a docs-only release must not touch the wire format.
-      version = "0.0.0"; # x-release-please-version
+      # The contract version. Single-sourced in ./version.nix, which release-please owns and
+      # `manifest.nix` also imports — see that file for why it is not inlined here.
+      version = import ./version.nix;
       kit = import ./kit.nix { inherit (nixpkgs) lib; };
       systems = [
         "x86_64-linux"
@@ -45,10 +40,10 @@
       # The contract derivation functions.
       inherit (kit) lib;
 
-      # The release version this contract revision was published as — `nix eval
-      # <contract>#contractVersion`. Exposed so a fleet can record WHICH contract a host is running
-      # without git archaeology. Semantics live in docs/adr/0024; while it reads `0.x`, a breaking
-      # change arrives as a MINOR bump, so read the CHANGELOG rather than the digit.
+      # The contract version — `nix eval <contract>#contractVersion`. The same value a manifest
+      # declares and `readManifest` gates on, exposed so a fleet can record which contract a host is
+      # running without git archaeology. Semantics live in docs/adr/0024; while it reads `0.x`, a
+      # breaking change arrives as a MINOR bump, so read the CHANGELOG rather than the digit.
       contractVersion = version;
 
       # Data surface: the FEATURE vocabulary a host affords out of (per user), the MODE vocabulary
@@ -210,7 +205,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           inherit system;
-          inherit (kit.internal) bindContractPackage;
+          inherit (kit.internal) bindContractPackage contractVersion;
         };
 
         # Runtime proof of package policy + daemon restriction (ADR-0016, issue #17): host
@@ -220,7 +215,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
           inherit system;
-          inherit (kit.internal) bindContractPackage;
+          inherit (kit.internal) bindContractPackage contractVersion;
         };
       });
 
