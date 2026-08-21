@@ -1,24 +1,16 @@
 # Host-invariant account realization. Maps each `contract.users.<u>` to a system account, and
 # derives the one neutral display fact a host's own display binding reads.
 #
-# Powers route through GRANTS, never raw identity. An identity cannot name a group at all, so
-# there is no self-escalation route to close: an account's groups are what its SESSION needs
-# (`modes.<m>.groups`) plus what the host AFFORDED, and both are decisions somebody else made.
+# Powers route through GRANTS, never raw identity (ADR-0006): an identity cannot name a group at
+# all, so this module has no untrusted-input story to tell and no self-escalation route to close.
 #
-# Audit — which identity fields confer host-side power:
-#   name/email/gmail/username .... inert (descriptive)
-#   sshKey/trustedKeys ........... login as that user (public keys; the user's call)
-#   hashedPassword ............... login credential (one-way hash)
-#   granted.<feature> ............ the host's decision; the only source of privilege
-#
-# This module is the BUILD-TIME ADAPTER over the shared account plan: it owns no identity→account
-# field logic itself — `accountPlan { identity, grants, mode }` derives every account field — and
-# only maps that neutral record into the NixOS `users.users` shape. The runtime adapter (the
-# greeter's `provision`) renders the SAME plan, so the two cannot drift.
+# It is the BUILD-TIME ADAPTER over the shared account plan: it owns no identity→account field
+# logic itself — `accountPlan { identity, grants, mode }` derives every account field — and only
+# maps that neutral record into the NixOS `users.users` shape. The runtime adapter (the greeter's
+# `provision`) renders the SAME plan, so the two cannot drift (ADR-0020).
 #
 # It closes over its contract data (the injected `accountPlan`, the mode registry and the run-set
-# derivation) rather than reaching through a consumer's `self`, which is what lets the contract be
-# a standalone flake.
+# derivation) rather than reaching through a consumer's `self` (ADR-0002).
 {
   accountPlan,
   modeRegistry,
@@ -35,19 +27,15 @@ let
   # decision alone — which account gets which session is the bind's business, not this module's.
   runs = runsWith config.contract.modes;
   # Does any session shape this host runs need a shared display surface? Read off the mode
-  # registry's own flag rather than by naming `gui`, so a third mode that needs a display says so
-  # in one place and this derivation never changes.
+  # registry's own flag rather than by naming `gui` (ADR-0009).
   needsDisplay = lib.any (m: modeRegistry.${m}.display or false) runs;
 in
 {
-  # A host that runs a display mode needs a shared display surface. Neutral, session-agnostic
-  # data: a host-side display binding (SDDM/Plasma, GDM/GNOME, a greeter's launcher) reads this
-  # and renders whatever session it chooses. The contract is display-server-agnostic — it neither
-  # knows nor decides wayland vs x11, and offers no desktop→session-type map.
+  # A host that runs a display mode needs a shared display surface: neutral, session-agnostic data
+  # a host-side display binding reads and renders whatever session it chooses (ADR-0021). It
+  # follows the MACHINE, not its users, so a seat has one before anybody is bound to it — which is
+  # what a greeter needs (ADR-0009).
   #
-  # It follows the MACHINE, not its users. A seat with a display has one whether or not anybody is
-  # bound to it yet, which is what a greeter needs: the surface must exist before the first
-  # walk-up user does.
   # Read-only, and the DERIVATION is the default: a host reads this, it never writes it. (A
   # `readOnly` option may be defined at most once, so the value has to arrive as the default
   # rather than as a `config` assignment beside it.)
