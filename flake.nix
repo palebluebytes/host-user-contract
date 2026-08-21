@@ -19,17 +19,15 @@
     {
       # The umbrella kit: one module per eval-side, closed over the registries.
       #
-      # `nixosModules` is deliberately NOT a single `default`: `default` is the schema +
-      # realization every host wants; `greeter` is the opt-in reference runtime greeter (greetd +
-      # the eval-free bind→select→provision flow) a SEAT host enables and a headless host omits.
+      # `nixosModules` is deliberately NOT a single `default` — the one place the contract splits a
+      # module rather than shipping an umbrella, because a headless host genuinely wants the schema
+      # and not the greeter (ADR-0002, ADR-0017).
       nixosModules.default = kit.nixosModule;
       nixosModules.greeter = kit.greeterModule;
       homeModules.default = kit.homeModule;
-      # The home baseline: the standing home-manager hygiene every produced home starts from —
-      # every line mkDefault, so a user's plain definition wins per-option. `lib.mkContractHome`
-      # composes it by default; exposed here so a consumer building homes by hand can opt in.
+      # The home baseline (ADR-0014), exposed here so a consumer building homes by hand can opt in.
       # Separate from `default` because it references home-manager option paths, and the default
-      # umbrella must stay evaluable with no home-manager present.
+      # umbrella must stay evaluable with no home-manager present (ADR-0002).
       homeModules.baseline = kit.homeBaselineModule;
       # Legacy-spelling alias: `homeModules` is the modern name (mirrors nixosModules/darwinModules
       # and home-manager's own `<x>Modules.default` outputs), but the older `homeManagerModules`

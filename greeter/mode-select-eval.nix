@@ -1,29 +1,17 @@
-# contract-select-mode: the runtime evaluator that makes `selectModeOver` the ONE owner of mode
-# selection, on both paths.
+# contract-select-mode (ADR-0020): the runtime evaluator that makes `selectModeOver` the ONE owner
+# of mode selection, on both paths — the greeter EXECUTES the kernel rather than re-spelling it in
+# jq, which is the duplication that had already drifted.
 #
-# A declarative bind selects in Nix; a greeter selects at a login prompt, in a shell. The obvious
-# thing — reimplement the rule in jq — is what this file exists to avoid, and the reason is not
-# tidiness: the two spellings had already diverged. The Nix kernel REFUSES two non-floor modes by
-# name (a phone and a desktop are incomparable, so a host offering both has not said which session
-# it means); a jq transcription of it silently took the first. Unreachable while the registry has
-# one non-floor mode, and wrong the day it gains a second — which is precisely the case the floor
-# FLAG, rather than a total rank, exists for.
-#
-# So the rule EXECUTES from its single Nix source at login, exactly as `contract-account-plan` does
-# for the account-combining fold, and for the same reason. It is CONTRACT-OWNED code over
-# ALREADY-AUTHENTICATED data, run AFTER the eval-free auth gate — it evaluates no USER Nix at all.
-# The user's flake IS evaluated at this step, but by the bind orchestrator, one call earlier and
-# under the Tier-1 restricted-eval posture; what reaches this tool is a JSON list of mode names.
-#
-# It runs UNRESTRICTED for the same reason `contract-account-plan` does: the restricted posture is
-# scoped to the home BUILD, and this is a one-shot login computation over the contract's own
-# source, not a reproducible build.
+# CONTRACT-OWNED code over ALREADY-AUTHENTICATED data, run AFTER the eval-free auth gate, so it
+# evaluates no USER Nix. The user's flake IS evaluated at this step, but by the bind orchestrator,
+# one call earlier and under the Tier-1 restricted-eval posture (ADR-0019); what reaches this tool
+# is a JSON list of mode names.
 #
 # THE SHELL THAT CALLS THIS KNOWS NO MODE NAME. The fallback is `kit.floorMode`, read from the
-# contract source; the seat's RUN SET is a fact about this machine (`contract.modes`), so it is
-# frozen to a store file at build time and read from there — the same way `provision` reads the
-# grant and the seat groups. It cannot come from the contract source, because the contract does not
-# know whether this box has a display; that was the bug this whole split exists to fix.
+# contract source. The seat's RUN SET cannot come from there — the contract does not know whether
+# this box has a display — so it is a fact about this machine (`contract.modes`), frozen to a store
+# file at build time and read from there, the same way `provision` reads the grant and the seat
+# groups.
 {
   pkgs,
   # The seat's run set, frozen to store JSON by greeter.nix. A build-time fact, in the seat's own

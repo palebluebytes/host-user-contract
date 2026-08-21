@@ -1,28 +1,21 @@
-# contract-account-plan (issue #31 follow-up): the runtime evaluator that makes accountPlan the
-# ONE owner of the account-combining rule. Before this, the greeter's `provision` re-spelled
-# accountPlan's four-field fold (clamp ∪ grant, drop-empty-sshKey, gecos, pw) in jq, and the two
-# spellings were reconciled only by booting `greeter-vm` and diffing field-for-field. That is the
-# "necessarily expressed twice" claim issue #31 recorded — this overturns it: the rule now EXECUTES
-# at login from its single Nix source, and `provision` becomes a pure renderer of the record this
-# prints.
+# contract-account-plan (ADR-0020, issue #31 follow-up): the runtime evaluator that makes
+# `accountPlan` the ONE owner of the account-combining rule, so `provision` is a pure renderer of
+# the record this prints rather than a second spelling of the fold.
 #
-# It builds a small `contract-account-plan <identity.json> <grants.json> <mode>` tool that evaluates the
-# contract's own pure `kit.internal.accountPlan` over the (authenticated) identity.json and prints
-# the neutral account record as JSON. This is CONTRACT-OWNED code over ALREADY-AUTHENTICATED data,
-# run AFTER the eval-free auth gate (ADR-0005 "data before code" governs the auth step, not this) —
-# so it does not evaluate any USER Nix. It runs UNRESTRICTED: the Tier-1 restricted-eval posture
-# (ADR-0019) is scoped to the home BUILD (the homeBuilder), never to provision, and this is a
-# one-shot login computation, not a reproducible build — `--impure` is honest here (it reads a
-# runtime path and the identity by env) and does not touch the user-code eval boundary.
+# It builds a small `contract-account-plan <identity.json> <grants.json> <mode>` tool that evaluates
+# the contract's own pure `kit.internal.accountPlan` over the (authenticated) identity.json and
+# prints the neutral account record as JSON. CONTRACT-OWNED code over ALREADY-AUTHENTICATED data,
+# run AFTER the eval-free auth gate (ADR-0005 governs the auth step, not this), so it evaluates no
+# USER Nix. It runs UNRESTRICTED and `--impure`, which ADR-0020 argues is honest here: the Tier-1
+# posture (ADR-0019) is scoped to the home BUILD, never to provision.
 #
-# WHY it can single-source instead of codegen: `accountPlan` closes over `grantLib` (functions —
-# non-serializable), so the applied function cannot be shipped. Instead the tool pins the contract
-# SOURCE (`src`) + a nixpkgs `lib` source (`nixpkgsPath`) in-store and re-imports `kit` at runtime,
-# reconstructing accountPlan (and grantLib, and the registry) from the ONE source — nothing is
-# re-spelled. Identity defaulting is single-sourced too: the raw JSON is run through the real
-# `identity.nix` submodule (the same option set the umbrella uses), so the optional-field defaults
-# (`sshKey=""`, `trustedKeys=[]`, …) come from identity.nix, not a third hand-written place. An
-# unknown/missing field throws — the same loud typo-net `loadIdentity` gives.
+# HOW it single-sources instead of generating a shell: `accountPlan` closes over `grantLib`
+# (functions — non-serializable), so the applied function cannot be shipped. The tool pins the
+# contract SOURCE (`src`) + a nixpkgs `lib` source (`nixpkgsPath`) in-store and re-imports `kit` at
+# runtime, reconstructing accountPlan, grantLib and the registry from the ONE source. Identity
+# defaulting is single-sourced the same way: the raw JSON runs through the real `identity.nix`
+# submodule, so `sshKey=""`/`trustedKeys=[]` come from there rather than a third hand-written place,
+# and an unknown or missing field throws — the same typo-net `loadIdentity` gives.
 #
 # INTERNAL, greeter-scoped: it needs `pkgs` (a package), which the pure kit (ADR-0002) does not
 # have, so — like auth/provision/session — it is assembled inside the greeter module, the one place
