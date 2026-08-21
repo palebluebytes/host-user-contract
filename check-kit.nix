@@ -373,12 +373,11 @@ let
     };
     okWitness pkgs name;
 
-  # THE ADAPTER'S OWN TRAPS, held apart from its fold (`diag.firstRefusal`, issue #64) — the
-  # material `mkMemberChecks` reads before it builds anything, and the refusals it would raise over
-  # it. The coverage guard is the reason this split is worth the two extra lines: a member the
-  # mapper skipped loses its home-eval check entirely, and a missing check reads EXACTLY like a
-  # passing one, so its message is the only thing that says otherwise — and `tryEval` discards it.
-  memberChecksWith =
+  # THE ADAPTER'S OWN TRAPS — the material `mkMemberChecks` reads before it builds anything, and the
+  # refusals it would raise over it. SPLIT (see `diagnostics.nix`), for the coverage guard: a member
+  # the mapper skipped loses its home-eval check entirely, and a missing check reads EXACTLY like a
+  # passing one, so its message is the only thing that says otherwise.
+  memberChecksUnguarded =
     { members, homes }:
     let
       shapelyHomes = lib.isAttrs homes;
@@ -521,7 +520,7 @@ let
       positiveControl ? defaultPositiveControl,
     }:
     let
-      inherit (memberChecksWith { inherit members homes; }) systems checks;
+      inherit (memberChecksUnguarded { inherit members homes; }) systems checks;
     in
     assert diag.mustAll checks;
     lib.mapAttrs' (
@@ -561,8 +560,8 @@ in
     mkIdentityPostureCheck
     mkHomeEvalCheck
     mkMemberChecks
-    # …and the adapter's traps WITHOUT its assert, so the suite can read the refusals rather than
-    # only observe that they fire (issue #64).
-    memberChecksWith
+    # …and the adapter's traps unguarded, so the suite can read the refusals rather than only
+    # observe that they fire (see `diagnostics.nix`).
+    memberChecksUnguarded
     ;
 }

@@ -8,10 +8,8 @@ let
   registry = import ./features.nix;
   # THE DIAGNOSTIC MODULE — the one owner of what the contract says when it refuses. Imported HERE
   # and injected into everything that refuses (./lib.nix, ./check-kit.nix) rather than imported
-  # separately by each, so "one voice" is one instance rather than a convention two files keep. It
-  # rides `internal` for the same reason the other kernels do: its shape rules (the `<who>: `
-  # prefix, one terminator per clause, `[a, b]`) are the only part of a refusal the suite can prove
-  # directly, since `tryEval` discards the message a real guard raises (issue #64).
+  # separately by each, so "one voice" is one instance rather than a convention two files keep —
+  # which also means the suite unit-tests the instance the guards actually use.
   diag = import ./diagnostics.nix { inherit lib; };
   # The MODE registry — the second single source beside the feature one, and the backbone of the
   # user-facing surface: a user's whole declaration is a projection of it.
@@ -249,12 +247,10 @@ in
   # this attrset is load-bearing at runtime and must not be renamed to something that says "for the
   # tests".
   internal = {
-    # The DIAGNOSTIC MODULE itself. Every refusal in this repo is `diag.say`'s output, and
-    # `tryEval` — which is how the suite drives all 50 refusal paths — returns `{ success = false;
-    # value = false; }` and DISCARDS the message. So the shape rules are unprovable at the guards
-    # and provable here: exposed so the suite unit-tests the constructor directly (issue #64). This
-    # is not a consumer surface — how the contract phrases its own refusals is not a facility to
-    # build on — which is exactly why it is `internal` and not `lib`.
+    # The DIAGNOSTIC MODULE itself. Every refusal in this repo is `diag.say`'s output, and the shape
+    # rules are provable only at that constructor (the argument is in ./diagnostics.nix), so the
+    # suite unit-tests it directly. NOT a consumer surface — how the contract phrases its own
+    # refusals is not a facility to build on — which is why it is `internal` and not `lib`.
     inherit diag;
     # The floor kernel behind `floorMode`, taking a mode registry explicitly. Internal because no
     # consumer needs it — `floorMode` is the answer — and exposed because its two failure
@@ -269,21 +265,21 @@ in
     # The home-matrix kernel, taking the upper bound to narrow instead of closing over `modes`: the
     # suite cannot otherwise prove that a contract which GAINS a mode extends every system's bake.
     inherit (contractLib) homeMatrixOver;
-    # THE LOAD-BEARING REFUSALS, AS DATA (issue #64). Each is a kernel above WITHOUT its assert —
-    # the guard chain (or, for selection, the refusal) it would raise, returned rather than thrown.
-    # Exposed because a message is otherwise unprovable: `tryEval` is the only way a test can drive
-    # a refusal and it discards what was said, so the suite could assert that these fire and never
-    # that they name the offenders they promise to name. These four were chosen because their
-    # message IS the diagnosis — a non-mode matrix key bakes the full set while reading as
-    # restricted, an uncovered member's missing check reads exactly like a passing one, and
-    # selection's two refusals have different owners and different fixes.
+    # THE LOAD-BEARING REFUSALS, AS DATA. Each is a kernel above with its guard chain returned
+    # rather than raised, so the suite can assert that these messages NAME what they promise to
+    # name and not merely that they fire (the argument, and the split's shape, are in
+    # ./diagnostics.nix). These are the sites whose message IS the diagnosis rather than a label on
+    # one: a non-mode matrix key bakes the full set while reading as restricted, an uncovered
+    # member's missing check reads exactly like a passing one, and the bind's two refusals are
+    # distinguishable ONLY by what they say.
     inherit (contractLib)
-      featureNamesWith
-      floorWith
-      selectionWith
-      homeMatrixWith
+      featureNamesUnguarded
+      floorUnguarded
+      selectionUnguarded
+      homeMatrixUnguarded
+      bindModeUnguarded
       ;
-    inherit (checkKit) memberChecksWith;
+    inherit (checkKit) memberChecksUnguarded;
     # The package-level kernels the public surface bakes and binds THROUGH.
     inherit (contractLib)
       mkContractPackage

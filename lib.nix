@@ -54,11 +54,11 @@ let
   # rather than unlikely, so the invariant below makes it unwriteable: adding a feature named
   # `source` fails the contract's own eval, not a consumer's (ADR-0015).
   bindSettings = [ "source" ];
-  # Over an EXPLICIT registry, and split from its guard (`diag.firstRefusal`, issue #64), for the
-  # two reasons `floorOf` below is: the contract's own registry satisfies this by construction, so
-  # the failure is only demonstrable against a synthetic one — and this message will be read exactly
-  # once, by whoever named a feature `source`, with no context for it.
-  featureNamesWith =
+  # Over an EXPLICIT registry, and SPLIT (see `diagnostics.nix`), for the two reasons `floorOf`
+  # below is: the contract's own registry satisfies this by construction, so the failure is only
+  # demonstrable against a synthetic one — and this message will be read exactly once, by whoever
+  # named a feature `source`, with no context for it.
+  featureNamesUnguarded =
     reg:
     let
       collisions = lib.intersectLists bindSettings (lib.attrNames reg);
@@ -80,7 +80,7 @@ let
     };
   featureNames =
     let
-      it = featureNamesWith registry;
+      it = featureNamesUnguarded registry;
     in
     assert diag.mustAll it.checks;
     it.names;
@@ -100,15 +100,16 @@ let
   # reason: the contract's own registry has exactly one floor by construction, so the two failures
   # this guards — none, and more than one — are only demonstrable against a synthetic registry.
   #
-  # Its VERDICT and its GUARD are held apart (`diag.firstRefusal`, issue #64): the message names the
-  # offending modes in both directions — which registry has no floor, and which two claim to be it —
-  # and `tryEval` discards that, so the suite can only read it here.
-  floorWith =
+  # SPLIT (see `diagnostics.nix`): the message names the offending modes in both directions — which
+  # modes a registry with no floor does have, and which two claim to be it.
+  floorUnguarded =
     reg:
     let
       floors = lib.filter (m: reg.${m}.floor or false) (lib.attrNames reg);
     in
     {
+      # UNSAFE TO FORCE UNGUARDED — `lib.head` of no floor at all throws a raw list error, which is
+      # the diagnosis the check below exists to replace.
       floor = lib.head floors;
       checks = [
         {
@@ -130,7 +131,7 @@ let
   floorOf =
     reg:
     let
-      it = floorWith reg;
+      it = floorUnguarded reg;
     in
     assert diag.mustAll it.checks;
     it.floor;
@@ -158,12 +159,10 @@ let
   # from the registry here: a literal would make the registry flag decorative. Both the declarative
   # bind and the greeter select through this one kernel (ADR-0020).
   #
-  # The VERDICT and the two REFUSALS are held apart (`diag.firstRefusal`, issue #64), because here
-  # the message is the whole diagnosis: "this user runs nothing this host runs" and "the producer
-  # built nothing here for a mode both sides wanted" are the same `tryEval` failure and have
-  # different owners and different fixes. `selectionWith` returns either a `mode` or a `refusal`;
-  # `selectModeOver` below is that plus the throw, and is what every caller uses.
-  selectionWith =
+  # SPLIT (see `diagnostics.nix`), because here the message is the whole diagnosis: "this user runs
+  # nothing this host runs" and "the producer built nothing here for a mode both sides wanted" are
+  # the same `tryEval` failure with different owners and different fixes.
+  selectionUnguarded =
     {
       who,
       subject,
@@ -183,9 +182,13 @@ let
       # fires the narrowing is not the cause: the user runs nothing this host runs.
       show = "this host runs ${showList runs}; ${showName subject} publishes ${showList published} here";
     in
-    if candidates == [ ] then
-      {
-        refusal = {
+    {
+      # UNSAFE TO FORCE UNGUARDED — a `floor` here would be the fallback picked for a host and a
+      # user with no mode in common, which is the very answer the first check exists to refuse.
+      mode = if rich != [ ] then lib.head rich else floor;
+      checks = [
+        {
+          ok = candidates != [ ];
           inherit who;
           problem = "no mode is common to the host and ${showName subject} — ${show}";
           why =
@@ -195,11 +198,9 @@ let
           fix =
             "Afford the feature that mode is run under, or bind a user that enables one of the "
             + "modes this host runs.";
-        };
-      }
-    else if lib.length rich > 1 then
-      {
-        refusal = {
+        }
+        {
+          ok = lib.length rich <= 1;
           inherit who;
           problem = "more than one rich mode is available for ${showName subject}: ${showList rich} — ${show}";
           why =
@@ -207,18 +208,18 @@ let
             + "each other — so a host offering two of them has not said which session it means, "
             + "and no ordering exists here to break the tie.";
           fix = "Narrow the host's affordances, or the user's enabled modes, to one of them.";
-        };
-      }
-    else
-      { mode = if rich != [ ] then lib.head rich else floor; };
+        }
+      ];
+    };
 
-  # THE SELECTION as every caller meets it: the verdict, or the refusal raised.
+  # THE SELECTION as every caller meets it: the verdict, guarded.
   selectModeOver =
     args:
     let
-      it = selectionWith args;
+      it = selectionUnguarded args;
     in
-    it.mode or (diag.stop it.refusal);
+    assert diag.mustAll it.checks;
+    it.mode;
 
   # The HOME MATRIX kernel: narrow an upper bound of MODES to what each system bakes, and guard the
   # narrowing. `homeMatrixOver` takes the bound explicitly; the public `mkHomeMatrix` below is this
@@ -236,11 +237,10 @@ let
   # costly; over-baking wastes build time and nothing else. A contract that gains a MODE therefore
   # bakes it EVERYWHERE — on the restricted systems too — with no edit in any consumer repo.
   #
-  # Its WORK and its GUARD CHAIN are held apart (`diag.firstRefusal`, issue #64). The mode-row guard
-  # is the sharpest message in this file: write a key that is not a mode and the system silently
-  # bakes the full set while READING as restricted, so the message is the whole difference between
-  # that and a diagnosis — and `tryEval` discards it.
-  homeMatrixWith =
+  # SPLIT (see `diagnostics.nix`). The mode-row guard is the sharpest message in this file: write a
+  # key that is not a mode and the system silently bakes the full set while READING as restricted,
+  # so the message is the whole difference between that and a diagnosis.
+  homeMatrixUnguarded =
     {
       # The fleet's whole home matrix, in ONE fact: `{ <system> = { <mode> = bool; }; }` — which
       # systems this repo bakes, and, per system, which modes its SEATS can run. A mode a row
@@ -270,6 +270,8 @@ let
       emptied = lib.filter (sys: matrix.${sys} == [ ]) systemNames;
     in
     {
+      # UNSAFE TO FORCE UNGUARDED — the subtraction reads every row as an attrset, so a malformed
+      # one throws a raw `attrNames` error rather than the shape diagnosis below.
       inherit matrix;
       # Ordered so a broken declaration reports before any verdict about the modes, most specific
       # first: no systems at all, then a row of the wrong shape, then a non-boolean setting, then a
@@ -331,7 +333,7 @@ let
   homeMatrixOver =
     args:
     let
-      it = homeMatrixWith args;
+      it = homeMatrixUnguarded args;
     in
     assert diag.mustAll it.checks;
     it.matrix;
@@ -1269,7 +1271,6 @@ let
       # module's top-level option KEYS — so probing the module for an unrelated option (`nixpkgs.*`,
       # to build `pkgs` itself) never forces `system` and there is no config↔pkgs cycle.
       system = pkgs.stdenv.hostPlatform.system;
-      unknownAffordances = lib.subtractLists featureNames (lib.attrNames affordances);
       index =
         source.contractUsers.${system}.${username} or (diag.stop {
           who = "bindContractUser";
@@ -1283,47 +1284,22 @@ let
       # like a privilege.
       runs = runsWith config.contract.modes;
       publishedNames = lib.attrNames index.contractPackages;
-      # THE MATRIX SUBTRACTION. A mode this host RUNS and this user RUNS IN, which this system's
-      # home matrix took AWAY, is a disagreement with no home to bind: the users repo said this
-      # system's seats cannot run that mode, and a host on that system affords the feature it is
-      # run under. Selection would swallow it — every such mode is absent from `published`, so the
-      # fallback quietly picks the floor and activates a terminal home on a graphical seat with NO
-      # message. This is why the index carries `modes` as well as `contractPackages`.
-      #
-      # BEFORE selection, deliberately: when the subtraction empties the published set entirely,
-      # the empty-intersection refusal would otherwise fire first and name the wrong cause.
-      subtracted = lib.subtractLists publishedNames (lib.intersectLists runs index.modes);
       # …and the mode it binds this user in. The guard rides `mode` rather than the module head:
       # everything selected from `system` must stay inside a config VALUE, or probing the module
       # for an unrelated option forces `system` before `pkgs` exists and the cycle reopens. Riding
       # `mode` also gets the ordering for free — it is forced before selection's own refusals.
       mode =
-        assert diag.must {
-          ok = unknownAffordances == [ ];
-          who = "bindContractUser";
-          problem = "affordance(s) that are not features of this contract: ${showList unknownAffordances}";
-          why =
-            "An affordance names a FEATURE a host confers on an account. A misspelled one would "
-            + "silently afford nothing, and the account would come up quietly less powerful than "
-            + "the host meant.";
-          fix = "The features are ${showList featureNames}.";
-        };
-        assert diag.must {
-          ok = subtracted == [ ];
-          who = "bindContractUser";
-          problem =
-            "this host runs ${showList runs} and ${showName username} runs in "
-            + "${showList index.modes}, but ${showList subtracted} is not published for "
-            + "${showName system} — the producer's home matrix took it away";
-          why =
-            "That matrix row is the users repo stating this system's seats CANNOT run that mode, "
-            + "while this host affords the feature it is run under. Nothing built the home, so "
-            + "binding would fall back to the floor and activate a lesser session with no message "
-            + "at all.";
-          fix =
-            "Stop subtracting that mode for ${showName system} in the producer's `mkHomeMatrix`, "
-            + "or stop affording the feature it is run under on this host.";
-        };
+        assert diag.mustAll
+          (bindModeUnguarded {
+            inherit
+              username
+              system
+              affordances
+              runs
+              ;
+            userModes = index.modes;
+            published = publishedNames;
+          }).checks;
         selectModeOver {
           who = "bindContractUser";
           subject = username;
@@ -1339,6 +1315,70 @@ let
       inherit runs;
     })
       { inherit config pkgs; };
+
+  # THE BIND'S OWN TWO REFUSALS, as data — what a bind checks BEFORE it selects. SPLIT (see
+  # `diagnostics.nix`), and this is the split's sharpest case in the repo: the matrix-subtraction
+  # message is not a label on a failure, it IS the requirement. The whole point of that guard is
+  # that it is NOT selection's refusal — one means "this user runs nothing this host runs", the
+  # other "the producer built nothing here for a mode both sides wanted" — and those have different
+  # causes, different fixes and different owners. Under `tryEval` they are one indistinguishable
+  # `success = false`, so "the two refusals are distinguishable" could be proven only by proxy,
+  # through where each fires rather than what either says.
+  #
+  # No work of its own: the verdict is selection's. These are the preconditions it runs under.
+  bindModeUnguarded =
+    {
+      username,
+      system,
+      affordances,
+      # The modes the MACHINE runs, and the modes the USER runs in, and what is published here.
+      runs,
+      userModes,
+      published,
+    }:
+    let
+      unknownAffordances = lib.subtractLists featureNames (lib.attrNames affordances);
+      # THE MATRIX SUBTRACTION. A mode this host RUNS and this user RUNS IN, which this system's
+      # home matrix took AWAY, is a disagreement with no home to bind: the users repo said this
+      # system's seats cannot run that mode, and a host on that system affords the feature it is
+      # run under. Selection would swallow it — every such mode is absent from `published`, so the
+      # fallback quietly picks the floor and activates a terminal home on a graphical seat with NO
+      # message. This is why the index carries `modes` as well as `contractPackages`.
+      subtracted = lib.subtractLists published (lib.intersectLists runs userModes);
+    in
+    {
+      # The subtraction reports BEFORE selection, deliberately: when it empties the published set
+      # entirely, selection's empty-intersection refusal would otherwise fire first and name the
+      # wrong cause.
+      checks = [
+        {
+          ok = unknownAffordances == [ ];
+          who = "bindContractUser";
+          problem = "affordance(s) that are not features of this contract: ${showList unknownAffordances}";
+          why =
+            "An affordance names a FEATURE a host confers on an account. A misspelled one would "
+            + "silently afford nothing, and the account would come up quietly less powerful than "
+            + "the host meant.";
+          fix = "The features are ${showList featureNames}.";
+        }
+        {
+          ok = subtracted == [ ];
+          who = "bindContractUser";
+          problem =
+            "this host runs ${showList runs} and ${showName username} runs in "
+            + "${showList userModes}, but ${showList subtracted} is not published for "
+            + "${showName system} — the producer's home matrix took it away";
+          why =
+            "That matrix row is the users repo stating this system's seats CANNOT run that mode, "
+            + "while this host affords the feature it is run under. Nothing built the home, so "
+            + "binding would fall back to the floor and activate a lesser session with no message "
+            + "at all.";
+          fix =
+            "Stop subtracting that mode for ${showName system} in the producer's `mkHomeMatrix`, "
+            + "or stop affording the feature it is run under on this host.";
+        }
+      ];
+    };
 
   # bindContractUsers: a HOST's whole user list, in one call.
   #
@@ -1473,14 +1513,13 @@ in
     selectModeOver
     homeMatrixOver
     mkHomeMatrix
-    # The three kernels above, WITHOUT their assert — the refusals they would raise, as data
-    # (issue #64). Each is the `…With` half of the split its own comment describes, exported for
-    # the same reason the kernels themselves are: the message is only readable here, because
-    # `tryEval` discards it at the guard.
-    featureNamesWith
-    floorWith
-    selectionWith
-    homeMatrixWith
+    # The unguarded half of each kernel above — its work beside the checks it would raise, rather
+    # than the refusal thrown (see `diagnostics.nix`).
+    featureNamesUnguarded
+    floorUnguarded
+    selectionUnguarded
+    homeMatrixUnguarded
+    bindModeUnguarded
     runsWith
     evalUserFile
     enabledModesOf

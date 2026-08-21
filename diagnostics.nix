@@ -84,41 +84,6 @@ rec {
   # rather than a test (no `member` to resolve from, no unique maximum to select).
   stop = args: throw (say args);
 
-  # ── A GUARD CHAIN AS DATA (issue #64) ────────────────────────────────────────────────────────
-  # `must` and `stop` REFUSE, and a refusal's message is then unreachable: `builtins.tryEval` — the
-  # only way a test can drive a refusal at all — returns `{ success = false; value = false; }` and
-  # discards it. So a guard proves that it FIRES and nothing proves what a reader is told, which for
-  # several of them is the whole difference between a diagnosis and a silent misconfiguration.
-  #
-  # A site whose messages are load-bearing that way holds its guard chain apart from its work:
-  #
-  #   fooWith = args: let … in { <the work>; checks = [ { ok; who; problem; … } … ]; };
-  #   foo     = args: let it = fooWith args; in assert mustAll it.checks; it.<the work>;
-  #
-  # `foo` is unchanged for every caller. `fooWith` lets the suite READ what `foo` would have said
-  # about input it would refuse, with no assertion involved and no failure provoked.
-
-  # The message the chain would raise, or `null` when nothing is wrong. SHORT-CIRCUITING, which is
-  # not an optimisation: it forces each `ok` left to right and stops at the first failure, exactly
-  # as the `assert` chain this replaces did, so a later check may still assume what an earlier one
-  # established — a row cannot be scanned for non-booleans until it is known to be an attrset.
-  firstRefusal =
-    checks:
-    if checks == [ ] then
-      null
-    else if (lib.head checks).ok then
-      firstRefusal (lib.tail checks)
-    else
-      say (builtins.removeAttrs (lib.head checks) [ "ok" ]);
-
-  # `must` for a whole chain, with the same first-failure-wins order.
-  mustAll =
-    checks:
-    let
-      refusal = firstRefusal checks;
-    in
-    lib.assertMsg (refusal == null) refusal;
-
   # THE VACUITY RATIONALE, stated once (it was retyped five times, in five wordings).
   #
   # It is the argument behind every empty-input refusal in this repo: a fold over nothing produces
@@ -133,4 +98,58 @@ rec {
     }:
     "An empty ${subject} would ${verbs} NOTHING while every output stayed green, "
     + "so this is an error rather than a silent pass.";
+
+  # ── A GUARD CHAIN AS DATA (issue #64) ────────────────────────────────────────────────────────
+  # THE ARGUMENT, STATED ONCE — every `…Unguarded` in this repo cites this block rather than
+  # re-making it. `must` and `stop` REFUSE, and a refusal's message is then unreachable:
+  # `builtins.tryEval` — the only way a test can drive a refusal at all — returns `{ success =
+  # false; value = false; }` and DISCARDS it. So a guard proves that it FIRES and nothing proves
+  # what a reader is told, which for several of them is the whole difference between a diagnosis
+  # and a silent misconfiguration.
+  #
+  # A site whose messages are load-bearing that way SPLITS IN TWO:
+  #
+  #   fooUnguarded = args: let … in { <the work>; checks = [ { ok; who; problem; … } … ]; };
+  #   foo          = args: let it = fooUnguarded args; in assert mustAll it.checks; it.<the work>;
+  #
+  # `foo` is unchanged for every caller. `fooUnguarded` lets the suite READ what `foo` would have
+  # said about input it would refuse, with no assertion involved and no failure provoked. The work
+  # it returns beside the checks is only valid once they pass — that is the point of the name, and
+  # each site says which of its fields is unsafe to force unguarded.
+  #
+  # WHICH FORM TO REACH FOR: `must` for a lone guard, which is most of them; the split only for a
+  # message that carries a DIAGNOSIS a reader could not reconstruct — one where a wrong answer and
+  # a silent success look the same. It is not a house style, and `mustAll [ c ]` is `must c`.
+
+  # The first check that fails, or `null`. SHORT-CIRCUITING, which is not an optimisation: it forces
+  # each `ok` left to right and stops at the first failure, exactly as the `assert` chain this
+  # replaces did, so a later check may still assume what an earlier one established — a row cannot
+  # be scanned for non-booleans until it is known to be an attrset.
+  firstFailing =
+    checks:
+    if checks == [ ] then
+      null
+    else if (lib.head checks).ok then
+      firstFailing (lib.tail checks)
+    else
+      lib.head checks;
+
+  # …and the message it would raise. Split from `firstFailing` because the two answer different
+  # questions: the suite asserts offenders against the `problem` CLAUSE — a name that appeared only
+  # in the surrounding `why` or `fix` would be a message that stopped naming its offenders while
+  # still reading as though it named them — and a reader gets the whole thing.
+  firstRefusal =
+    checks:
+    let
+      c = firstFailing checks;
+    in
+    if c == null then null else say (builtins.removeAttrs c [ "ok" ]);
+
+  # `must` for a whole chain, with the same first-failure-wins order.
+  mustAll =
+    checks:
+    let
+      refusal = firstRefusal checks;
+    in
+    lib.assertMsg (refusal == null) refusal;
 }
