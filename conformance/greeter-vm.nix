@@ -141,8 +141,21 @@ mkSeatVM {
     machine.succeed("contract-greeter-session example /home/example")
     machine.succeed("grep -qx plasma /tmp/desktop-launched")
 
-    # Tier 2 (ephemeral) provisioning is designed-for but DEFERRED — the helper refuses it.
-    machine.fail("contract-greeter-provision someone-else ${identityJson} ${activationStub} tier2 ${seatMode}")
+    # Tier 2 (ephemeral) provisioning is designed-for but DEFERRED — the helper refuses it BY NAME,
+    # before touching the account. Asserted on the message for the same reason the arity claims
+    # below are: a bare `fail` cannot tell "refused because tier2 is deferred" from "died for some
+    # other reason on the way", and the design point (ADR-0018) is that tier2 is refused rather
+    # than silently downgraded to tier1's posture.
+    machine.fail("contract-greeter-provision someone-else ${identityJson} ${activationStub} tier2 ${seatMode} 2> /tmp/tier2.err")
+    machine.succeed("grep -q 'tier2 (ephemeral) provisioning is deferred' /tmp/tier2.err")
+    # …and the refusal is BEFORE any account work: the user it names must not exist afterwards.
+    machine.fail("getent passwd someone-else")
+
+    # An unrecognised tier is refused too, and names the tier it got — the branch that catches a
+    # seat whose `contract.greeter.tier` binding has drifted to a value the helper never knew.
+    machine.fail("contract-greeter-provision someone-else ${identityJson} ${activationStub} tier9 ${seatMode} 2> /tmp/tier9.err")
+    machine.succeed("grep -q \"unknown tier 'tier9'\" /tmp/tier9.err")
+    machine.fail("getent passwd someone-else")
 
     # ARITY IS THE INTERFACE: five positional arguments, in a fixed order. A drifted caller must be
     # told SO — this guard exists for legibility, not for catching drift earlier, since the fleet VM
