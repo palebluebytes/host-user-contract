@@ -5,7 +5,7 @@
 # activation stub and the ssh-signing fixtures. It plays the role ./toolkit.nix plays for the eval
 # side: each seat VM file becomes a focused record of what it VARIES — the users/grants, the binding,
 # the assertion — handed to `mkSeatVM`. Built per-VM in ./flake.nix (no host repo, no host bindings,
-# ADR-0002 Q5).
+# ADR-0002).
 #
 # Two binding-mode postures (CONTEXT.md) share the boot base: the RUNTIME-binding seats — the GREETER
 # seats (greeter-provision / -session / -sequence / -desktop / -bind-loop and the fleet integration

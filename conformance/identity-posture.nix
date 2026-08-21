@@ -37,7 +37,7 @@ let
   };
   # A passwordless identity: no hash at all satisfies no posture — an account with an empty
   # credential must never read as "posture ok". Synthetic on purpose: no reference user has this
-  # shape, because this contract delivers "login, dotfiles, the features they need" (ADR-0001), so
+  # shape, because this contract delivers "login, dotfiles, the session they need" (ADR-0001), so
   # every reference user carries a credential. An empty `hashedPassword` is the option DEFAULT
   # (identity.nix), i.e. indistinguishable from an unfilled field — which is exactly why it must
   # fail rather than be read as a deliberate "locked account".

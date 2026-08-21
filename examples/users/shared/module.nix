@@ -1,11 +1,11 @@
-# The SHARED HOME MODULE of the reference user fleet (ADR-0014, amended 2026-08-15 by issue #36).
+# The SHARED HOME MODULE of the reference user fleet (ADR-0022's narrow exception, issue #36).
 #
-# ADR-0014's central ergonomic is "shared code, per-user data": ONE module, imported by several of
-# the operator's own accounts, keyed on `config.identity.username` so no user's identity is ever
-# baked into the shared code. Since issue #36 that is PERMITTED, not required — which is exactly why
-# it needs a worked example: an optional shape with no exercise rots. duo-a and duo-b import this
-# module (and `shared/overlay.nix`); the other five reference users deliberately do not, so the
-# members shows both supported arrangements side by side. See ADR-0022's exception note.
+# The ergonomic is "shared code, per-user data": ONE module, imported by several of the operator's
+# own accounts, keyed on `config.identity.username` so no user's identity is ever baked into the
+# shared code. It is PERMITTED, not required — which is exactly why it needs a worked example: an
+# optional shape with no exercise rots. duo-a and duo-b import this module (and
+# `shared/overlay.nix`); the other five reference users deliberately do not, so the members shows
+# both supported arrangements side by side.
 #
 # Unlike the other five reference homes this module is NOT contract-pure (ADR-0002): it sets
 # home-manager's own `home.packages`/`home.file` and reads `pkgs`, so it needs home-manager to

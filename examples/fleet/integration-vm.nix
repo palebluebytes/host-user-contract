@@ -57,12 +57,11 @@ mkSeatVM {
     # The real home-manager home actually activated: its profile is installed.
     machine.succeed("test -e /home/${username}/.nix-profile")
 
-    # …and the home's OWN content landed, owned by the new account. The desktop-choice helper
-    # The producer wrote the gui mode's own `desktop` parameter to ~/.contract-desktop, where the
-    # greeter's launcher reads it — no manual step, and no marker module grafted onto the user to
-    # make this observable: the dotfile comes from ada's own voice. It is also the proof that the
-    # helper is composed by DEFAULT now (ADR-0007), since nothing here opts into it. ada requests
-    # "plasma".
+    # …and the home's OWN content landed, owned by the new account. The producer wrote the gui
+    # mode's own `desktop` parameter to ~/.contract-desktop, where the greeter's launcher reads it
+    # — no manual step, and no marker module grafted onto the user to make this observable: the
+    # dotfile comes from ada's own voice. It is also the proof that the helper is composed by
+    # DEFAULT (ADR-0021), since nothing here opts into it. ada requests "plasma".
     machine.succeed("test -f /home/${username}/.contract-desktop")
     machine.succeed("grep -qx plasma /home/${username}/.contract-desktop")
     machine.succeed("stat -c %U /home/${username}/.contract-desktop | grep -qx ${username}")

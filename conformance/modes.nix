@@ -131,7 +131,7 @@ in
         && runsWith [ "cli" ] == [ floorMode ];
     }
 
-    # --- the selection (ADR-0007 §5) ---
+    # --- the selection (ADR-0013) ---
     {
       # A rich mode in the intersection WINS over the floor. No mode name appears in the algorithm
       # — the floor is a parameter — so this is "the non-floor one", not "gui".
@@ -181,7 +181,7 @@ in
     }
     {
       # THE REFUSAL: an empty intersection is a hard error naming both sets — a gui-only user on a
-      # headless host, which ADR-0007 makes a refusal rather than a silently lesser home.
+      # headless host, which ADR-0013 makes a refusal rather than a silently lesser home.
       name = "selection: an empty intersection is a hard error, never a silent fallback";
       ok =
         !(selects {
