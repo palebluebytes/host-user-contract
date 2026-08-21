@@ -40,6 +40,16 @@ pkgs.writeShellApplication {
     accountPlanEval
   ];
   text = ''
+    # ARITY IS THE INTERFACE: five positional args, in a fixed order. Check it explicitly so a
+    # drifted caller gets a NAMED error naming the usage line, rather than the bare
+    # `$5: unbound variable` that `set -u` raises three lines down — the failure mode that let a
+    # four-argument caller reach a booted VM before anyone learned which argument was missing.
+    [ "$#" -eq 5 ] || {
+      echo "provision: expected 5 arguments, got $#" >&2
+      echo "usage: contract-greeter-provision <username> <identity.json> <activation-package> <tier> <mode>" >&2
+      exit 1
+    }
+
     username=$1
     identity=$2
     activation=$3
