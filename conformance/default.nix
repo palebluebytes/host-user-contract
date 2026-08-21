@@ -46,6 +46,7 @@ let
     renderNixConfig
     ;
   inherit (kit.internal)
+    diag
     userOptions
     floorOf
     runsWith
@@ -172,6 +173,9 @@ let
         renderNixConfig
         ;
     })
+    # The SHAPE of a refusal, proven at the constructor — the one place it can be, since `tryEval`
+    # discards the message everywhere else in this suite (issue #64).
+    (import ./diagnostics.nix { inherit lib diag; })
     (import ./matrix.nix { inherit lib toolkit; })
     (import ./account-plan.nix { inherit lib floorMode accountPlan; })
     (import ./contract-package.nix {
