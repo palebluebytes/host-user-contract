@@ -1161,28 +1161,19 @@ let
   #     affordances = { containers = true; };
   #   }
   #
-  # It returns a NixOS module that:
+  # It returns a NixOS module that walks ADR-0015's four steps:
   #   1. infers `system` from the host's own `pkgs`, and reads the user's binding index off the
   #      pinned `source` (`contractUsers.<sys>.<user>`, the pure data the producer emitted);
-  #   2. reads the MODES this machine runs — the floor, plus whatever `contract.modes` declares.
-  #      A machine capability, stated once for the box, not per user;
-  #   3. SELECTS the mode: `runs ∩ published`, a non-floor mode winning, the floor otherwise, and a
-  #      hard named error for an empty intersection or two rich modes;
-  #   4. GRANTS what it afforded. The affordance is the whole of the decision — which powers an
-  #      account holds is the host's call alone, so there is nothing to intersect it with. Note
-  #      what is NOT here: nothing about a display. A graphical session's input groups follow the
-  #      selected MODE, so an ordinary desktop user's bind carries no affordances at all;
+  #   2. reads the MODES this machine runs (ADR-0009);
+  #   3. SELECTS the mode (ADR-0013);
+  #   4. GRANTS what it afforded. Note what is NOT here: nothing about a display. A graphical
+  #      session's input groups follow the selected MODE, so an ordinary desktop user's bind
+  #      carries no affordances at all;
   #   5. delegates to the internal `bindContractPackage` kernel with the selected home, the grant,
   #      the index-supplied identity, and the run set its coupling guard checks against.
   #
-  # THE AFFORDANCES RIDE THE BIND rather than sitting in a host-wide namespace, because every one
-  # of them is a decision about a PERSON. They are stated at the one site that already names the
-  # user, so per-user variation costs nothing: a seat that gives one account sudo and another none
-  # writes exactly that, twice, with no host-level default for either to silently inherit.
-  #
-  # The machine's own capability is the other kind of thing and lives in the other place —
-  # `contract.modes`, declared once for the box. Two host surfaces, but not two spellings of one
-  # fact: nothing has to agree between them, because they answer different questions.
+  # THE AFFORDANCES RIDE THE BIND (ADR-0009): stated at the one site that already names the user,
+  # with no host-level default for either to silently inherit.
   bindContractUser =
     {
       # WHERE this user comes from: anything publishing `contractUsers.<system>.<user>`. Usually a
@@ -1291,15 +1282,12 @@ let
   #   }
   #
   # It adds no rule of its own: each entry is `bindContractUser`, and the merge is the module
-  # system's. What it removes is the repetition — a host that binds three users said
-  # `source = users` three times and each name twice, and the name is now a key, written once,
-  # with what that person may do beside it.
+  # system's. What it removes is the repetition (ADR-0015).
   #
   # WHY A NAME IS STILL WRITTEN AT ALL. It is not the account's name — that comes from the user's
-  # own `identity.json`, and `mkContractUser` refuses to publish a user whose index key and
-  # identity disagree, so the two are one answer. The name here does SELECTION: a users repo holds
-  # more people than any one machine wants, and only the host knows which of them belong on it.
-  # `all = true` is the case where it does not have to choose.
+  # own `identity.json`, and the two are one answer because the producer refuses to publish a user
+  # whose index key and identity disagree. The name here does SELECTION, and `all = true` is the
+  # case where a host does not have to choose (ADR-0015).
   bindContractUsers =
     {
       # The default source — anything publishing `contractUsers.<system>.<user>`. Optional only
