@@ -8,6 +8,9 @@ it, under *Considered alternatives*.
 Read [0001](0001-host-user-contract.md) and [0007](0007-two-registries.md) first; between them they
 carry the whole shape.
 
+**Numbers are chronological; the sections below are thematic.** A record written later can land in
+an earlier section — read the sections, not the number ranges.
+
 ## I — Why the contract exists
 
 | ADR | Decision |
@@ -60,6 +63,7 @@ carry the whole shape.
 | --- | --- |
 | [0022](0022-oracle-and-reference-fleets.md) | The oracle and the reference fleets |
 | [0023](0023-no-classification-of-home-content.md) | Negative result: the contract does not classify home content |
+| [0025](0025-consumer-check-kit.md) | The contract ships proofs a consumer runs over its own repo |
 
 ## VII — Publication
 

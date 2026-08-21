@@ -241,6 +241,14 @@ present.
 - **reference implementations** — `examples/users` and `examples/fleet`: the positive space a
   consumer copies, and where home-manager actually lives. The synthetic suite borrows real atoms
   from them, **never the reverse**.
+- **check kit** — `check-kit.nix`: the proofs a CONSUMER runs over its OWN repo
+  (`mkConfinementCheck`, `mkIdentityPostureCheck`, `mkHomeEvalCheck`, and `mkMemberChecks` folding
+  the three over a member set). A third thing beside the two above: the contract ships the
+  **technique**, never the verdict, because the material — a repo's real imports, identities and
+  homes — is on the far side of the boundary ([0025](docs/adr/0025-consumer-check-kit.md)).
+- **positive control** — the legitimate case a negative check must still ACCEPT. Without it a
+  harness that rejects everything reads as a passing check. Asserted before the negative claim, so
+  a broken harness is reported as one.
 - **anti-vacuity** — a fold over nothing produces nothing and reports success, so the failure is
   invisible. Every empty-input case in this repo is a hard error, and every negative claim carries a
   positive control.
