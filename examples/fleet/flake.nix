@@ -82,7 +82,7 @@
         # greeter-granted home would have nothing to differ in. Focused seat node (like the
         # contract's own greeter-provision-vm), not the full desk host, so the provisioned account
         # never collides with a declarative one.
-        fleet-integration = import ./integration-vm.nix {
+        fleet-integration = import ./integration-vm.nix rec {
           # The seat scaffolding (boot base + greeter preamble + greetd wiring) is owned by the
           # contract's own mkSeatVM harness; reach it through the `contract` flake input's source
           # tree so this fleet edition binds the SAME atom the contract's greeter-provision-vm does,
@@ -97,11 +97,15 @@
               contractModule = contract.nixosModules.default;
               greeterModule = contract.nixosModules.greeter;
             }).mkSeatVM;
+          # The MODE the greeter selected. `gui` here because a greeter seat declares
+          # `contract.modes = [ "gui" ]`, so it runs { cli, gui } and ada publishes both. It is
+          # named ONCE and used twice — to select the home below, and (threaded into the VM) as
+          # `provision`'s mode argument — because the account plan folds the selected mode's groups
+          # in, so a home built for one mode must never be provisioned under another (ADR-0012).
+          mode = "gui";
           # The nested `homes` output, exactly as a greeter's `homeBuilder` reaches it:
-          # `homes.<system>.<user>.<mode>` — with the MODE the greeter selected. `gui` here because
-          # a greeter seat declares `contract.modes = [ "gui" ]`, so it runs { cli, gui } and ada
-          # publishes both.
-          homeActivation = users.homes.${system}.ada.gui.activationPackage;
+          # `homes.<system>.<user>.<mode>`.
+          homeActivation = users.homes.${system}.ada.${mode}.activationPackage;
           identityJson = "${users}/users/ada/identity.json";
           username = "ada";
         };

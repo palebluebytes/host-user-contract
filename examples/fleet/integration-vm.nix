@@ -20,6 +20,7 @@
   homeActivation,
   identityJson,
   username,
+  mode,
 }:
 mkSeatVM {
   name = "reference-fleet-integration";
@@ -44,8 +45,10 @@ mkSeatVM {
 
     # Runtime provision the REAL home from ada's published `homes` output: fully realize the
     # account from identity.json (shell-side realization, ADR-0020) and activate the actual
-    # home-manager generation as that user.
-    machine.succeed("contract-greeter-provision ${username} ${identityJson} ${homeActivation} tier1")
+    # home-manager generation as that user. The MODE rides along because the account plan folds
+    # the selected mode's groups in — and it is the SAME mode `homeActivation` was built for,
+    # named once by the caller, so the two cannot drift apart (ADR-0012).
+    machine.succeed("contract-greeter-provision ${username} ${identityJson} ${homeActivation} tier1 ${mode}")
     machine.succeed("getent passwd ${username}")
 
     # The account is realized from the real identity (GECOS), not a stub.
