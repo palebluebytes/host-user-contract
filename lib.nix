@@ -533,20 +533,18 @@ let
   # `identity.json` is a MEMBER, keyed by its directory name, carrying that directory, the identity
   # resolved through the contract's single loader, and its evaluated declaration.
   #
-  # It is the single resolution SITE as well as the single loader: a member is what the producer
-  # coin and the home builder take, so nothing downstream re-derives a path from a name, and each
-  # `identity.json` and each `user.nix` is read exactly once per evaluation.
+  # It is the single resolution SITE as well as the single loader (ADR-0005): a member is what the
+  # producer coin and the home builder take, so nothing downstream re-derives a path from a name,
+  # and each `identity.json` and each `user.nix` is read exactly once per evaluation.
   #
   # LIFTABILITY is preserved: this reads `users/<u>/` and nothing else — no index file, no
   # manifest, no knowledge at the users-repo root — so lifting one user out into its own repo stays
-  # a literal directory move, and a single-user repo that never calls this can still bake through
-  # `mkContractUser` directly.
+  # a literal directory move.
   #
   # A directory whose `user.nix` has landed but whose `identity.json` has not is a half-added user
   # and is SKIPPED, as is a non-directory entry (a README, a shared/ sibling). What is NOT skipped
-  # is the whole directory yielding nothing: a memberless `usersDir` is the wrong-path mistake, and
-  # everything downstream maps over the members, so an empty one bakes, publishes and checks
-  # NOTHING while every flake output stays green.
+  # is the whole directory yielding nothing (ADR-0022): everything downstream maps over the
+  # members, so an empty one bakes, publishes and checks NOTHING while every output stays green.
   mkMembers =
     {
       # Kit-injected (a caller never passes it): the identity.json loader.
@@ -592,13 +590,10 @@ let
   # and applies the function it never imports.
   #
   # It builds a home for ONE MODE, and the module it builds is the one THAT mode's declaration
-  # points at (`contract.<mode>.configuration`). That is the whole reason the declaration is keyed
-  # by mode: a sway config cannot be injected into a home built for a terminal, so the graphical
-  # home and the terminal home are different derivations rather than one home gated at activation.
+  # points at (`contract.<mode>.configuration`) — the reason the declaration is keyed by mode at
+  # all (ADR-0010, ADR-0012).
   #
-  # THE DESKTOP DOTFILE IS COMPOSED BY DEFAULT. `~/.contract-desktop` carries the mode's own
-  # `desktop` parameter into the home, where a greeter's launcher reads it BEFORE evaluating any of
-  # the home's Nix — which is why it cannot move host-side. A mode with no `desktop` parameter, or
+  # THE DESKTOP DOTFILE IS COMPOSED BY DEFAULT (ADR-0021): a mode with no `desktop` parameter, or
   # an empty one, writes nothing and costs that home nothing.
   #
   # What stays consumer-side BY DESIGN: `pkgs` (each home layers its own overlays/config, and the
@@ -719,11 +714,9 @@ let
   # because their difference is exactly what the bind's matrix-subtraction guard names — a mode a
   # host runs and a user enables, which this system did not build.
   #
-  # AN EMPTY `homes` IS NOT AN ERROR. A system whose matrix bakes none of a user's modes publishes
-  # nothing for that user there, and the index entry says so: `modes` names what the user runs and
-  # `contractPackages` is empty. Refusing here would let one system's topology decide what a
-  # self-contained user may BE; the refusal belongs at the BIND, where a host meets a user with
-  # nothing in common and the selection can name what it runs against what the user publishes.
+  # AN EMPTY `homes` IS NOT AN ERROR — the matrix is fail-OPEN on coverage and the refusal belongs
+  # at the bind (ADR-0012, ADR-0013). The index entry says so plainly: `modes` names what the user
+  # runs, and `contractPackages` is empty.
   mkContractUser =
     {
       loadIdentity,
@@ -892,19 +885,14 @@ let
   # `buildHome` takes an ATTRSET, `{ member, mode, pkgs }` — three positional arguments in a fixed
   # order would make transposing `mode` and `pkgs` a type error nowhere.
   #
-  # `pkgsFor` IS A FUNCTION, not an attrset, for two reasons that compound. The ordering one:
-  # `systems` is derived from `homeMatrix`, so a consumer handing over a pre-built `pkgsBySystem`
-  # must derive `systems` itself first and the absorption never completes. The load-bearing one:
-  # the producer then owns the MEMOIZATION rule — `import nixpkgs` is not memoized across
-  # applications, so it must be instantiated once per SYSTEM and never once per member × mode ×
-  # system. The fold below applies `pkgsFor` exactly once per system, and `pkgsBySystem` is
-  # RETURNED so the rule is a value a caller can hold rather than a comment it has to trust.
+  # `pkgsFor` IS A FUNCTION, not an attrset (ADR-0014). The fold below applies it exactly once per
+  # system, and `pkgsBySystem` is RETURNED so the memoization rule is a value a caller can hold
+  # rather than a comment it has to trust.
   #
   # THE CROSS-PRODUCT IS NARROWED BY THE USER: every member is built for the modes its system's
-  # matrix names AND its own declaration enables. The matrix says what a SYSTEM can bake and the
-  # user says which shapes it runs in; only the intersection is a home anybody could bind, and only
-  # that is built. A producer whose bake is NOT a full cross-product drops to `mkContractUsers`,
-  # which stays PUBLIC for exactly that reason.
+  # matrix names AND its own declaration enables (ADR-0012), so only a home somebody could bind is
+  # built. A producer whose bake is NOT a full cross-product drops to `mkContractUsers`, which
+  # stays PUBLIC for exactly that reason (ADR-0014).
   mkContractFleet =
     {
       # Kit-injected (a caller never passes it): forwarded to `mkContractUsers` below.
