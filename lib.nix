@@ -741,7 +741,7 @@ let
         (homeDesktopModule (forMode.desktop or ""))
         forMode.configuration
         {
-          identity = who.identity;
+          contract.identity = who.identity;
           home.username = username;
           # A fixed contract rule, not a knob: the realized account lands at the same path (the
           # normal-user default the realization keeps, and the literal the greeter's provision

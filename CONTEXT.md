@@ -33,7 +33,7 @@ two paths disagree about what a machine can run, the greeter is what the design 
 - **umbrella / kit** — the assembled shipped surface (`kit.nix`). `nixosModules.default` = the
   `contract.modes` declaration + the `contract.users` account schema + `contract.exposed` + the
   package policy + the realization + the insecure-package aggregator. `nixosModules.greeter` = the opt-in reference runtime greeter.
-  `homeModules.default` = the identity a home is handed.
+  `homeModules.default` = the identity a home is handed, at `contract.identity`.
 - **`contract.*`** — the one option prefix, written by BOTH parties on their own eval-side: the
   host's declarations and the values a bind writes back, and the user's own declaration in
   `user.nix`. There is no second prefix and none per party

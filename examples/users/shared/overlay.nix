@@ -8,7 +8,8 @@
 #
 # It is IDENTITY-FREE by construction: an overlay runs before any home is evaluated and has no
 # `config`, so it cannot key on a user. That is the point of the split — the overlay is the shared
-# CODE, `shared/module.nix` is what turns it into per-user DATA (keyed on config.identity.username).
+# CODE, `shared/module.nix` is what turns it into per-user DATA (keyed on
+# config.contract.identity.username).
 # Because it is identity-free, both duo users get the byte-identical derivation; `shared/module.nix`
 # is what diverges. The `shared-code-per-user-data` check asserts exactly that pair of facts.
 #

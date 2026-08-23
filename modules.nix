@@ -76,12 +76,19 @@
 
   # Home kit: the identity a home is handed. That is the whole of it — the user's VOICE lives one
   # level up, in `users/<u>/user.nix`, which is not a home-manager module (./contract-user.nix,
-  # ADR-0010). A home HOLDS its identity rather than loading it, so `git.userName` and friends read
-  # `config.identity` instead of each home re-reading identity.json (ADR-0005).
+  # ADR-0010). A home HOLDS its identity — it neither loads it nor authors it — so `git.userName`
+  # and friends read `config.contract.identity` instead of each home re-reading identity.json
+  # (ADR-0005).
+  #
+  # UNDER THE PREFIX like every other surface the contract declares (ADR-0026). The reason here is
+  # the collision, not the provenance: this is a home-manager module tree, and a BARE top-level
+  # `identity` is the one case ADR-0026's "no prefix" alternative names — home-manager declares
+  # what it declares upstream, on its own schedule, and a top-level name that arrives there MERGES
+  # with the contract's rather than colliding with it.
   #
   # It stays evaluable by BARE `evalModules` with no home-manager present (ADR-0002).
   homeModule = _: {
-    options.identity = identityOptions;
+    options.contract.identity = identityOptions;
   };
 
   # The HOME BASELINE: the standing, uniform-across-users home-manager hygiene every produced home

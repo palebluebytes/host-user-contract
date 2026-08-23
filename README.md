@@ -251,7 +251,7 @@ passing one.
 | --- | --- |
 | `nixosModules.default` | every host — `contract.modes`, the account schema and the realization |
 | `nixosModules.greeter` | a seat host — the opt-in runtime greeter (greetd, eval-free auth, mode selection) |
-| `homeModules.default` | every home — the `identity` it is handed |
+| `homeModules.default` | every home — the `contract.identity` it is handed |
 | `homeModules.baseline` | universal home hygiene, composed by `mkContractHome` by default |
 
 ### Data

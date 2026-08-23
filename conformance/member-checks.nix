@@ -66,7 +66,7 @@ let
   # stand-in for a real `home.activationPackage.drvPath`, whose `.drv` suffix is what proves a home
   # was forced all the way to its derivation.
   builtHome = tag: {
-    identity.username = "/nix/store/00000000000000000000000000000000-${tag}.drv";
+    contract.identity.username = "/nix/store/00000000000000000000000000000000-${tag}.drv";
   };
   # The consumer's per-system homes, DERIVED from the members exactly as a real mapper derives them:
   # two systems, one MODE each. Built as a function of the members so the growth claim below changes

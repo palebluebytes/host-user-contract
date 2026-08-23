@@ -191,7 +191,7 @@ in
       ok =
         lib.length recorded.modules == 6
         && umbrellaOf recorded ? options
-        && (umbrellaOf recorded).options ? identity
+        && (umbrellaOf recorded).options.contract ? identity
         && baselineOf recorded == homeBaselineModule { }
         && configurationOf recorded ? imports
         && lib.last recorded.modules == probe;
@@ -199,7 +199,7 @@ in
     {
       name = "mkContractHome: the inline module carries the loaded identity + the fixed home.* rules";
       ok =
-        inlineModule.identity.username == "ada"
+        inlineModule.contract.identity.username == "ada"
         && inlineModule.home.username == "ada"
         && inlineModule.home.homeDirectory == "/home/ada"
         && inlineModule.home.stateVersion == "25.11";
@@ -244,7 +244,7 @@ in
     {
       name = "mkContractHome: an explicit identity overrides the memberDir loader; home.* follow it";
       ok =
-        overriddenInline.identity.username == "sol"
+        overriddenInline.contract.identity.username == "sol"
         && overriddenInline.home.username == "sol"
         && overriddenInline.home.homeDirectory == "/home/sol"
         && overriddenInline.home.stateVersion == "26.05";
@@ -252,7 +252,7 @@ in
     {
       name = "mkContractHome: a member supplies the identity AND the declaration, with no second resolution";
       ok =
-        memberInline.identity.username == "rosa"
+        memberInline.contract.identity.username == "rosa"
         && memberInline.home.username == "rosa"
         && memberInline.home.homeDirectory == "/home/rosa"
         # ada's own declaration names no configuration at all, so a builder that had re-read

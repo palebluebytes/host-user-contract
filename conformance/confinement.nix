@@ -6,7 +6,7 @@
 # the bind, which is a decision the user never participates in.
 #
 # The proof is that these paths are UNDECLARED in the contract home umbrella (modules.nix's
-# `homeModule` declares `identity` and nothing else — no freeformType anywhere). So a home that
+# `homeModule` declares `contract.identity` and nothing else — no freeformType anywhere). So a home that
 # sets one throws "option does not exist" at eval. Privilege escalation is impossible because the
 # vocabulary to request it does not exist — structural, not a blocklist.
 #
@@ -37,11 +37,11 @@ let
   # field to the single identity source moves both sides at once, and adding an option that is NOT
   # an identity field moves only one.
   expectedHomeSurface = lib.sort (a: b: a < b) (
-    map (f: "identity.${f}") (identitySchema.required ++ identitySchema.optional)
+    map (f: "contract.identity.${f}") (identitySchema.required ++ identitySchema.optional)
   );
 
   # Does a one-module home evaluate against the contract umbrella? Force a declared attr
-  # (`identity.username`, always present — the synthetic home eval supplies it): building `config`
+  # (`contract.identity.username`, always present — the synthetic home eval supplies it): building `config`
   # runs the module system's unmatched-definition check across ALL definitions, so an
   # UNDECLARED system option makes this throw — caught as `success = false`. A `false` therefore
   # means "this path is unexpressible", never an unrelated eval error.
@@ -97,11 +97,17 @@ in
       ok = evaluates homePositiveControl;
     }
     {
-      # The home umbrella declares no `contract` namespace at all: a user's voice lives in its
-      # `user.nix`, one level up, and is not a home-manager module. So a home trying to speak
-      # outward — to enable a mode, or to name its own desktop — is an eval error rather than a
-      # declaration nothing reads, and the two places a value could have lived cannot disagree.
-      name = "confinement: a home cannot declare its own modes — `contract.*` is not a home namespace";
+      # A user's voice lives in its `user.nix`, one level up, and is not a home-manager module. So
+      # a home trying to speak outward — to enable a mode, or to name its own desktop — is an eval
+      # error rather than a declaration nothing reads, and the two places a value could have lived
+      # cannot disagree.
+      #
+      # The home umbrella DOES declare a `contract` namespace now — the identity it is handed, under
+      # the prefix like everything else the contract declares (ADR-0026) — so this is an error
+      # because the LEAF is undeclared, not because the PREFIX is absent. That is a weaker thing to
+      # read off one assertion, which is why the enumeration below exists: it is what holds
+      # `contract.*` in a home to exactly the one option.
+      name = "confinement: a home cannot declare its own modes — `contract.<mode>` is not a home option";
       ok =
         !(evaluates { contract.gui.enable = true; }) && !(evaluates { contract.gui.desktop = "plasma"; });
     }

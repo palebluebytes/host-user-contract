@@ -1,7 +1,7 @@
 # The SHARED HOME MODULE of the reference user fleet (ADR-0022's narrow exception, issue #36).
 #
 # The ergonomic is "shared code, per-user data": ONE module, imported by several of the operator's
-# own accounts, keyed on `config.identity.username` so no user's identity is ever baked into the
+# own accounts, keyed on `config.contract.identity.username` so no user's identity is ever baked into the
 # shared code. It is PERMITTED, not required — which is exactly why it needs a worked example: an
 # optional shape with no exercise rots. duo-a and duo-b import this module (and
 # `shared/overlay.nix`); the other five reference users deliberately do not, so the members shows
@@ -20,7 +20,7 @@
 let
   # The ONE key. Every per-user divergence below is a function of this and nothing else; there is no
   # `if username == "duo-a"` branch anywhere, and no user's identity is written into this file.
-  inherit (config.identity) username;
+  inherit (config.contract.identity) username;
 in
 {
   # Shared code, IDENTICAL for every user that imports it: the same store path lands in both
@@ -33,7 +33,7 @@ in
   home.file.".contract-shared-card".source = pkgs.writeText "contract-shared-card-${username}" ''
     # Rendered by examples/users/shared/module.nix — one module, one identity each.
     username=${username}
-    name=${config.identity.name}
-    email=${config.identity.email}
+    name=${config.contract.identity.name}
+    email=${config.contract.identity.email}
   '';
 }

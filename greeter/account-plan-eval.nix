@@ -43,6 +43,10 @@ let
       kit = import ${src}/kit.nix { inherit lib; };
       # Default the raw identity.json through the REAL identity.nix submodule, so accountPlan gets a
       # resolved record (optional fields filled) and the defaults are single-sourced from identity.nix.
+      # The option path here is BARE `identity` rather than the home's `contract.identity`
+      # (ADR-0026) on purpose: this is not a surface. It is an evalModules over exactly one module,
+      # owned by the contract, living for the length of this `let` — it borrows identity.nix's
+      # TYPES, and nobody ever writes against the path. Prefixing it would imply otherwise.
       rawIdentity = builtins.fromJSON (builtins.readFile (builtins.getEnv "CONTRACT_IDENTITY"));
       identity =
         (lib.evalModules {

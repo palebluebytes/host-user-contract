@@ -50,7 +50,7 @@
       #     ben, cleo, svc and admin share no module and no overlay — there is nothing universal to
       #     factor across them, and it keeps each a clean standalone artifact. duo-a and duo-b
       #     import ONE `shared/module.nix` and ONE `shared/overlay.nix`, keyed on
-      #     `config.identity.username` so the same code yields per-user data (the
+      #     `config.contract.identity.username` so the same code yields per-user data (the
       #     `shared-code-per-user-data` check below proves exactly that). Neither arrangement
       #     reaches sideways between users' DATA.
       #
@@ -304,7 +304,7 @@
             #   shared CODE   — `shared/overlay.nix`'s marker package resolves to the SAME store
             #                   path in both closures (one derivation, not a per-user copy), and it
             #                   is really there: the check RUNS it out of each home-path;
-            #   per-user DATA — `shared/module.nix`, keyed on `config.identity.username`, renders
+            #   per-user DATA — `shared/module.nix`, keyed on `config.contract.identity.username`, renders
             #                   two DIFFERENT store paths, each carrying its own identity and NO
             #                   trace of the other's.
             #
@@ -340,7 +340,7 @@
                 cardB=$(readlink -f ${cardOf duoB})
                 [ -f "$cardA" ] || fail "duo-a's realized home has no shared-module card"
                 [ -f "$cardB" ] || fail "duo-b's realized home has no shared-module card"
-                [ "$cardA" != "$cardB" ] || fail "the shared module rendered ONE output for two identities — it is not keyed on config.identity.username"
+                [ "$cardA" != "$cardB" ] || fail "the shared module rendered ONE output for two identities — it is not keyed on config.contract.identity.username"
 
                 grep -q '^username=duo-a$' "$cardA" || fail "duo-a's card is not keyed on duo-a's username"
                 grep -q '^username=duo-b$' "$cardB" || fail "duo-b's card is not keyed on duo-b's username"

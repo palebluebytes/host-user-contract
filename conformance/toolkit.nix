@@ -60,9 +60,9 @@ rec {
   # The home umbrella is deliberately thin — a home is handed its identity and nothing else, since
   # the user's whole voice lives one level up in `user.nix`. So the synthetic home eval supplies
   # the three required identity fields and leaves the optional ones free, which is what gives the
-  # confinement probe both a thing to FORCE (`identity.username`, always present) and a legitimate
-  # option to set as its POSITIVE CONTROL (`identity.gmail`, declared with a default and defined by
-  # nobody here).
+  # confinement probe both a thing to FORCE (`contract.identity.username`, always present) and a
+  # legitimate option to set as its POSITIVE CONTROL (`contract.identity.gmail`, declared with a
+  # default and defined by nobody here).
   homeIdentity = {
     name = "Probe User";
     email = "probe@example.invalid";
@@ -73,15 +73,15 @@ rec {
     (lib.evalModules {
       modules = [
         homeModule
-        { identity = homeIdentity; }
+        { contract.identity = homeIdentity; }
       ]
       ++ mods;
     }).config;
   # Forcing this runs the module system's unmatched-definition check across ALL definitions, so an
   # UNDECLARED option anywhere in the module set throws here.
-  homeForce = c: c.identity.username;
+  homeForce = c: c.contract.identity.username;
   homePositiveControl = {
-    identity.gmail = "probe@example.invalid";
+    contract.identity.gmail = "probe@example.invalid";
   };
 
   # The home umbrella's DECLARED SURFACE, as sorted option paths — `evalHome` returns that eval's

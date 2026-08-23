@@ -147,8 +147,9 @@ rejection: even if every tooling obstacle were fixed tomorrow, there would be no
   against.
 - **The loader is a typo-net.** A missing required field or an unknown key is a loud error, not a
   silently-wrong account.
-- **The home *holds* its identity, it does not load it.** Identity-driven dotfiles read
-  `config.identity.name`; nothing in a home reads a file.
+- **The home *holds* its identity — it neither loads it nor authors it.** Identity-driven dotfiles
+  read `config.contract.identity.name` ([0026](0026-one-option-prefix-per-party.md)); nothing in a
+  home reads a file, and nothing in a home may redefine one.
 
 ## Considered alternatives
 
