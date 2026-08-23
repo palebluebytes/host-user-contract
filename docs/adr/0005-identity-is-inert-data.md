@@ -38,19 +38,45 @@ The identity is read **once** on the Nix side and the same value reaches both th
 the home. It was briefly split — the home loading its own file while the binding loaded it for the
 account — which let a realized account and its home disagree about who the user is.
 
-The rule tightened twice more as the repo grew. `loadIdentity` fixed *who parses*; `mkMembers` then
-fixed *who resolves the path*, because the layout rule had been transcribed independently by the
-producer's directory scan, the producer coin and the home builder, so one file was read two or three
-times per evaluation by three owners. The rule now reads: **one loader, one resolution site, one
-value to every consumer.**
+The rule tightened three more times as the repo grew. `loadIdentity` fixed *who parses*; `mkMembers`
+then fixed *who resolves the path*, because the layout rule had been transcribed independently by
+the producer's directory scan, the producer coin and the home builder, so one file was read two or
+three times per evaluation by three owners.
 
-The rule is load-bearing for a second reason, discovered later and recorded below: it is the only
-thing standing between the two identity surfaces and the merge semantics of the module system. The
-greeter provisions the account from the *file* — `bind.nix` hands `identity.json` to provision,
-which runs `accountPlan` over it — while the home is built by *evaluating* the user's flake. Those
-two reads agree only because neither of them is a declared option. Make identity an option and the
-home takes the merged value while the account takes the parsed one, which is the original
-account-and-home disagreement restored in a form no loader can fix.
+The third was **who fills the optional fields**. `identity.json` may omit `sshKey`, `gmail`,
+`hashedPassword` and `trustedKeys`, and something has to say what an omitted one becomes. That was
+happening in three places at once — each option surface's own submodule defaults, and a third
+`evalModules` inside the runtime account-plan evaluator — so "what a user with no `sshKey` has" had
+three owners free to disagree. `loadIdentity` now parses, validates *and* resolves, and
+`resolveIdentity` is the one projection of `identity.nix`'s defaults that every other holder calls.
+The rule reads: **one loader, one resolution site, one value to every consumer.**
+
+## Neither surface can author what it holds
+
+The rule is load-bearing for a second reason: it is what stands between the two identity surfaces
+and the merge semantics of the module system. The greeter provisions the account from the *file* —
+`bind.nix` hands `identity.json` to provision, which runs `accountPlan` over it — while the home is
+built by *evaluating* the user's flake.
+
+Both surfaces are declared options: `contract.users.<u>.identity` host-side and `contract.identity`
+in a home ([0026](0026-one-option-prefix-per-party.md)). What keeps them from disagreeing is not
+that they are *not* options — it is that neither is **authorable**. Both are `readOnly`, so a second
+definition is an eval error rather than a merge, and neither carries option `default`s, because the
+module system counts a declared default as a definition and a defaulted readOnly option could never
+be defined at all. Every holder is handed a record that is already complete.
+
+**The host surface is where this bites hardest, and it is not the one this record was written
+about.** `accountPlan` feeds `identity.trustedKeys` straight into the account's
+`openssh.authorizedKeys`, and `trustedKeys` is `listOf str` — merged by **concatenation** at equal
+priority, with no conflict to raise. Without the posture, a second module naming the same user
+appends an SSH key to a realized account silently. That is the same mechanism the section below
+describes on the *user's* tree, on the surface that actually grants access, reached from the *host's*
+modules rather than the user's — so it is outside everything [0019](0019-host-is-the-trust-anchor.md)
+pins about who may be trusted.
+
+A home's copy is milder — a forced identity there reaches that user's own dotfiles and nothing else
+— but it is held on the same terms, because two postures for one concept is how the two surfaces
+drift apart again.
 
 ## Why identity cannot be a declared Nix option
 
@@ -58,10 +84,10 @@ The consolidation this record rejects is perennial, so the rejection is written 
 than left as an appeal to the ordering above. It fails twice, on grounds with different lifetimes.
 
 **Declared** here means *declared by the user* — an option in the tree the greeter must read before
-it has authenticated anybody. That is the transport, and it is the whole subject below. A produced
-home's `contract.identity` ([0026](0026-one-option-prefix-per-party.md)) is not that and is not in
-question: it is injected by the contract *after* the decision, `readOnly`, with no author to merge
-with. The home **holds** its identity — it neither loads it nor authors it.
+it has authenticated anybody. That is the transport, and it is the whole subject below. The two
+surfaces that hold an identity are not that and are not in question: they are written by the
+contract *after* the decision and `readOnly` besides, with no author to merge with. A holder
+**holds** its identity — it neither loads it nor authors it.
 
 ### The structural failure: a declared option has no single definition site
 
@@ -150,6 +176,11 @@ rejection: even if every tooling obstacle were fixed tomorrow, there would be no
 - **The home *holds* its identity — it neither loads it nor authors it.** Identity-driven dotfiles
   read `config.contract.identity.name` ([0026](0026-one-option-prefix-per-party.md)); nothing in a
   home reads a file, and nothing in a home may redefine one.
+- **So does a bound account.** `contract.users.<u>.identity` is `readOnly` on the same terms, which
+  is what makes "written by a bind" a property of the option rather than a convention.
+- **`loadIdentity` returns a complete record**, not the raw parse. A consumer assembling an account
+  by hand calls `resolveIdentity` for the same completion without a file — neither surface will
+  default for it.
 
 ## Considered alternatives
 
