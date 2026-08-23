@@ -57,6 +57,12 @@ account-and-home disagreement restored in a form no loader can fix.
 The consolidation this record rejects is perennial, so the rejection is written out in full rather
 than left as an appeal to the ordering above. It fails twice, on grounds with different lifetimes.
 
+**Declared** here means *declared by the user* — an option in the tree the greeter must read before
+it has authenticated anybody. That is the transport, and it is the whole subject below. A produced
+home's `contract.identity` ([0026](0026-one-option-prefix-per-party.md)) is not that and is not in
+question: it is injected by the contract *after* the decision, `readOnly`, with no author to merge
+with. The home **holds** its identity — it neither loads it nor authors it.
+
 ### The structural failure: a declared option has no single definition site
 
 > **A declared option's value is the result of merging every module in the user's tree. Merging is
@@ -155,6 +161,14 @@ rejection: even if every tooling obstacle were fixed tomorrow, there would be no
   projection and the loader. **That was wrong** — the projection is what makes the schema derive
   from `identity.nix` rather than duplicate it, and the loader's typo-net survives any transport.
   Machinery would grow.
+
+  **Not to be confused with the option of the same name.** A produced home holds its identity at
+  `contract.identity` ([0026](0026-one-option-prefix-per-party.md)) — the same word, the opposite
+  direction. What this bullet rejects is identity **authored by the user** as the pre-auth
+  transport, where the value is whatever the whole tree merges to and the greeter has decided
+  nothing yet. What a home has is identity **injected by the contract** post-auth and `readOnly`,
+  which is this record's own *one loader, one resolution site, one value* arriving at its last
+  consumer rather than a second definition of it.
 - **Author in Nix, generate `identity.json`** — the middle ground, and it does not quite work: a
   greeter reads the fetched *source tree*, and reaching a flake output means evaluating the flake.
   The generated file would have to be committed with a drift check — a build artifact in git, for an
