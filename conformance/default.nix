@@ -23,6 +23,7 @@ let
     safeSet
     modes
     floorMode
+    identitySchema
     greeterAffordances
     tier1EvalConfig
     featureGroups
@@ -112,6 +113,7 @@ let
         toolkit
         mkConfinementCheck
         outOfUniverseProbes
+        identitySchema
         ;
     })
     (import ./home-eval.nix {

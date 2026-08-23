@@ -21,9 +21,24 @@
   toolkit,
   mkConfinementCheck,
   outOfUniverseProbes,
+  identitySchema,
 }:
 let
-  inherit (toolkit) evalHome homeForce homePositiveControl;
+  inherit (toolkit)
+    evalHome
+    homeForce
+    homePositiveControl
+    homeOptionPaths
+    ;
+
+  # What the home umbrella is allowed to declare, DERIVED rather than listed: the identity option
+  # set is the whole surface, and its field names are already projected out of `identity.nix` by
+  # `identity-json.nix`. So this expectation cannot drift from the options it describes — adding a
+  # field to the single identity source moves both sides at once, and adding an option that is NOT
+  # an identity field moves only one.
+  expectedHomeSurface = lib.sort (a: b: a < b) (
+    map (f: "identity.${f}") (identitySchema.required ++ identitySchema.optional)
+  );
 
   # Does a one-module home evaluate against the contract umbrella? Force a declared attr
   # (`identity.username`, always present — the synthetic home eval supplies it): building `config`
@@ -89,6 +104,15 @@ in
       name = "confinement: a home cannot declare its own modes — `contract.*` is not a home namespace";
       ok =
         !(evaluates { contract.gui.enable = true; }) && !(evaluates { contract.gui.desktop = "plasma"; });
+    }
+    {
+      # The surface ENUMERATED, which is a different claim from every probe above it. A probe says
+      # one named path is absent, and a check passes everything it does not name (ADR-0006) — so the
+      # day an option is added to the home umbrella, no probe notices and the comments describing
+      # the surface quietly go stale. This lists every path the umbrella declares and compares it
+      # to the identity option set, so ANY change to what a home may say fails here by name.
+      name = "confinement: the home umbrella declares exactly the identity option set and nothing else";
+      ok = homeOptionPaths == expectedHomeSurface;
     }
     {
       name = "mkConfinementCheck: passes over a confined real module set (issue #35)";
