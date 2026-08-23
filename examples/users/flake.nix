@@ -354,29 +354,56 @@
                 touch $out
               '';
 
-            # The property the PER-MODE home system exists for, pinned so it cannot rot back into a
-            # manifest-only difference: somewhere in this members a MODE is load-bearing — a user
-            # whose homes differ in realized CONTENT across the modes it runs in. A mode is exactly
-            # what a bind cannot change, so a fleet whose two modes are content-identical builds a
-            # second home for nothing.
+            # The property the PER-MODE home system exists for, pinned so it cannot rot into a
+            # difference the user never receives: somewhere in this members a MODE is load-bearing —
+            # a user whose homes differ in realized CONTENT across the modes it runs in. Content is
+            # exactly what a bind cannot change, so a mode that substitutes none is the one thing
+            # about modes this fleet would otherwise document without demonstrating.
             #
             # Members-generic on purpose, unlike `shared-code-per-user-data` above: WHICH user
             # substitutes content per mode is that user's own story, told in its own `user.nix`
             # (today duo-a's, whose two modes name two different modules), so this names no user.
             #
-            #   the ASSERT — at least one user's two published homes diverge. Let the per-mode
-            #                modules converge and NOTHING diverges: the flake then fails to
-            #                evaluate with a named message instead of quietly building twins.
-            #   the BUILD  — every diverging pair really differs in what the user RECEIVES: the
-            #                realized dotfiles or the realized package profile. The manifest is in
-            #                neither, so a difference in the frozen `mode` field cannot satisfy it.
+            # A CONVERGENT PAIR IS NOT A FAILURE. A mode carries host-side weight a home never sees
+            # — `gui` confers input groups and a display surface — so ada, cleo, duo-b and admin all
+            # run two modes off one home's worth of content, deliberately and correctly (ADR-0027).
+            # What this check refuses is a FLEET in which NO pair diverges: keeping a worked example
+            # of the mechanism it documents is a REFERENCE fleet's obligation (ADR-0022), and it is
+            # this repo's alone — no consumer owes it, which is why the kit ships nothing for it.
+            #
+            # WHY THE VERDICT IS IN THE BUILD rather than in an eval `assert`. Divergence is only
+            # answerable from realized content, and both cheap eval-time approximations lie:
+            #
+            #   drvPath        two modes naming ONE module land on the very same derivation — admin,
+            #                  whose two homes are one derivation built twice — UNLESS the mode
+            #                  carries a `desktop`, which the contract writes into the gui home. So
+            #                  ada, cleo and duo-b differ by drvPath while substituting nothing.
+            #   the declaration  comparing two `configuration` values compares MERGED
+            #                  `deferredModule`s, whose wrapper records the option path each came
+            #                  through; every pair differs, including duo-b's two references to one
+            #                  file.
+            #
+            # So the eval `assert` claims only what is knowable before anything is built: that
+            # there is a pair to compare at all.
+            #
+            # THE CONTRACT'S OWN CONTENT IS SUBTRACTED. `.contract-desktop` is composed by
+            # `mkContractHome` out of the mode's `desktop` parameter, so counting it would let this
+            # check pass on a string the CONTRACT wrote — the same emptiness as passing on the
+            # `mode` frozen into the manifest, one file over. Without the subtraction every
+            # reference user naming a desktop reads as a worked example while substituting nothing.
+            #
+            # BOTH LANDING SITES are compared, because either alone fails the demonstration the
+            # other way round: a home substituting `home.file` puts nothing in the profile, and one
+            # substituting `home.packages` puts nothing in the dotfiles.
             #
             # Lives inside the `sys == system` clause with the rest, and needs to: the aarch64 row
             # is headless, so it publishes ONE mode and there is no second home there to compare.
             mode-substitution-is-load-bearing =
               let
                 # Every (user, non-floor mode) pair the published homes hold on this system, paired
-                # against that user's floor home.
+                # against that user's floor home. A member publishing NO floor home is skipped
+                # rather than reported: declining the floor is a user's own decision (the shape an
+                # arm-tier gui-only user has), and it leaves nothing to pair against.
                 pairs = lib.concatMap (
                   n:
                   let
@@ -389,26 +416,18 @@
                     rich = published.${mode};
                   }) (lib.filter (m: m != contract.floorMode) (lib.attrNames published))
                 ) (lib.filter (n: homes.${system}.${n} ? ${contract.floorMode}) userNames);
-                # Divergent = the mode reached the BUILD. Compared on drvPath because that is the
-                # sharpest test available: two homes of one user that name the same module differ
-                # ONLY in `hostFacts.mode`, and land on the very same derivation twice.
-                divergent = lib.filter (
-                  p: p.floor.activationPackage.drvPath != p.rich.activationPackage.drvPath
-                ) pairs;
-                # The two places mode-specific content can LAND in a realized home. Both are
-                # checked, because either alone would fail the canonical demonstration the other
-                # way round: a home substituting `home.file` puts nothing in the profile, and one
-                # substituting `home.packages` puts nothing in the dotfiles.
+                # The two places mode-specific content can LAND in a realized home.
                 filesOf = home: "${home.activationPackage}/home-files";
                 profileOf = home: "${home.activationPackage}/home-path";
+                # What the contract composes from the mode itself, excluded by NAME from the
+                # dotfile comparison (see above). One entry, and the contract owns it.
+                contractComposed = ".contract-desktop";
               in
-              assert lib.assertMsg (divergent != [ ]) (
-                "mode-substitution-is-load-bearing: NO reference user's homes differ across the modes it "
-                + "runs in — every home this fleet publishes lands on the same activation package as its "
-                + "floor one, so the only thing a `gui` home carries is the `mode` frozen into its "
-                + "manifest, and the one mechanism the per-mode build exists for has no worked example. "
-                + "Restore the substitution: point a user's two modes at two DIFFERENT modules, each "
-                + "carrying the content that session can carry (see users/duo-a/user.nix)."
+              assert lib.assertMsg (pairs != [ ]) (
+                "mode-substitution-is-load-bearing: no member publishes a home for any mode BESIDE "
+                + "${contract.floorMode} on ${system}, so there is no pair to compare and every "
+                + "verdict below would be reached over nothing. Enable a second mode for a user the "
+                + "${system} row builds."
               );
               pkgs.runCommand "mode-substitution-is-load-bearing" { } (
                 ''
@@ -416,34 +435,29 @@
                     echo "mode-substitution-is-load-bearing: $1" >&2
                     exit 1
                   }
+                  diverged=""
                 ''
                 + lib.concatMapStrings (p: ''
                   # --- ${p.user}: ${contract.floorMode} vs ${p.mode} ---
-                  differed=""
-
-                  # The DOTFILES, compared by content: `diff` exits 0 when the two trees are the same.
                   [ -d ${filesOf p.floor} ] || fail "${p.user}'s ${contract.floorMode} home realized no home-files tree at all — the comparison would be vacuous"
                   [ -d ${filesOf p.rich} ] || fail "${p.user}'s ${p.mode} home realized no home-files tree at all — the comparison would be vacuous"
-                  if diff -r ${filesOf p.floor} ${filesOf p.rich}; then
-                    echo "${p.user}: home-files are identical across ${contract.floorMode} and ${p.mode}"
-                  else
-                    differed=yes
-                  fi
-
-                  # The PACKAGE PROFILE, compared by resolved store path rather than by walking two
-                  # closures: a profile is input-addressed, so one package set is one store path and
-                  # two paths mean two package sets. Minutes cheaper, same answer.
                   [ -e ${profileOf p.floor} ] || fail "${p.user}'s ${contract.floorMode} home realized no home-path profile at all — the comparison would be vacuous"
                   [ -e ${profileOf p.rich} ] || fail "${p.user}'s ${p.mode} home realized no home-path profile at all — the comparison would be vacuous"
-                  if [ "$(readlink -f ${profileOf p.floor})" = "$(readlink -f ${profileOf p.rich})" ]; then
-                    echo "${p.user}: home-path is the same profile across ${contract.floorMode} and ${p.mode}"
-                  else
-                    differed=yes
-                  fi
 
-                  [ -n "$differed" ] || fail "${p.user}'s ${p.mode} home gives the user the SAME dotfiles AND the same package profile as its ${contract.floorMode} home, yet builds a different activation package — whatever the mode changed, the user does not receive it, and that is what building per mode is for"
-                '') divergent
+                  # The DOTFILES by content, minus what the contract composed from the mode; and the
+                  # PACKAGE PROFILE by resolved store path rather than by walking two closures — a
+                  # profile is input-addressed, so one package set is one store path and two paths
+                  # are two package sets. Minutes cheaper, same answer.
+                  if diff -r -x "${contractComposed}" ${filesOf p.floor} ${filesOf p.rich} >/dev/null \
+                    && [ "$(readlink -f ${profileOf p.floor})" = "$(readlink -f ${profileOf p.rich})" ]; then
+                    echo "${p.user}: ${p.mode} receives exactly what ${contract.floorMode} receives — this mode substitutes no content (legitimate, ADR-0027)"
+                  else
+                    echo "${p.user}: ${p.mode} substitutes content against ${contract.floorMode}"
+                    diverged=yes
+                  fi
+                '') pairs
                 + ''
+                  [ -n "$diverged" ] || fail "NO reference user receives different content across the modes it runs in — every pair above realizes the same dotfiles AND the same package profile once the contract's own ${contractComposed} is set aside, so the one mechanism the per-mode build exists for has no worked example here. Restore the substitution: point a user's two modes at two DIFFERENT modules, each carrying the content that session can carry (see users/duo-a/user.nix)."
                   touch $out
                 ''
               );

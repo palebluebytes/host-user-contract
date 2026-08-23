@@ -10,8 +10,12 @@
 # its `cli` home differ in REALIZED CONTENT. Each mode points at its OWN module, and the two
 # SUBSTITUTE for one another — a graphical window-manager config beside its terminal counterpart —
 # which is exactly what no bind-time grant could ever do, since content cannot be injected into a
-# sealed derivation. That is what makes a MODE a mode and not a grant, and the
-# `mode-substitution-is-load-bearing` check fails if the two homes ever converge again.
+# sealed derivation. That is what makes a MODE a mode and not a grant.
+#
+# duo-a is the pair `mode-substitution-is-load-bearing` finds. It is the ONLY member here
+# whose modes substitute content — ada, cleo, duo-b and admin each run two modes off one
+# home's worth of content, which is legitimate and not what that check refuses (ADR-0027) —
+# so the fleet-wide claim rests on this user, and fails the moment these two homes converge.
 #
 # The content shared between the two modes lives in `./common.nix`, which both import. There is no
 # per-mode conditional anywhere: a module that belongs in both homes is imported by both, and a
