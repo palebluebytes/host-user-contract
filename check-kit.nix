@@ -201,11 +201,12 @@ let
           problem = "unknown credential posture ${showName require}";
           fix = "Known postures are ${showList (lib.attrNames credentialPostures)} (ADR-0004).";
         });
-      # `loadIdentity` returns the identity.json RAW (the option submodule fills defaults only
-      # once the value is assigned to an option), and `hashedPassword` is an OPTIONAL field — so a
-      # member may legitimately have no such attribute. Default it to "" here, or the
-      # documented call above dies with `attribute 'hashedPassword' missing` instead of this
-      # check's named verdict: an absent credential is a posture FAILURE, not a crash.
+      # `hashedPassword` is an OPTIONAL field. `loadIdentity` resolves it, so a member that came
+      # through the loader always has the attribute — but this check runs over an `identities` LIST
+      # a caller assembles, which need not have (the suite appends synthetic offenders by hand).
+      # Default it to "" here, or the documented call above dies with
+      # `attribute 'hashedPassword' missing` instead of this check's named verdict: an absent
+      # credential is a posture FAILURE, not a crash.
       hashOf = id: id.hashedPassword or "";
       satisfies = id: lib.any (p: lib.hasPrefix p (hashOf id)) posture.prefixes;
       offenders = lib.filter (id: !(satisfies id)) identities;

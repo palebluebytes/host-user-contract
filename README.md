@@ -223,7 +223,8 @@ activation, and a mode is the part it cannot. A user says which modes it runs in
 | `mkContractUsers` | `{ pkgs; members; homes }` | the same, for every member |
 | `evalUser` | `{ userFile }` | a user's evaluated declaration — no build |
 | `enabledModesOf` | a declaration | the modes it enables |
-| `loadIdentity` | a path | the identity |
+| `loadIdentity` | a path | the identity, complete (parsed, checked, defaults filled) |
+| `resolveIdentity` | a partial identity | the same completion, without a file |
 | `renderNixConfig` | settings | a `NIX_CONFIG` string |
 
 Without a member, `mkContractUser` takes `name` + `usersDir` and `mkContractHome` takes `memberDir`

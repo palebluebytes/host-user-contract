@@ -202,7 +202,7 @@ in
       contractLib.mkContractHome (
         args
         // {
-          inherit (identityJson) loadIdentity resolveIdentity;
+          inherit (identityJson) loadIdentity;
           inherit (modules)
             homeModule
             homeBaselineModule
@@ -211,9 +211,14 @@ in
         }
       );
 
-    # The identity.json loader: lossless over identity.nix, for a consumer resolving an identity
-    # outside the member set (a greeter fixture, a hand-driven build).
-    inherit (identityJson) loadIdentity;
+    # The identity.json loader: parse + validate + resolve, for a consumer reading an identity
+    # outside the member set (a greeter fixture, a hand-driven build). It returns a COMPLETE record,
+    # which is what both option surfaces require now that neither carries defaults.
+    #
+    # `resolveIdentity` is the same completion without the file: what a consumer assembling an
+    # account BY HAND needs, since a partial record handed to either surface leaves fields with no
+    # definition and no default, and forcing one is an error.
+    inherit (identityJson) loadIdentity resolveIdentity;
 
     # evalUser `{ userFile }` → a user's evaluated declaration, `{ <mode> = { enable;
     # configuration; … }; }`. The producer reads every declaration through this; it is public so a

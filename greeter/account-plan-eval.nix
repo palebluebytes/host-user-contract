@@ -35,26 +35,18 @@ let
   # The evaluation, frozen to a store file (so the tool's `nix eval -f` imports a store path, not a
   # mutable one). `src`/`nixpkgsPath` interpolate to store paths at build time; the two runtime file
   # paths arrive via the environment (`--impure`), keeping this expression fully static. Only
-  # `kit.internal.accountPlan` is forced, so the rest of the kit (realization, modules, the greeter
-  # itself) stays a lazy thunk and is never imported at login.
+  # `kit.internal.accountPlan` and `kit.lib.loadIdentity` are forced, so the rest of the kit
+  # (realization, modules, the greeter itself) stays a lazy thunk and is never imported at login.
   exprFile = pkgs.writeText "contract-account-plan.nix" ''
     let
       lib = import ${nixpkgsPath}/lib;
       kit = import ${src}/kit.nix { inherit lib; };
-      # Default the raw identity.json through the REAL identity.nix submodule, so accountPlan gets a
-      # resolved record (optional fields filled) and the defaults are single-sourced from identity.nix.
-      # The option path here is BARE `identity` rather than the home's `contract.identity`
-      # (ADR-0026) on purpose: this is not a surface. It is an evalModules over exactly one module,
-      # owned by the contract, living for the length of this `let` — it borrows identity.nix's
-      # TYPES, and nobody ever writes against the path. Prefixing it would imply otherwise.
-      rawIdentity = builtins.fromJSON (builtins.readFile (builtins.getEnv "CONTRACT_IDENTITY"));
-      identity =
-        (lib.evalModules {
-          modules = [
-            { options.identity = import ${src}/identity.nix { inherit lib; }; }
-            { config.identity = rawIdentity; }
-          ];
-        }).config.identity;
+      # The contract's OWN loader over the already-authenticated identity.json, so the record this
+      # tool hands accountPlan is the same one a build-time bind hands it — same parse, same
+      # typo-net, same resolution of the optional fields (ADR-0005). This used to be a local
+      # evalModules over identity.nix's option set, which was a second owner of the defaulting; the
+      # loader resolves now, so there is nothing left here to own.
+      identity = kit.lib.loadIdentity (builtins.getEnv "CONTRACT_IDENTITY");
       grants = builtins.fromJSON (builtins.readFile (builtins.getEnv "CONTRACT_GRANTS"));
       # The session shape this login was bound in — the greeter selected it one step earlier. It
       # decides which mode groups the account needs, and it is the reason a graphical login lands
