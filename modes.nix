@@ -13,6 +13,12 @@
 # most N homes per user rather than 2ⁿ, and why `homes` is keyed by a mode NAME rather than a set
 # (ADR-0012).
 #
+# A MODE NEED NOT CHANGE HOME CONTENT. What a mode confers may be entirely host-side — `gui`'s
+# `groups` and `display` below both land on the account and on the seat, never in a home — so a
+# user whose two modes build identical homes is CONFORMING rather than misconfigured, and neither
+# the contract nor its check kit says otherwise (ADR-0027). Keeping a worked example of the
+# substitution a mode CAN carry is a reference fleet's obligation, not a consumer's.
+#
 # Per-entry shape:
 #   description : what this session shape IS, in the user's own vocabulary. It is the description
 #                 of the user's `contract.<mode>.enable` option, so the word a user reads when

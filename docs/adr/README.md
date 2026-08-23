@@ -58,13 +58,14 @@ an earlier section — read the sections, not the number ranges.
 | [0020](0020-runtime-evaluates-the-kernels.md) | Runtime realization evaluates the contract's own kernels |
 | [0021](0021-display-server-agnostic.md) | The contract is display-server agnostic; the seat offers desktops |
 
-## VI — Proof, and one closed question
+## VI — Proof, and two closed questions
 
 | ADR | Decision |
 | --- | --- |
 | [0022](0022-oracle-and-reference-fleets.md) | The oracle and the reference fleets |
 | [0023](0023-no-classification-of-home-content.md) | Negative result: the contract does not classify home content |
 | [0025](0025-consumer-check-kit.md) | The contract ships proofs a consumer runs over its own repo |
+| [0027](0027-mode-need-not-change-home-content.md) | Negative result: the contract does not require a mode to change home content |
 
 ## VII — Publication
 
