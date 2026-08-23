@@ -682,6 +682,7 @@ let
       homeBaselineModule,
       homeDesktopModule,
       loadIdentity,
+      resolveIdentity,
       # THE INJECTION SURFACE: home-manager's own builder, passed verbatim.
       homeManagerConfiguration,
       # Per-user pkgs — consumer-side by design; also the source of `platform`.
@@ -741,7 +742,9 @@ let
         (homeDesktopModule (forMode.desktop or ""))
         forMode.configuration
         {
-          contract.identity = who.identity;
+          # DEFAULTED here rather than by the home's own options, which are readOnly and so cannot
+          # carry defaults (modules.nix). One resolution site, as for the parse (ADR-0005).
+          contract.identity = resolveIdentity who.identity;
           home.username = username;
           # A fixed contract rule, not a knob: the realized account lands at the same path (the
           # normal-user default the realization keeps, and the literal the greeter's provision

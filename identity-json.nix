@@ -47,6 +47,19 @@ in
   # The conventional filename a user repo ships at its root.
   identityFile = "identity.json";
 
+  # A raw identity record with identity.nix's own DEFAULTS filled in. `loadIdentity` is lossless
+  # over identity.json and leaves an omitted optional field absent, so somebody has to fill it —
+  # the host surface has its option submodule do it, and the HOME surface cannot, because its
+  # options are `readOnly` and the module system counts a declared `default` as a definition
+  # (lib/modules.nix: a defaulted readOnly option can never also be defined). So the home is handed
+  # a record that is already complete.
+  #
+  # PROJECTED from identity.nix like `required`/`optional` above — there is no second list of what
+  # an omitted field becomes, and a default changed in the single identity source moves this with
+  # it. Raw wins over the default, per field.
+  resolveIdentity =
+    raw: lib.mapAttrs (_: o: o.default) (lib.filterAttrs (_: o: o ? default) identityOptions) // raw;
+
   # Parse + validate an identity.json into the identity option shape (the attrset assigned
   # to `contract.users.<u>.identity` / the home `identity`). Errors loudly on a missing
   # required field or an unknown key, rather than producing a silently-wrong account; the

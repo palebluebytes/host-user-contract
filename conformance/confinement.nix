@@ -47,6 +47,12 @@ let
   # means "this path is unexpressible", never an unrelated eval error.
   evaluates = mod: (builtins.tryEval (homeForce (evalHome [ mod ]))).success;
 
+  # The same question, asked of ONE named identity field. `evaluates` forces
+  # `contract.identity.username`, and a readOnly conflict is raised where the option is FORCED — so
+  # a claim about a field that hook never touches (`trustedKeys`) would pass vacuously without this.
+  fieldEvaluates =
+    field: mod: (builtins.tryEval (evalHome [ mod ]).contract.identity.${field}).success;
+
   # The system options that are out-of-universe for a home — the negative space itself, read from
   # `../check-kit.nix` (via kit.internal) so the umbrella's proof here and the probe set the shipped
   # `mkConfinementCheck` runs at a consumer are ONE list. Two copies of "what a user must not be
@@ -110,6 +116,37 @@ in
       name = "confinement: a home cannot declare its own modes — `contract.<mode>` is not a home option";
       ok =
         !(evaluates { contract.gui.enable = true; }) && !(evaluates { contract.gui.desktop = "plasma"; });
+    }
+    {
+      # INJECTED, never authored. The contract defines the identity once when it composes the home;
+      # a home module redefining it is an eval error rather than a merge, which is what carries
+      # ADR-0005's "one loader, one resolution site, one value" past the builder and into the home.
+      #
+      # `mkForce` is the case only `readOnly` catches: two PLAIN definitions of a `str` already
+      # conflict, so a probe without it would pass whether the option were readOnly or not.
+      name = "confinement: a home cannot redefine the identity it was handed (readOnly beats mkForce)";
+      ok = !(evaluates { contract.identity.username = lib.mkForce "root"; });
+    }
+    {
+      # The list field, and the reason `readOnly` is not merely tidy. `trustedKeys` is
+      # `listOf str`, which merges by CONCATENATION across modules at equal priority — no conflict,
+      # no error, no priority games (ADR-0005). So a home module appending a key to a CREDENTIAL
+      # field is silent under every scalar defence. Two definitions, one an appended key:
+      name = "confinement: a home cannot append to the trusted keys it was handed (readOnly beats list concatenation)";
+      ok =
+        !(fieldEvaluates "trustedKeys" {
+          imports = [
+            { contract.identity.trustedKeys = [ "ssh-ed25519 AAAAhanded" ]; }
+            { contract.identity.trustedKeys = [ "ssh-ed25519 AAAAappended" ]; }
+          ];
+        });
+    }
+    {
+      # The control for both: `readOnly` refuses a SECOND definition, not the first. A field the
+      # composed home leaves free still takes one — otherwise the two claims above would hold over
+      # an identity record that simply cannot be written at all.
+      name = "confinement: readOnly still accepts the one definition it is handed (not a write-nothing record)";
+      ok = fieldEvaluates "trustedKeys" { contract.identity.trustedKeys = [ "ssh-ed25519 AAAAhanded" ]; };
     }
     {
       # The surface ENUMERATED, which is a different claim from every probe above it. A probe says

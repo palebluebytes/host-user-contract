@@ -202,7 +202,7 @@ in
       contractLib.mkContractHome (
         args
         // {
-          inherit (identityJson) loadIdentity;
+          inherit (identityJson) loadIdentity resolveIdentity;
           inherit (modules)
             homeModule
             homeBaselineModule

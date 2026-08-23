@@ -86,9 +86,33 @@
   # what it declares upstream, on its own schedule, and a top-level name that arrives there MERGES
   # with the contract's rather than colliding with it.
   #
+  # READ-ONLY, which is the mechanism behind "neither authors it". The contract defines this once
+  # when it composes the home; a second definition from the user's own modules is an eval error
+  # rather than a merge, so ADR-0005's "one loader, one resolution site, one value" holds all the
+  # way to its last consumer instead of stopping at the builder. Without it, `mkForce` in any home
+  # module wins silently, and `trustedKeys` — `listOf str`, merged by CONCATENATION at equal
+  # priority — takes an appended key with no conflict to notice at all (ADR-0005 names both).
+  #
+  # THE DEFAULTS ARE DROPPED HERE, and that is forced rather than chosen: the module system counts
+  # a declared `default` as a definition, so a defaulted readOnly option can never also be DEFINED
+  # (lib/modules.nix — `readOnly` throws on more than one). The home is therefore handed a record
+  # that is already complete, resolved once by `identityJson.resolveIdentity` at the injection site.
+  #
+  # The posture lives HERE rather than in `identity.nix`, which owns the SHAPE both surfaces share.
+  # Host-side there is no second author to exclude: `contract.users.<u>.identity` is written by a
+  # bind, and the host is already the trust anchor (ADR-0019) — and it keeps its defaults, which
+  # readOnly would have taken away. Home-side the second author is the user's own module tree,
+  # which is exactly what this excludes.
+  #
   # It stays evaluable by BARE `evalModules` with no home-manager present (ADR-0002).
   homeModule = _: {
-    options.contract.identity = identityOptions;
+    options.contract.identity = lib.mapAttrs (
+      _: o:
+      removeAttrs o [ "default" ]
+      // {
+        readOnly = true;
+      }
+    ) identityOptions;
   };
 
   # The HOME BASELINE: the standing, uniform-across-users home-manager hygiene every produced home
