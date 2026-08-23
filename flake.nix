@@ -88,6 +88,7 @@
         gui-surface-vm = import ./conformance/vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
+          inherit (self.lib) resolveIdentity;
           inherit system;
         };
 
@@ -193,6 +194,7 @@
         nix-daemon-vm = import ./conformance/nix-daemon-vm.nix {
           pkgs = nixpkgs.legacyPackages.${system};
           contractModule = self.nixosModules.default;
+          inherit (self.lib) resolveIdentity;
           inherit system;
         };
 

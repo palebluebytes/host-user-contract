@@ -57,6 +57,34 @@ let
       { contract.users.alice.identity.extraGroups = [ "audio" ]; }
     ])
   );
+  # --- a bound account's identity is HELD, not authored ---
+  # The account's authorized keys, which is where this matters. `accountPlan` feeds
+  # `identity.trustedKeys` straight into `openssh.authorizedKeys`, and `trustedKeys` is
+  # `listOf str` — merged by CONCATENATION at equal priority, with no conflict to notice
+  # (ADR-0005). So without the readOnly posture on the option, a SECOND module naming the same
+  # user appends an SSH key to a realized account silently. This is the same hazard ADR-0005
+  # names on the user's own tree, on the surface where it actually grants access.
+  boundTwice =
+    defs:
+    builtins.tryEval (
+      (eval ([ (mkUser "alice" { }) ] ++ defs)).users.users.alice.openssh.authorizedKeys.keys
+    );
+  appendedKey = boundTwice [
+    { contract.users.alice.identity.trustedKeys = [ "ssh-ed25519 AAAAattacker" ]; }
+  ];
+  # Read off the CONTRACT option rather than the realized account: `users.users.<u>.name` defaults
+  # to the attribute name, so a realized account never forces the identity's username and the probe
+  # would pass without touching the option under test.
+  forcedUsername = builtins.tryEval (
+    (eval [
+      (mkUser "alice" { })
+      { contract.users.alice.identity.username = lib.mkForce "root"; }
+    ]).contract.users.alice.identity.username
+  );
+  # The control: the posture refuses a SECOND definition, never the first. An account bound ONCE
+  # realizes, which is what every other claim in this file already rests on.
+  boundOnce = boundTwice [ ];
+
   # …and the same through the LOADER, which is how an identity actually arrives: `loadIdentity`
   # rejects an unknown key loudly, so a stale `identity.json` carrying the field is a named error
   # in the user's own repo rather than a field silently ignored.
@@ -169,6 +197,27 @@ let
 in
 {
   assertions = [
+    {
+      # `mkUser` binds alice once; a second module appending to her trusted keys is an eval error
+      # rather than a longer key list. What makes it structural is that the option is readOnly:
+      # two plain list definitions would otherwise CONCATENATE, so there is no conflict for a
+      # scalar-shaped defence to catch.
+      name = "held identity: a second module cannot append a key to a bound account's trustedKeys";
+      ok = !appendedKey.success;
+    }
+    {
+      # The scalar case, and the one only readOnly catches: two plain definitions of a `str`
+      # already conflict, so a probe without `mkForce` would pass whether the option were readOnly
+      # or not. With it, an honest override loses to the bind instead of winning.
+      name = "held identity: a second module cannot mkForce a bound account's username";
+      ok = !forcedUsername.success;
+    }
+    {
+      # The control for both. Without it, "a bound account refuses a second definition" would read
+      # identically to "a bound account cannot be realized at all".
+      name = "held identity: an account bound ONCE still realizes (not a write-nothing surface)";
+      ok = boundOnce.success;
+    }
     {
       # A graphical session's input groups ride the MODE, and reach an account with an entirely
       # EMPTY grant set. This is the claim the split exists for: needing input devices is a

@@ -23,6 +23,7 @@
 # account activation), so the VM reaches multi-user without starting a graphical greeter.
 {
   pkgs,
+  resolveIdentity,
   contractModule,
   system,
 }:
@@ -72,7 +73,7 @@ mkSeatVM {
       contract.modes = [ "gui" ];
 
       contract.users.aurelia = {
-        identity = {
+        identity = resolveIdentity {
           name = "Aurelia Example";
           email = "aurelia@example.invalid";
           username = "aurelia";

@@ -75,6 +75,24 @@ let
   };
   identityOptions = import ./identity.nix { inherit lib; };
   identityJson = import ./identity-json.nix { inherit lib identityOptions; };
+
+  # THE HELD FORM of the identity option set, and the only form either surface declares. A holder
+  # is handed its identity and cannot author it: `readOnly`, so a second definition is an eval
+  # error rather than a merge, and no `default`, because the module system counts one as a
+  # definition and a defaulted readOnly option could never be defined at all (lib/modules.nix).
+  # The defaults live on in `identity.nix` as the declaration of what an omitted field becomes,
+  # read by `identityJson.resolveIdentity` and by nothing else.
+  #
+  # ONE projection for BOTH surfaces, made here rather than twice in modules.nix: the posture is
+  # the same claim on either side of the boundary — a bind writes a host account's identity once,
+  # a producer writes a home's once — and two spellings of it could drift.
+  heldIdentityOptions = lib.mapAttrs (
+    _: o:
+    removeAttrs o [ "default" ]
+    // {
+      readOnly = true;
+    }
+  ) identityOptions;
   # The manifest module: the single owner of the `contract-manifest.json` schema — the seam
   # `mkContractPackage` writes through and `bindContractPackage` reads through.
   manifest = import ./manifest.nix { inherit lib; };
@@ -93,12 +111,13 @@ let
       userOptions
       diag
       ;
+    inherit (identityJson) resolveIdentity;
   };
   modules = import ./modules.nix {
     inherit
       lib
       realization
-      identityOptions
+      heldIdentityOptions
       grantedOptions
       ;
     inherit (contractLib) modeNames floorMode;

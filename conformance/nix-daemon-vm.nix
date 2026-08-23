@@ -10,6 +10,7 @@
 {
   pkgs,
   contractModule,
+  resolveIdentity,
   system,
 }:
 let
@@ -27,7 +28,7 @@ mkSeatVM {
   seat = {
     # alice: granted nix-daemon → in nix-users → can use the daemon.
     contract.users.alice = {
-      identity = {
+      identity = resolveIdentity {
         name = "Alice";
         email = "alice@example.invalid";
         username = "alice";
@@ -37,7 +38,7 @@ mkSeatVM {
 
     # bob: no grant → not in nix-users → daemon-restricted.
     contract.users.bob = {
-      identity = {
+      identity = resolveIdentity {
         name = "Bob";
         email = "bob@example.invalid";
         username = "bob";
@@ -47,7 +48,7 @@ mkSeatVM {
     # carol: afforded nothing, so she is daemon-restricted. She cannot put herself in `nix-users`
     # either — an identity names no groups at all.
     contract.users.carol = {
-      identity = {
+      identity = resolveIdentity {
         name = "Carol";
         email = "carol@example.invalid";
         username = "carol";

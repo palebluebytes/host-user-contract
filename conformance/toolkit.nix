@@ -8,6 +8,7 @@
   userOptions,
   nixosSystem,
   loadIdentity,
+  resolveIdentity,
   floorMode,
   system,
 }:
@@ -44,7 +45,11 @@ rec {
     {
       contract.users.${name} = {
         inherit mode;
-        identity = {
+        # RESOLVED, because neither identity surface carries defaults any more (modules.nix): a
+        # partial record leaves the optional fields with no value at all, and `accountPlan` reads
+        # `sshKey` and `trustedKeys` off every account. This is what a consumer assembling an
+        # account by hand does too — the same function, exposed for exactly this.
+        identity = resolveIdentity {
           name = "User ${name}";
           email = "${name}@example.invalid";
           username = name;
@@ -59,10 +64,12 @@ rec {
   # ── The HOME eval side ───────────────────────────────────────────────────────────────────────
   # The home umbrella is deliberately thin — a home is handed its identity and nothing else, since
   # the user's whole voice lives one level up in `user.nix`. So the synthetic home eval supplies
-  # the three required identity fields and leaves the optional ones free, which is what gives the
-  # confinement probe both a thing to FORCE (`contract.identity.username`, always present) and a
-  # legitimate option to set as its POSITIVE CONTROL (`contract.identity.gmail`, declared with a
-  # default and defined by nobody here).
+  # the three required identity fields and leaves the optional ones UNDEFINED — deliberately NOT
+  # `resolveIdentity`d, unlike `mkUser` above, which is what gives the confinement probes both a
+  # thing to FORCE (`contract.identity.username`, always present) and a field nobody has defined to
+  # use as a POSITIVE CONTROL (`contract.identity.gmail`). A resolved record would define every
+  # field, and the positive control would then be a SECOND definition of a readOnly option —
+  # failing for the opposite of the reason it is testing.
   homeIdentity = {
     name = "Probe User";
     email = "probe@example.invalid";

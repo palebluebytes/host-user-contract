@@ -31,6 +31,7 @@ let
     ;
   inherit (self.lib)
     loadIdentity
+    resolveIdentity
     mkHomeMatrix
     mkMembers
     enabledModesOf
@@ -79,6 +80,7 @@ let
       userOptions
       nixosSystem
       loadIdentity
+      resolveIdentity
       floorMode
       system
       ;

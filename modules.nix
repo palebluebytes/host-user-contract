@@ -3,7 +3,7 @@
 {
   lib,
   realization,
-  identityOptions,
+  heldIdentityOptions,
   grantedOptions,
   modeNames,
   floorMode,
@@ -36,7 +36,16 @@
         description = "Session shapes this machine can run, beyond the floor (`${floorMode}`), which every host runs. A capability of the box, not a policy about anybody: what a given account is allowed to DO is `affordances`, stated per bind.";
       };
 
-      # A bound account, and the whole of it. Written by a bind; an operator never sets it.
+      # A bound account, and the whole of it. Written by a bind; an operator never sets it — and
+      # the identity is HELD rather than authored (kit.nix's `heldIdentityOptions`), so "written by
+      # a bind" is a fact about the option rather than a convention. A second definition of a bound
+      # account's identity is an eval error, not a merge.
+      #
+      # That is load-bearing on THIS surface in a way it is not on the home's. `trustedKeys` is
+      # `listOf str`, which merges by CONCATENATION at equal priority (ADR-0005), and `accountPlan`
+      # feeds it straight into the account's `authorizedKeys` — so without the posture, a second
+      # module naming the same user appends an SSH key to a realized account with no conflict, no
+      # error, and nothing to notice.
       #
       # The `mode` is here because the account needs it: a graphical session's input groups ride
       # the mode rather than a grant (ADR-0006), so `accountPlan` cannot derive an account's groups
@@ -46,7 +55,7 @@
         type = lib.types.attrsOf (
           lib.types.submodule {
             options = {
-              identity = identityOptions;
+              identity = heldIdentityOptions;
               granted = grantedOptions;
               mode = lib.mkOption {
                 type = lib.types.enum modeNames;
@@ -93,26 +102,14 @@
   # module wins silently, and `trustedKeys` — `listOf str`, merged by CONCATENATION at equal
   # priority — takes an appended key with no conflict to notice at all (ADR-0005 names both).
   #
-  # THE DEFAULTS ARE DROPPED HERE, and that is forced rather than chosen: the module system counts
-  # a declared `default` as a definition, so a defaulted readOnly option can never also be DEFINED
-  # (lib/modules.nix — `readOnly` throws on more than one). The home is therefore handed a record
-  # that is already complete, resolved once by `identityJson.resolveIdentity` at the injection site.
-  #
-  # The posture lives HERE rather than in `identity.nix`, which owns the SHAPE both surfaces share.
-  # Host-side there is no second author to exclude: `contract.users.<u>.identity` is written by a
-  # bind, and the host is already the trust anchor (ADR-0019) — and it keeps its defaults, which
-  # readOnly would have taken away. Home-side the second author is the user's own module tree,
-  # which is exactly what this excludes.
+  # THE DEFAULTS ARE GONE from the option set, which is forced rather than chosen: the module
+  # system counts a declared `default` as a definition, so a defaulted readOnly option can never
+  # also be DEFINED (lib/modules.nix — `readOnly` throws on more than one). Every holder is handed
+  # a record that is already complete, resolved once by `identityJson.resolveIdentity` (ADR-0005).
   #
   # It stays evaluable by BARE `evalModules` with no home-manager present (ADR-0002).
   homeModule = _: {
-    options.contract.identity = lib.mapAttrs (
-      _: o:
-      removeAttrs o [ "default" ]
-      // {
-        readOnly = true;
-      }
-    ) identityOptions;
+    options.contract.identity = heldIdentityOptions;
   };
 
   # The HOME BASELINE: the standing, uniform-across-users home-manager hygiene every produced home

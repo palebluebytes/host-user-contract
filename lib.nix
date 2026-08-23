@@ -17,6 +17,9 @@
   manifest,
   grantLib,
   userOptions,
+  # The one completion of identity.nix's defaults (./identity-json.nix). Injected like `grantLib`
+  # so the bind's write site and the loader share one owner of "what a user with no sshKey has".
+  resolveIdentity,
   # How this file phrases every refusal (./diagnostics.nix): one prefix rule, one list rendering,
   # one vacuity rationale. Sites below hand facts, never punctuation. INJECTED rather than imported
   # here, exactly as `grantLib` is, so the module the conformance suite unit-tests through
@@ -446,7 +449,14 @@ let
       mode,
     }:
     {
-      inherit identity mode;
+      inherit mode;
+      # RESOLVED at the write site, which is the one place every bind funnels through. The host
+      # surface is `readOnly` and carries no option defaults (modules.nix), so an incomplete record
+      # leaves the optional fields with no value at all — and `accountPlan` reads `sshKey` and
+      # `trustedKeys` off every account. A caller handing a raw identity (`bindContractPackage` is
+      # given one directly) therefore cannot be asked to remember; idempotent, so a record that
+      # already came through `loadIdentity` passes untouched (ADR-0005).
+      identity = resolveIdentity identity;
       granted = grants;
     };
 
