@@ -32,22 +32,35 @@ a consumer calls in its own `checks`:
 | `mkHomeEvalCheck` | one user's every published home evaluates on every system baked |
 | `mkMemberChecks` | the members fold over the three above, so no call site names a check |
 
-…and one function that proves nothing at all.
+…and two functions that prove nothing at all.
 
 ## The kit also owns how a suite REPORTS
 
-`mkClaimReport` is the fifth surface and the odd one out: the four above answer *is this repo's
-material sound?*, and it answers *how does a suite say what it found?* It takes a list of named
-`{ name; ok; }` claims, a report title, `pkgs`, and — optionally — **execution proofs**, derivations
-whose *being built* is the verdict. It renders an `ok`/`FAIL` line per claim, threads the proofs in
-as the report's own build inputs, and exits non-zero if anything failed.
+`mkClaimReport` and `mkProofPrelude` are the fifth and sixth surfaces, and the odd ones out: the
+four above answer *is this repo's material sound?*, and these two answer *how does a suite say what
+it found?* — one for each place that answer is reached.
 
-It is here rather than beside the contract's own internals for the same reason the four are: it is
-**technique**, the material is the consumer's, and it is package-free by the same injection. It also
-earns its place by the [0014](0014-producer-surface.md) bar — three sites in this repo were running
-that fold: two near-verbatim (the conformance collector and the reference host fleet, which now
-report through it) and a third, the reference user fleet, which had invented its own shell
-harnesses. A format with no owner is a format free to drift.
+`mkClaimReport` owns the **eval** side. It takes a list of named `{ name; ok; }` claims, a report
+title, `pkgs`, and — optionally — **execution proofs**, derivations whose *being built* is the
+verdict. It renders an `ok`/`FAIL` line per claim, threads the proofs in as the report's own build
+inputs, and exits non-zero if anything failed.
+
+`mkProofPrelude "<proof name>"` owns the **shell** side, because an execution proof decides there
+and nowhere else. It returns the shell a proof prepends to its builder, defining `fail <message>` to
+write `<proof name>: <message>` to stderr and exit non-zero — **text** rather than a wrapper around
+the derivation, because a proof's builder *is* the proof: the comparisons must stay readable at the
+call site rather than become a string argument to a combinator. The name is what earns it. A proof's
+output lands in a build log beside everything else Nix is doing, so a failure that does not say
+which proof wrote it leaves a reader to guess.
+
+Both are here rather than beside the contract's own internals for the same reason the four are: they
+are **technique**, the material is the consumer's, and they are package-free by the same injection.
+They also earn their places by the [0014](0014-producer-surface.md) bar, and by the same tell. Three
+sites in this repo were running the report fold: two near-verbatim (the conformance collector and
+the reference host fleet, which now report through it) and a third, the reference user fleet, which
+had invented its own shell harnesses — the last of which were two `fail()`s in one file, identical
+but for the label they echoed. A format with no owner is a format free to drift, and it drifts on
+whichever side has no owner.
 
 **The two kinds of claim are not interchangeable.** An eval claim is decided before anything is
 built and reads as a line; a proof is decided by building. A verdict that can only be reached from
@@ -57,13 +70,16 @@ carries the worked case).
 
 **An empty claim list is a hard error**, by the same rule as every other empty input here: a report
 folded over nothing prints its header, touches its output and reports success. That failure is
-invisible in exactly the way the whole kit exists to prevent.
+invisible in exactly the way the whole kit exists to prevent. **An unusable proof name is refused**
+for a sharper reason: the name is interpolated into a double-quoted `echo`, so one carrying a quote,
+a `$`, a backtick or a backslash is not a mislabelled failure but arbitrary shell, running in a
+sandbox holding the very homes the proof was given to judge.
 
-It is lib-only and package-free ([0002](0002-contract-is-a-standalone-flake.md)). The caller
+The kit is lib-only and package-free ([0002](0002-contract-is-a-standalone-flake.md)). The caller
 injects `pkgs` for a trivial witness derivation and — for the confinement check — **its own home
 builder**, which is what lets the contract prove something about a home-manager module set without
-importing home-manager. Every check fails at eval with a named message, the same posture as every
-other contract guard.
+importing home-manager; the prelude, being text, needs neither. Every check fails at eval with a
+named message, the same posture as every other contract guard.
 
 ## A check that cannot pass vacuously, in either direction
 

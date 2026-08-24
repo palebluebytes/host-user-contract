@@ -24,6 +24,14 @@
 # consumer's `checks.<system>.<report>` fails the way every other check fails, and `nix flake check`
 # needs no special case. It also means a caller cannot observe the refusal without building, which is
 # what the suite's own two build-direction proofs exist for.
+#
+# AND THE SHELL SIDE OF THE SAME QUESTION. `mkClaimReport` decides at EVAL; an execution proof decides
+# in SHELL, so "how does a proof say it failed?" is a second thing with no owner — and it went the
+# same way the report format did. The reference user fleet's two realized-content proofs each opened
+# with their own `fail()`, identical but for the label they echoed (issue #91). `mkProofPrelude` below
+# is that owner: one definition, parameterised by the proof's own name. It ships here rather than in
+# `check-kit.nix` for the reason that file's sibling import already gives — this pair is about
+# REPORTING, and everything in the kit proper is a proof.
 { lib, diag }:
 let
   inherit (diag) showList showName;
@@ -195,5 +203,90 @@ in
         exit 1
       ''}
       touch $out
+    '';
+
+  # mkProofPrelude `<proof name>` → the shell an EXECUTION PROOF opens its builder with.
+  #
+  #     pkgs.runCommand "shared-code-per-user-data" { } (
+  #       contract.lib.mkProofPrelude "shared-code-per-user-data"
+  #       + ''
+  #         [ -x "$marker" ] || fail "the home-path has no runnable marker"
+  #         touch $out
+  #       ''
+  #     )
+  #
+  # It defines exactly one thing — `fail <message>`, which writes `<proof name>: <message>` to stderr
+  # and exits non-zero. Small enough that every site was happy to retype it, which is precisely how
+  # two copies came to exist with nothing keeping them in step.
+  #
+  # The NAME is the caller's own (ADR-0025's posture for the whole kit), and it is what makes a
+  # failure legible: a proof's message lands in a build log beside everything else Nix is doing, so
+  # one that does not say WHICH proof wrote it leaves a reader to guess.
+  #
+  # It returns TEXT rather than wrapping the derivation, because a proof's builder is the proof: the
+  # comparisons are the interesting part and they must stay readable at the call site, not be handed
+  # to a combinator as a string argument.
+  mkProofPrelude =
+    name:
+    let
+      # Characters that would not make a bad LABEL but a live shell: the name is interpolated into a
+      # double-quoted `echo`, so a quote closes it, a `$` or a backtick expands inside it, and a
+      # backslash escapes whatever follows. A proof runs in a sandbox holding the very homes it is
+      # judging, so this is the difference between a mislabelled failure and arbitrary shell.
+      escapes = lib.filter (c: lib.hasInfix c name) [
+        "\""
+        "$"
+        "`"
+        "\\"
+      ];
+      # The one instruction two of the guards below both end on. Written once, for the reason the
+      # diagnostic module states about its own vacuity rationale: a sentence retyped is a sentence
+      # free to be retyped DIFFERENTLY the next time.
+      handTheName = "Hand the proof's own name — the same string its `runCommand` is named with.";
+    in
+    assert diag.mustAll [
+      {
+        ok = lib.isString name;
+        who = "mkProofPrelude";
+        problem = "its proof name is not a string";
+        why =
+          "The name is echoed beside every message this prelude's `fail` writes, and a non-string "
+          + "would throw from inside the interpolation rather than from the call site.";
+        fix = handTheName;
+      }
+      {
+        ok = name != "";
+        who = "mkProofPrelude";
+        problem = "its proof name is empty";
+        why =
+          "Every failure would print a bare `: <message>` — anonymous in a build log carrying "
+          + "every other proof's output, which is the one thing the name exists to prevent.";
+        fix = handTheName;
+      }
+      {
+        ok = !(lib.hasInfix "\n" name);
+        who = "mkProofPrelude";
+        problem = "its proof name spans more than one line";
+        why =
+          "A failure is ONE line, `<proof>: <message>`; the rest of a multi-line name would land "
+          + "on lines of its own, reading as output from something else entirely.";
+        fix = "Say it in one line; the reasoning belongs in a comment beside the proof.";
+      }
+      {
+        ok = escapes == [ ];
+        who = "mkProofPrelude";
+        problem = "its proof name carries shell syntax: ${showList (map showName escapes)}";
+        why =
+          "The name goes inside a double-quoted `echo`, so these do not label the failure — they "
+          + "END the quoting or expand within it, and the remainder runs as shell in a sandbox "
+          + "holding whatever the proof was given to judge.";
+        fix = "Name a proof the way a derivation is named: letters, digits and dashes.";
+      }
+    ];
+    ''
+      fail() {
+        echo "${name}: $1" >&2
+        exit 1
+      }
     '';
 }

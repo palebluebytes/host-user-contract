@@ -246,13 +246,27 @@ Use the adapter unless your fleet builds different members on different systems 
 check set always misses the member somebody forgot to add, and a missing check reads exactly like a
 passing one.
 
-One more, which proves nothing and reports everything:
+Two more, which prove nothing and report everything — one for each side of where a verdict is
+reached:
 
 | function | does |
 | --- | --- |
 | `mkClaimReport { name; title; claims; pkgs; proofs ? { } }` | runs your named `{ name; ok; }` claims, prints an `ok`/`FAIL` line each, threads `proofs` (derivations whose *being built* is the verdict) in as build inputs, and fails the build if anything failed |
+| `mkProofPrelude "<proof name>"` | the shell an execution proof opens its builder with: a `fail <message>` that writes `<proof name>: <message>` to stderr and exits non-zero |
 
-An empty claim list is refused: a report folded over nothing prints a header and passes.
+An empty claim list is refused: a report folded over nothing prints a header and passes. So is an
+unusable proof name — empty, multi-line, or carrying shell syntax that would escape the `echo` it
+is interpolated into.
+
+```nix
+pkgs.runCommand "shared-code-per-user-data" { } (
+  contract.lib.mkProofPrelude "shared-code-per-user-data"
+  + ''
+    [ "$markerA" = "$markerB" ] || fail "the overlay produced a different package per user"
+    touch $out
+  ''
+)
+```
 
 ### Modules
 

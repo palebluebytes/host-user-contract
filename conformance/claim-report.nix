@@ -39,10 +39,18 @@
 # SELF-HOSTING, deliberately: this domain's own claims are reported by the very function it claims
 # about, through the suite's collector. That is not circular — a broken reporter fails the two
 # builds above, which is where the verdict actually lives.
+#
+# AND BESIDE IT, THE SHELL SIDE. `mkClaimReport` owns how a suite reports at EVAL; an execution
+# proof decides in SHELL, and that decision needed an owner too or every proof would keep writing
+# its own `fail()` — which is what the reference user fleet did, twice, identically but for the
+# label (issue #91). `mkProofPrelude` is that owner. Its claims run the same two directions: a
+# builder that calls `fail` does not build AND its message names the proof, and one that never
+# calls it still does.
 {
   lib,
   pkgs,
   mkClaimReport,
+  mkProofPrelude,
 }:
 let
   # A claim set that passes, and one that does not. Two claims each, so the rendering is exercised
@@ -84,6 +92,43 @@ let
   # Does the report REFUSE this material at eval? Forced to a `.drv` path, so a lazily-returned
   # derivation cannot make a refusal look like a pass.
   refused = args: !(builtins.tryEval (report args).drvPath).success;
+
+  # …and the same question of the prelude, whose answer is a STRING: forced through its length, for
+  # the reason above — `tryEval` on an unforced thunk would report every refusal as a pass.
+  refusedPrelude = name: !(builtins.tryEval (builtins.stringLength (mkProofPrelude name))).success;
+  # The offender proof's own name, and the message it fails with. Both are grepped for out of the
+  # captured log below, so "the failure named the proof" is checked rather than assumed — the whole
+  # reason the prelude takes a name at all.
+  offenderProof = "conformance-proof-prelude-offender";
+  offenderMessage = "the thing this fixture proof could not prove";
+
+  # "This derivation could not build, AND what it wrote SAYS so" — the shape both build-direction
+  # proofs below need, and the one shape a domain about ending hand-written failure harnesses must
+  # not hand-write twice. `testBuildFailure` builds the offender and captures its log; this reads
+  # it. Both halves are always claimed together on purpose: a derivation that failed for some other
+  # reason — a typo in the builder, a missing tool — satisfies "it failed" while telling a reader
+  # nothing at all.
+  refusalSays =
+    {
+      # The witness's own name, and the derivation expected to fail.
+      name,
+      offender,
+      # What the captured log must contain, and what a reader is told when it does not.
+      says,
+      otherwise,
+    }:
+    let
+      refusal = pkgs.testers.testBuildFailure offender;
+    in
+    pkgs.runCommand name { } ''
+      log=${refusal}/testBuildFailure.log
+      grep -q '${says}' "$log" || {
+        echo "${otherwise}" >&2
+        cat "$log" >&2
+        exit 1
+      }
+      touch $out
+    '';
 in
 {
   assertions = [
@@ -181,29 +226,78 @@ in
         ];
       };
     }
+
+    # ── the SHELL side: the prelude an execution proof prepends ──────────────────────────────
+    {
+      # The prelude is TEXT a builder is assembled from, so the one thing an eval claim can say
+      # about a usable name is that it yields text at all. What it DOES is a build question, and
+      # the two proofs below are where that is answered.
+      name = "mkProofPrelude: a usable proof name yields shell text to prepend";
+      ok = lib.isString (mkProofPrelude "some-proof");
+    }
+    {
+      name = "mkProofPrelude: a proof name that is not a string is refused";
+      ok = refusedPrelude [ "some-proof" ];
+    }
+    {
+      # An empty name is the prelude's own vacuity: every failure would print a bare `: …`, which
+      # is the anonymous diagnosis the name exists to prevent.
+      name = "mkProofPrelude: an empty proof name is refused (its failures would print a bare ': …')";
+      ok = refusedPrelude "";
+    }
+    {
+      # The name is interpolated into a double-quoted `echo`, so a `"` or a `$` in it would not be
+      # a bad label — it would be shell, running in the proof's own sandbox with its own inputs.
+      name = "mkProofPrelude: a proof name carrying shell syntax is refused (it would escape the echo)";
+      ok = refusedPrelude "a-proof\"; rm -rf /; echo \"";
+    }
+    {
+      name = "mkProofPrelude: a proof name spanning more than one line is refused (a failure is one line)";
+      ok = refusedPrelude "a-proof\nthat wraps";
+    }
   ];
 
   drvs = {
     # DIRECTION ONE — a passing claim set, with a proof threaded in, builds.
     claim-report-passes = report { proofs.someProof = goodProof; };
 
-    # DIRECTION TWO — a failing claim actually fails the build, and the failure NAMES it. Both
-    # halves matter: a report that failed for any other reason (a typo in the script, a missing
-    # tool) would satisfy "it failed" while telling a reader nothing.
-    claim-report-fails-a-failing-claim =
-      let
-        refusal = pkgs.testers.testBuildFailure (report {
-          claims = failing;
-        });
-      in
-      pkgs.runCommand "conformance-claim-report-fails-a-failing-claim" { } ''
-        log=${refusal}/testBuildFailure.log
-        grep -q '${failingClaimName}' "$log" || {
-          echo "the report failed, but its output never names the claim that failed — a reader is told only that something broke" >&2
-          cat "$log" >&2
-          exit 1
-        }
-        touch $out
-      '';
+    # DIRECTION TWO — a failing claim actually fails the build, and the failure NAMES it.
+    claim-report-fails-a-failing-claim = refusalSays {
+      name = "conformance-claim-report-fails-a-failing-claim";
+      offender = report { claims = failing; };
+      says = failingClaimName;
+      otherwise = "the report failed, but its output never names the claim that failed — a reader is told only that something broke";
+    };
+
+    # DIRECTION ONE, for the PRELUDE — a proof that calls `fail` does not build, and what it wrote
+    # names the proof. The second half is the whole point of parameterising it: a build log full of
+    # anonymous `: could not …` lines is what the reference user fleet's hand-written copies were
+    # avoiding by each spelling their own label in, and this is the owner that spells it once.
+    proof-prelude-fails-and-names-the-proof = refusalSays {
+      name = "conformance-proof-prelude-fails-and-names-the-proof";
+      offender = pkgs.runCommand offenderProof { } (
+        mkProofPrelude offenderProof
+        + ''
+          fail "${offenderMessage}"
+          touch $out
+        ''
+      );
+      # The NAME beside the message, not the message alone — that pairing is the whole of what the
+      # prelude takes a name for.
+      says = "${offenderProof}: ${offenderMessage}";
+      otherwise = "the proof failed, but its output never names the proof beside the message — which is the one thing the prelude takes a name for";
+    };
+
+    # …and DIRECTION TWO: the control. A prelude that made every proof fail would satisfy the
+    # direction above perfectly, so this pins that prepending it costs a passing proof nothing.
+    proof-prelude-leaves-a-passing-proof-alone =
+      pkgs.runCommand "conformance-proof-prelude-leaves-a-passing-proof-alone" { }
+        (
+          mkProofPrelude "conformance-proof-prelude-leaves-a-passing-proof-alone"
+          + ''
+            [ -n "$out" ] || fail "the fixture proof has no output path — this control would be vacuous"
+            touch $out
+          ''
+        );
   };
 }

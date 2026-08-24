@@ -47,6 +47,7 @@ let
     bindContractUsers
     renderNixConfig
     mkClaimReport
+    mkProofPrelude
     ;
   inherit (kit.internal)
     diag
@@ -169,6 +170,7 @@ let
         lib
         pkgs
         mkClaimReport
+        mkProofPrelude
         ;
     })
     (import ./identity-posture.nix {

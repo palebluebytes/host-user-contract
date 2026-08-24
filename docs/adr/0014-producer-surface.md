@@ -19,6 +19,7 @@ silently when mistyped.
 | `mkContractUsers` / `mkContractUser` | the two rungs below, for a bake that is not a cross-product |
 | `mkConfinementCheck` · `mkIdentityPostureCheck` · `mkHomeEvalCheck` · `mkMemberChecks` | the proofs only a consumer can run |
 | `mkClaimReport` | how a suite of named claims reports what it found |
+| `mkProofPrelude` | how an execution proof, deciding in shell, says which proof failed |
 
 ### The bar for joining it
 

@@ -99,10 +99,11 @@ let
 
   # The check kit: the proofs a CONSUMER runs over its own repo (ADR-0025).
   checkKit = import ./check-kit.nix { inherit lib diag; };
-  # …and, on the same public surface but NOT one of its proofs, how a suite REPORTS what it found.
+  # …and, on the same public surface but NOT one of its proofs, how a suite REPORTS what it found —
+  # at eval (`mkClaimReport`) and in a proof's own shell (`mkProofPrelude`).
   # A sibling import rather than a member of `check-kit.nix`: everything in that file fails LOUDLY
-  # at eval with a named message, and this one's verdict is deliberately in the BUILDER, so folding
-  # it in would make that file's own header false (issue #87).
+  # at eval with a named message, and these two put their verdict deliberately in the BUILDER, so
+  # folding them in would make that file's own header false (issues #87, #91).
   claimReport = import ./claim-report.nix { inherit lib diag; };
 
   # --- the two substantial pieces, split out for focus ---
@@ -267,11 +268,13 @@ in
       mkMemberChecks
       ;
 
-    # …and beside them, the one entry here that proves NOTHING: how a suite of named claims REPORTS
+    # …and beside them, the two entries here that prove NOTHING: how a suite of named claims REPORTS
     # itself — the `ok`/`FAIL` fold, the execution proofs threaded in as build inputs, and the
-    # non-zero exit. Same surface and same package-free rule as the four above, different question
-    # (`claim-report.nix` carries the signature and both kinds of claim).
-    inherit (claimReport) mkClaimReport;
+    # non-zero exit — and, for the shell side of the same question, the prelude an execution proof
+    # opens its builder with, whose `fail` names the proof it speaks for. Same surface and same
+    # package-free rule as the four above, different question (`claim-report.nix` carries both
+    # signatures, and why they are one file).
+    inherit (claimReport) mkClaimReport mkProofPrelude;
   };
 
   # ── INTERNAL ─────────────────────────────────────────────────────────────────────────────────
