@@ -61,6 +61,15 @@
         identitySchema
         ;
 
+      # The TESTING surface: the seat-VM harness every runtime proof below is built on, named here
+      # so a consumer can boot a contract seat without naming a path inside `conformance/`. Its one
+      # consumer today is the reference fleet's end-to-end greeter test, which needs a real
+      # home-manager home this flake cannot build (ADR-0022 for the seam; README for what separates
+      # it from `lib` and the check kit). `pkgs` and the modules it composes are arguments, never
+      # inputs (ADR-0002), exactly as the check kit's helpers take them. `conformance/testing.nix`
+      # is the suite's export list, so the harness's file stays the suite's to move.
+      testing = import ./conformance/testing.nix;
+
       # The contract's own conformance suite: proves the contract's
       # promises against synthetic users on synthetic systems built from the umbrella —
       # no host repo. Independent CI; the host keeps only the thin coherence gate.

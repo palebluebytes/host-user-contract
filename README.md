@@ -209,6 +209,11 @@ activation, and a mode is the part it cannot. A user says which modes it runs in
 
 ## The surface
 
+Three of them, answering three questions. **`lib`** is the contract's own functions — a host
+*binds*, a producer *bakes*. The **check kit**, inside `lib`, hands a consumer the *technique* for
+proving a claim about its own repo. **`testing`** hands over a *machine*: it boots a seat host, and
+the claim stays the caller's to write.
+
 ### `lib` — the functions
 
 | function | takes | gives |
@@ -266,6 +271,29 @@ pkgs.runCommand "shared-code-per-user-data" { } (
     touch $out
   ''
 )
+```
+
+### `testing` — the seat harness
+
+The scaffolding for booting a **contract seat host** in a NixOS VM test: the boot base, the greeter
+preamble and greetd wiring, and the fixtures a seat test varies against. It is what the contract's
+own ten runtime proofs are built on, published so a consumer's VM test binds that same harness
+rather than re-authoring a seat host free to drift from it.
+
+| output | takes | gives |
+| --- | --- | --- |
+| `testing.mkSeatHarness` | `{ pkgs; system; contractModule; greeterModule ? null }` | `{ mkSeatVM; signer; signerPub; testIdentity; activationStub; }` |
+
+`mkSeatVM` takes what one seat VM *varies* — `{ name; testScript; greeter ? true; graphical ? false;
+autologin ? null; seat ? { }; modes ? [ "gui" ]; }` — and returns the assembled `runNixOSTest`. Hand
+it `greeterModule` only for a seat that enables the greeter.
+
+```nix
+mkSeatVM = (contract.testing.mkSeatHarness {
+  inherit pkgs system;
+  contractModule = contract.nixosModules.default;
+  greeterModule = contract.nixosModules.greeter;
+}).mkSeatVM;
 ```
 
 ### Modules

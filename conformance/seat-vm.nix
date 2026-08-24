@@ -7,6 +7,11 @@
 # the assertion — handed to `mkSeatVM`. Built per-VM in ./flake.nix (no host repo, no host bindings,
 # ADR-0002).
 #
+# It has one consumer OUTSIDE this directory — the reference host fleet's end-to-end greeter test —
+# which reaches it as the `testing.mkSeatHarness` flake output, published through ./testing.nix
+# (ADR-0022). So the file may move freely, but what it RETURNS is a shipped surface: renaming an
+# attribute below is a change to the contract's testing surface, not a refactor of the suite.
+#
 # Two binding-mode postures (CONTEXT.md) share the boot base: the RUNTIME-binding seats — the GREETER
 # seats (greeter-provision / -session / -sequence / -desktop / -bind-loop and the fleet integration
 # VM) — add the greeter preamble; the BUILD-TIME-binding seats (prebuilt-bind / daemon-restricted /
@@ -121,9 +126,8 @@ in
     }:
     # A greeter seat must be handed the greeter module; otherwise `null` would splice into the
     # imports list below and fail with a cryptic module-eval error instead of naming the contract.
-    assert lib.assertMsg (
-      greeter -> greeterModule != null
-    ) "mkSeatVM: `greeter = true` requires `greeterModule` to be passed to ./seat-vm.nix";
+    assert lib.assertMsg (greeter -> greeterModule != null)
+      "mkSeatVM: `greeter = true` requires a `greeterModule` — hand `nixosModules.greeter` to the seat harness";
     pkgs.testers.runNixOSTest (
       {
         inherit name testScript;

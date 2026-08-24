@@ -11,10 +11,10 @@
 # contract's greeter-provision-vm), not the full desk host config — so the runtime-provisioned account
 # never collides with a declarative one, and the boot stays lean.
 #
-# It runs on the contract's own mkSeatVM harness (passed in from ./flake.nix, reached through the
-# `contract` flake input): the helpers-driven posture (greetd off the console, we drive `provision`
-# by hand), so this file declares only what it VARIES — the real home's closure pinned onto the seat
-# and the runtime provisioning assertion.
+# It runs on the contract's own mkSeatVM harness (passed in from ./flake.nix, which reaches it
+# through the contract's named `testing` surface): the helpers-driven posture (greetd off the
+# console, we drive `provision` by hand), so this file declares only what it VARIES — the real home's
+# closure pinned onto the seat and the runtime provisioning assertion.
 {
   mkSeatVM,
   homeActivation,

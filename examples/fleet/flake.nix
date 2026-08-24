@@ -87,15 +87,16 @@
         # never collides with a declarative one.
         fleet-integration = import ./integration-vm.nix rec {
           # The seat scaffolding (boot base + greeter preamble + greetd wiring) is owned by the
-          # contract's own mkSeatVM harness; reach it through the `contract` flake input's source
-          # tree so this fleet edition binds the SAME atom the contract's greeter-provision-vm does,
-          # rather than re-authoring the seat host inline.
-          # NOTE (deliberate first-consumer coupling): this reaches a conformance-internal helper by
-          # RAW PATH into the contract's source tree, so it breaks if `conformance/seat-vm.nix` moves.
-          # Acceptable while this is the only external consumer; promote `mkSeatVM` to a named surface
-          # (a flake output / testlib path) the moment a second consumer needs it.
+          # contract's own seat harness, reached through its `testing` surface. Binding the SAME atom
+          # the contract's greeter-provision-vm does is the point: this test would otherwise
+          # re-author the seat host inline and be free to drift from the harness the contract's own
+          # runtime proofs use.
+          #
+          # A NAME, not a path. This used to interpolate `conformance/seat-vm.nix` into a string,
+          # which left the contract's suite unable to move its own files without breaking this flake
+          # (ADR-0022).
           mkSeatVM =
-            (import "${contract}/conformance/seat-vm.nix" {
+            (contract.testing.mkSeatHarness {
               inherit pkgs system;
               contractModule = contract.nixosModules.default;
               greeterModule = contract.nixosModules.greeter;

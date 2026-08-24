@@ -251,6 +251,13 @@ present.
   own how a suite REPORTS what it found. A third thing beside the two above: the contract ships the
   **technique**, never the verdict, because the material — a repo's real imports, identities and
   homes — is on the far side of the boundary ([0025](docs/adr/0025-consumer-check-kit.md)).
+- **seat harness** — the seat-host scaffolding the conformance suite owns (boot base, greeter
+  preamble, greetd wiring) plus the fixtures a seat test varies against, so a runtime proof is a
+  record of what it VARIES. Published as the `testing.mkSeatHarness` output. The THIRD surface
+  beside `lib` and the check kit, and the one that hands over a MACHINE rather than a function or a
+  technique — it boots a seat; the claim stays the caller's. Named at the flake surface because its
+  one consumer outside the suite (the reference fleet's end-to-end greeter test) must not read the
+  oracle's file layout ([0022](docs/adr/0022-oracle-and-reference-fleets.md)).
 - **claim report** — a suite's own output, through `mkClaimReport`: named claims rendered
   `ok`/`FAIL`, execution proofs threaded in as build inputs, non-zero exit if anything failed. Two
   KINDS of claim — an **eval claim** (`{ name; ok; }`, a boolean already decided) and an **execution

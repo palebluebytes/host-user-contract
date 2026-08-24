@@ -28,6 +28,9 @@ let
     tier1EvalConfig
     featureGroups
     privilegedGroups
+    # The TESTING surface — the seat harness this suite's own runtime proofs are built on, published
+    # for the one consumer outside it (./testing-surface.nix says what is claimed about it).
+    testing
     ;
   inherit (self.lib)
     loadIdentity
@@ -257,6 +260,18 @@ let
         bindContractUser
         bindContractUsers
         system
+        ;
+    })
+    # The shipped TESTING surface: the seat harness the VM checks in ./flake.nix are built on, and
+    # the only part of this directory anything outside it may name.
+    (import ./testing-surface.nix {
+      inherit
+        lib
+        pkgs
+        system
+        testing
+        contractModule
+        greeterModule
         ;
     })
   ];

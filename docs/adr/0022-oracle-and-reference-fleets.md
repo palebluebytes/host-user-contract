@@ -29,8 +29,8 @@ different **kinds** of artifact, not two fidelities of one.
 - **`examples/fleet/`** — the reference host fleet. A seat, a non-exposed host, an exposed one — the
   contract's reason to exist, two independently-owned repos meeting at a bind.
 
-**A one-way seam.** Conformance may consume realistic atoms from the reference fleet; never the
-reverse. The oracle borrows from the reference, the reference never defers to the oracle.
+**A one-way seam for FIXTURES.** Conformance may consume realistic atoms from the reference fleet;
+never the reverse. The oracle borrows from the reference, the reference never defers to the oracle.
 
 **And the seam has ONE owner:** `conformance/toolkit.nix`, the only file under `conformance/` that
 knows where `examples/` is or which of the people in it the suite borrows. (Reference names still
@@ -43,6 +43,24 @@ the reference fleet to know what it got. A domain asks by ROLE ("the user who ru
 never by person. That keeps the reference fleet free to change shape — a rename is a one-file edit
 on the oracle's side — and makes the debt visible from the side that would pay it: the fleet can
 read one screen and see which of its atoms the oracle leans on.
+
+**What travels the OTHER way is a shipped surface, and it has its own owner.** One thing does move
+oracle→reference: the seat-VM **harness**. The reference host fleet's end-to-end greeter test boots a
+contract seat to activate a real home-manager home — which the contract flake cannot build itself
+([0002](0002-contract-is-a-standalone-flake.md)) — and the harness the contract's own runtime proofs
+are built on lives under `conformance/`. That is not the fixture seam running backwards, because the
+fleet consumes a **published output** rather than a file: the contract ships the harness as
+`testing.mkSeatHarness`, and `conformance/testing.nix` — the second one-file owner, this one for what
+leaves the directory — is the export list behind it. So the suite still owns its own layout, and the
+fleet names no path inside it.
+
+It used to interpolate one, and that cost both sides: the suite could not reorganise its directory
+without breaking a sibling flake, and the fleet's greeter test was one refactor away from a
+hand-rolled seat host that nothing would compare against.
+
+Why a THIRD surface rather than a member of the check kit: the kit hands a consumer the *technique*
+for a claim about its own material ([0025](0025-consumer-check-kit.md)), and this hands over a
+*machine*. It boots a seat; the claim stays the caller's to write.
 
 ## The suite's own discipline
 
@@ -97,3 +115,10 @@ module setting a home-manager option would break that.
 - **Move the whole suite into the sibling flakes** so it can use home-manager — rejected: the
   contract would lose the independent CI that makes
   [0002](0002-contract-is-a-standalone-flake.md)'s boundary checkable.
+- **Let the fleet author its own seat host** rather than publishing the harness — rejected: that is
+  the drift the raw path at least made visible. Two seat hosts, one of them exercised by every
+  runtime proof the contract has and the other by a single fleet check, is one host too many.
+- **Move the harness out of `conformance/`** to a top-level file, so no export list is needed —
+  rejected: ten of its eleven callers are the suite's own VMs, and hoisting a file for its single
+  outside consumer moves the ownership away from everyone who uses it. The suite owns the file; the
+  output owns the name.
