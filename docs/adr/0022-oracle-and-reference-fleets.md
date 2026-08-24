@@ -32,6 +32,18 @@ different **kinds** of artifact, not two fidelities of one.
 **A one-way seam.** Conformance may consume realistic atoms from the reference fleet; never the
 reverse. The oracle borrows from the reference, the reference never defers to the oracle.
 
+**And the seam has ONE owner:** `conformance/toolkit.nix`, the only file under `conformance/` that
+knows where `examples/` is or which of the people in it the suite borrows. (Reference names still
+appear elsewhere as synthetic fixture data — a refusal's expected message, a diagnostic's subject —
+but nothing there reads the reference fleet.) It names every atom the suite
+borrows — the users directory, a member set derived over it through the contract's own `mkMembers`,
+a per-role member record (its directory, identity and declaration), the home modules the
+composition domain compares — and each carries the one line a caller needs, so a domain never opens
+the reference fleet to know what it got. A domain asks by ROLE ("the user who runs cli alone"),
+never by person. That keeps the reference fleet free to change shape — a rename is a one-file edit
+on the oracle's side — and makes the debt visible from the side that would pay it: the fleet can
+read one screen and see which of its atoms the oracle leans on.
+
 ## The suite's own discipline
 
 Three rules, each learned from a fixture that reported green while proving nothing:
