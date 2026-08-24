@@ -51,8 +51,9 @@
       #     factor across them, and it keeps each a clean standalone artifact. duo-a and duo-b
       #     import ONE `shared/module.nix` and ONE `shared/overlay.nix`, keyed on
       #     `config.contract.identity.username` so the same code yields per-user data (the
-      #     `shared-code-per-user-data` check in ./checks.nix proves exactly that). Neither
-      #     arrangement reaches sideways between users' DATA.
+      #     `shared-code-per-user-data` proof in ./checks.nix proves exactly that, reported through
+      #     that file's `reference-user-fleet-checks`). Neither arrangement reaches sideways
+      #     between users' DATA.
       #
       #   - The PUBLIC-repo credential posture: every identity.json ships a `$y$` yescrypt hash
       #     rather than `$6$` sha512crypt, because a world-readable hash must be memory-hard. The

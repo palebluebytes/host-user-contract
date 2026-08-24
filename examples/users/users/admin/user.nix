@@ -15,7 +15,7 @@
 # merely alike — they are ONE derivation, built twice. That is correct rather than an oversight:
 # everything admin gets out of the gui mode is host-side (the input groups and the display surface
 # `modes.nix` attaches to it), and no home CONTENT follows from a mode by itself (ADR-0027). The
-# `mode-substitution-is-load-bearing` check reports admin as a convergent pair and passes on it.
+# `mode-substitution-is-load-bearing` proof reports admin as a convergent pair and passes on it.
 {
   # A break-glass account has to be reachable from a terminal above all, and it takes a desktop
   # where one is offered.

@@ -11,7 +11,7 @@
 # CODE, `shared/module.nix` is what turns it into per-user DATA (keyed on
 # config.contract.identity.username).
 # Because it is identity-free, both duo users get the byte-identical derivation; `shared/module.nix`
-# is what diverges. The `shared-code-per-user-data` check asserts exactly that pair of facts.
+# is what diverges. The `shared-code-per-user-data` proof asserts exactly that pair of facts.
 #
 # A home adds this to its own `nixpkgs.overlays`; home-manager's `modules/misc/nixpkgs.nix` rebinds
 # `_module.args.pkgs` at priority 100, beating the producer-passed pkgs' mkDefault (1000), so a

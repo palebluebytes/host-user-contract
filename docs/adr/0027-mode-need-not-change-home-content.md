@@ -66,15 +66,16 @@ from.
 
 Keeping a **worked example** of per-mode substitution is a different obligation with a different
 owner: it belongs to the **reference fleets** ([0022](0022-oracle-and-reference-fleets.md)), which
-exist to demonstrate the mechanisms this repo documents. `examples/users` carries it as
-`mode-substitution-is-load-bearing`, which:
+exist to demonstrate the mechanisms this repo documents. `examples/users` carries it as the
+`mode-substitution-is-load-bearing` execution proof, reported through that fleet's claim report
+([0025](0025-consumer-check-kit.md)), which:
 
 - **classifies** every (user, non-floor mode) pair rather than requiring anything of one — a
   convergent pair is reported and passes;
 - **subtracts `.contract-desktop`** before judging content, because the contract will not count its
   own output as a user's evidence;
 - fails only when **no** pair in the whole fleet diverges, which is the demonstration obligation
-  stated as a check;
+  stated as a proof;
 - reaches that verdict in the **build**, since realized content is the only place it is answerable,
   and asserts at eval only that there is a pair to compare at all.
 
