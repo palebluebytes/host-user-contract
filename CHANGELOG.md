@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/palebluebytes/host-user-contract/compare/host-user-contract-v0.1.0...host-user-contract-v0.1.1) (2026-08-24)
+
+
+### Documentation
+
+* **research:** survey eval-free parsers for contract.identity.* ([#75](https://github.com/palebluebytes/host-user-contract/issues/75)) ([f129bb8](https://github.com/palebluebytes/host-user-contract/commit/f129bb8e01f64fae0f451894be9e0c4fb259fefb))
+
 ## 0.1.0 (2026-08-24)
 
 
