@@ -51,22 +51,21 @@
       #     factor across them, and it keeps each a clean standalone artifact. duo-a and duo-b
       #     import ONE `shared/module.nix` and ONE `shared/overlay.nix`, keyed on
       #     `config.contract.identity.username` so the same code yields per-user data (the
-      #     `shared-code-per-user-data` check below proves exactly that). Neither arrangement
-      #     reaches sideways between users' DATA.
+      #     `shared-code-per-user-data` check in ./checks.nix proves exactly that). Neither
+      #     arrangement reaches sideways between users' DATA.
       #
       #   - The PUBLIC-repo credential posture: every identity.json ships a `$y$` yescrypt hash
       #     rather than `$6$` sha512crypt, because a world-readable hash must be memory-hard. The
       #     reference fleet is what consumers copy, so it models the rule instead of merely citing
-      #     it, and `identity-posture` below enforces it. (The cleartexts are published on purpose
-      #     — "correct-horse-battery-staple", and "password" for admin — because these are teaching
-      #     fixtures.)
+      #     it, and the `identity-posture` check in ./checks.nix enforces it. (The cleartexts are
+      #     published on purpose — "correct-horse-battery-staple", and "password" for admin —
+      #     because these are teaching fixtures.)
       members = contract.lib.mkMembers { usersDir = ./users; };
-      # Two projections OF the members, for the sites that want a list rather than the attrset: the
-      # member names and the members' identities (the offender probe among the checks, which
-      # appends a synthetic identity to the real ones). Projections, never a second derivation of
-      # "who is here" or a second read of an identity.json.
+      # One projection OF the members, for the single site here that wants a list rather than the
+      # attrset: the member names the flat `homeConfigurations` adapter below folds over. A
+      # projection, never a second derivation of "who is here" — and the only one this file needs,
+      # because the checks module beside it takes the members themselves and projects what it wants.
       userNames = lib.attrNames members;
-      memberIdentities = map (m: m.identity) (lib.attrValues members);
 
       # ── The home matrix: which MODES, on which system ────────────────────────────────────────
       # `contract.modes` is the contract's own answer to "what session shapes exist?" — today `cli`
@@ -126,9 +125,9 @@
           # FROM it.
           pkgs,
           # The SESSION SHAPE this home is built for. Defaulted to the contract's own FLOOR rather
-          # than to a literal, so the confinement check below — which builds one home per member
-          # just to probe its module set, and has no opinion about sessions — names no mode and
-          # keeps naming none if the registry's floor ever changes.
+          # than to a literal, so the confinement check in ./checks.nix — which builds one home
+          # per member just to probe its module set, and has no opinion about sessions — names no
+          # mode and keeps naming none if the registry's floor ever changes.
           mode ? contract.floorMode,
           extraModules ? [ ],
         }:
@@ -221,10 +220,11 @@
       inherit (fleet) packages contractUsers;
 
       # ── Checks ──────────────────────────────────────────────────────────────────────────────
-      # `checks = fleet.packages`, plus the contract's consumer check kit mapped over the derived
-      # members. There are no per-user checks — not "none yet": a user here ships its own files and
-      # this mapper carries no hook to pick a check file up with. Everything below is generic over
-      # the members, so a new user is covered the moment its directory exists.
+      # `checks = fleet.packages`, plus everything ./checks.nix claims about this fleet — the
+      # contract's consumer check kit folded over the derived members, and the teaching extras a
+      # real users repo does not carry. The proofs live THERE rather than here, and how many of
+      # them there are is that file's business: this one states the fleet's facts, and a proof over
+      # them is not one of them.
       #
       # The first clause is the load-bearing one: a contractPackage build-DEPENDS on its activation
       # package, so building every package builds every home.
@@ -232,235 +232,27 @@
         sys:
         fleet.packages.${sys}
         // lib.optionalAttrs (sys == system) (
-          # The whole check kit, folded over the members in ONE call — yielding
-          # `home-confinement-<user>` and `home-eval-<user>` per member plus one
-          # `identity-posture`, so this file names no check and no user:
-          #
-          #   - CONFINEMENT, per user: the contract's own suite proves the UMBRELLA declares no
-          #     system channel; that says nothing about whether THIS repo's imports smuggled one
-          #     back in. The check probes the real `mkHome` above — an out-of-universe option must
-          #     be unexpressible while a legitimate home option still evaluates.
-          #   - HOME EVALUABILITY, per user: every home this repo publishes for that user, on every
-          #     system in `homes`, forces to a derivation. The failing arch is always the one
-          #     nothing builds by default here, so an x86_64-only package added to shared content
-          #     throws HERE rather than on the aarch64 seat hours later.
-          #   - The CREDENTIAL POSTURE over the members' identities, ENFORCED rather than merely
-          #     documented: a member added with a `$6$` hash fails the flake check rather than
-          #     being noticed in review, or not. `require` has no default anywhere in the kit — the
-          #     posture is this repo's own choice, and stating it is the point.
-          #
-          # The material handed over is the SAME `mkHome` and the SAME `homes` the packages are
-          # built from.
-          contract.lib.mkMemberChecks {
-            inherit pkgs members homes;
+          # The material handed over is the SAME members, the SAME `mkHome` and the SAME `homes`
+          # the packages above are built from, plus the one posture this repo requires of its own
+          # identities — a check over a separately assembled module set, or over a second read of
+          # ./users, would prove nothing about what ships. Nothing else crosses: ./checks.nix takes
+          # an explicit argument list and closes over none of this `let`.
+          import ./checks.nix {
+            inherit
+              lib
+              pkgs
+              contract
+              members
+              homes
+              system
+              ;
             # The confinement probe builds one home per member purely to see what its module set
             # will ACCEPT, so it names no mode and takes the builder's floor default — a session
-            # shape is not what this check is about.
+            # shape is not what that check is about.
             buildHome = member: extraModules: mkHome { inherit member extraModules pkgs; };
+            # The PUBLIC-repo credential posture this fleet requires (see the members' note above).
+            # Stated here, where the fleet's own facts are, and enforced there.
             require = "yescrypt";
-          }
-          // {
-            # The proof that the posture check above can actually FAIL. Kept here deliberately, as
-            # a teaching extra a real users repo does not carry: a posture check that passes
-            # because its identity list is empty reads identically to one that passes on merit.
-            #
-            # So: take the REAL derived members, append one synthetic `$6$` offender, and require
-            # that the check rejects it. This tests the CALL SITE, not the helper.
-            identity-posture-rejects-an-offender =
-              let
-                # Any real members identity will do as the base — the offender differs from it only
-                # in the two fields the posture looks at — so it is taken from the derivation
-                # rather than by naming a user this check has no other business knowing.
-                someRealIdentity = lib.head memberIdentities;
-                offender = someRealIdentity // {
-                  username = "sixto";
-                  hashedPassword = "$6$PlK5/zSEHPgdAG32$FCvLAFwEDuoUxclrrYNQ4Q1PgQ3F8SSQpCZYiRy5/H0pDp/Ppjtg88cnsJ0t2sjsn.u5sp2NxrGxuzKc/.ctq/";
-                };
-                rejected =
-                  !(builtins.tryEval (
-                    contract.lib.mkIdentityPostureCheck {
-                      inherit pkgs;
-                      identities = memberIdentities ++ [ offender ];
-                      require = "yescrypt";
-                      name = "identity-posture-offender-probe";
-                    }
-                  )).success;
-              in
-              assert lib.assertMsg rejected (
-                "identity-posture-rejects-an-offender: a `$6$` identity appended to the real members did "
-                + "NOT fail `require = \"yescrypt\"`. The posture check above is therefore vacuous — it "
-                + "would pass whatever the members ships. Check that the members derives a non-empty list "
-                + "from ./users."
-              );
-              pkgs.runCommand "identity-posture-rejects-an-offender" { } "touch $out";
-
-            # The claim the duo pair exists to prove: SHARED CODE, PER-USER DATA. Also kept
-            # deliberately as a teaching extra — it is the one check here that names users, because
-            # the arrangement it proves is a property of that pair rather than of the members.
-            # "Both homes build" would not prove it: a shared module that baked duo-a's identity
-            # into duo-b's home would still build. So this pins the two halves separately, on the
-            # REALIZED homes:
-            #
-            #   shared CODE   — `shared/overlay.nix`'s marker package resolves to the SAME store
-            #                   path in both closures (one derivation, not a per-user copy), and it
-            #                   is really there: the check RUNS it out of each home-path;
-            #   per-user DATA — `shared/module.nix`, keyed on `config.contract.identity.username`, renders
-            #                   two DIFFERENT store paths, each carrying its own identity and NO
-            #                   trace of the other's.
-            #
-            # This is also why the check lives here rather than in `conformance/`: it needs both
-            # home-manager and nixpkgs, and the contract's synthetic suite has neither.
-            shared-code-per-user-data =
-              let
-                # The floor home of each, so the pair is compared in the mode both certainly run
-                # in — the shared arrangement is mode-independent, which is the point.
-                duoA = homes.${system}.duo-a.${contract.floorMode};
-                duoB = homes.${system}.duo-b.${contract.floorMode};
-                # Both halves are read out of the REALIZED activation package, never off the
-                # evaluated config: the point is what actually lands in the user's home.
-                cardOf = home: "${home.activationPackage}/home-files/.contract-shared-card";
-                markerOf = home: "${home.activationPackage}/home-path/bin/contract-shared-marker";
-              in
-              pkgs.runCommand "shared-code-per-user-data" { } ''
-                fail() {
-                  echo "shared-code-per-user-data: $1" >&2
-                  exit 1
-                }
-
-                # --- shared CODE: one overlay, one derivation, in BOTH closures ---
-                markerA=$(readlink -f ${markerOf duoA})
-                markerB=$(readlink -f ${markerOf duoB})
-                [ -x "$markerA" ] || fail "duo-a's home-path has no runnable shared-overlay marker"
-                [ -x "$markerB" ] || fail "duo-b's home-path has no runnable shared-overlay marker"
-                [ "$markerA" = "$markerB" ] || fail "the shared overlay produced a DIFFERENT package per user ($markerA vs $markerB) — that is not shared code"
-                "$markerA" | grep -q 'shared/overlay.nix' || fail "the marker in the closure did not come from the shared overlay"
-
-                # --- per-user DATA: same module, two identities, two different outputs ---
-                cardA=$(readlink -f ${cardOf duoA})
-                cardB=$(readlink -f ${cardOf duoB})
-                [ -f "$cardA" ] || fail "duo-a's realized home has no shared-module card"
-                [ -f "$cardB" ] || fail "duo-b's realized home has no shared-module card"
-                [ "$cardA" != "$cardB" ] || fail "the shared module rendered ONE output for two identities — it is not keyed on config.contract.identity.username"
-
-                grep -q '^username=duo-a$' "$cardA" || fail "duo-a's card is not keyed on duo-a's username"
-                grep -q '^username=duo-b$' "$cardB" || fail "duo-b's card is not keyed on duo-b's username"
-                grep -q 'Duo A Reference' "$cardA" || fail "duo-a's card lost duo-a's own identity"
-                grep -q 'Duo B Reference' "$cardB" || fail "duo-b's card lost duo-b's own identity"
-
-                # --- and neither carries a TRACE of the other's identity ---
-                ! grep -q 'duo-b\|Duo B' "$cardA" || fail "duo-a's home leaks duo-b's identity — the shared module baked a user in"
-                ! grep -q 'duo-a\|Duo A' "$cardB" || fail "duo-b's home leaks duo-a's identity — the shared module baked a user in"
-
-                touch $out
-              '';
-
-            # The property the PER-MODE home system exists for, pinned so it cannot rot into a
-            # difference the user never receives: somewhere in this members a MODE is load-bearing —
-            # a user whose homes differ in realized CONTENT across the modes it runs in. Content is
-            # exactly what a bind cannot change, so a mode that substitutes none is the one thing
-            # about modes this fleet would otherwise document without demonstrating.
-            #
-            # Members-generic on purpose, unlike `shared-code-per-user-data` above: WHICH user
-            # substitutes content per mode is that user's own story, told in its own `user.nix`
-            # (today duo-a's, whose two modes name two different modules), so this names no user.
-            #
-            # A CONVERGENT PAIR IS NOT A FAILURE. A mode carries host-side weight a home never sees
-            # — `gui` confers input groups and a display surface — so ada, cleo, duo-b and admin all
-            # run two modes off one home's worth of content, deliberately and correctly (ADR-0027).
-            # What this check refuses is a FLEET in which NO pair diverges: keeping a worked example
-            # of the mechanism it documents is a REFERENCE fleet's obligation (ADR-0022), and it is
-            # this repo's alone — no consumer owes it, which is why the kit ships nothing for it.
-            #
-            # WHY THE VERDICT IS IN THE BUILD rather than in an eval `assert`. Divergence is only
-            # answerable from realized content, and both cheap eval-time approximations lie:
-            #
-            #   drvPath        two modes naming ONE module land on the very same derivation — admin,
-            #                  whose two homes are one derivation built twice — UNLESS the mode
-            #                  carries a `desktop`, which the contract writes into the gui home. So
-            #                  ada, cleo and duo-b differ by drvPath while substituting nothing.
-            #   the declaration  comparing two `configuration` values compares MERGED
-            #                  `deferredModule`s, whose wrapper records the option path each came
-            #                  through; every pair differs, including duo-b's two references to one
-            #                  file.
-            #
-            # So the eval `assert` claims only what is knowable before anything is built: that
-            # there is a pair to compare at all.
-            #
-            # THE CONTRACT'S OWN CONTENT IS SUBTRACTED. `.contract-desktop` is composed by
-            # `mkContractHome` out of the mode's `desktop` parameter, so counting it would let this
-            # check pass on a string the CONTRACT wrote — the same emptiness as passing on the
-            # `mode` frozen into the manifest, one file over. Without the subtraction every
-            # reference user naming a desktop reads as a worked example while substituting nothing.
-            #
-            # BOTH LANDING SITES are compared, because either alone fails the demonstration the
-            # other way round: a home substituting `home.file` puts nothing in the profile, and one
-            # substituting `home.packages` puts nothing in the dotfiles.
-            #
-            # Lives inside the `sys == system` clause with the rest, and needs to: the aarch64 row
-            # is headless, so it publishes ONE mode and there is no second home there to compare.
-            mode-substitution-is-load-bearing =
-              let
-                # Every (user, non-floor mode) pair the published homes hold on this system, paired
-                # against that user's floor home. A member publishing NO floor home is skipped
-                # rather than reported: declining the floor is a user's own decision (the shape an
-                # arm-tier gui-only user has), and it leaves nothing to pair against.
-                pairs = lib.concatMap (
-                  n:
-                  let
-                    published = homes.${system}.${n};
-                  in
-                  map (mode: {
-                    user = n;
-                    inherit mode;
-                    floor = published.${contract.floorMode};
-                    rich = published.${mode};
-                  }) (lib.filter (m: m != contract.floorMode) (lib.attrNames published))
-                ) (lib.filter (n: homes.${system}.${n} ? ${contract.floorMode}) userNames);
-                # The two places mode-specific content can LAND in a realized home.
-                filesOf = home: "${home.activationPackage}/home-files";
-                profileOf = home: "${home.activationPackage}/home-path";
-                # What the contract composes from the mode itself, excluded by NAME from the
-                # dotfile comparison (see above). One entry, and the contract owns it.
-                contractComposed = ".contract-desktop";
-              in
-              assert lib.assertMsg (pairs != [ ]) (
-                "mode-substitution-is-load-bearing: no member publishes a home for any mode BESIDE "
-                + "${contract.floorMode} on ${system}, so there is no pair to compare and every "
-                + "verdict below would be reached over nothing. Enable a second mode for a user the "
-                + "${system} row builds."
-              );
-              pkgs.runCommand "mode-substitution-is-load-bearing" { } (
-                ''
-                  fail() {
-                    echo "mode-substitution-is-load-bearing: $1" >&2
-                    exit 1
-                  }
-                  diverged=""
-                ''
-                + lib.concatMapStrings (p: ''
-                  # --- ${p.user}: ${contract.floorMode} vs ${p.mode} ---
-                  [ -d ${filesOf p.floor} ] || fail "${p.user}'s ${contract.floorMode} home realized no home-files tree at all — the comparison would be vacuous"
-                  [ -d ${filesOf p.rich} ] || fail "${p.user}'s ${p.mode} home realized no home-files tree at all — the comparison would be vacuous"
-                  [ -e ${profileOf p.floor} ] || fail "${p.user}'s ${contract.floorMode} home realized no home-path profile at all — the comparison would be vacuous"
-                  [ -e ${profileOf p.rich} ] || fail "${p.user}'s ${p.mode} home realized no home-path profile at all — the comparison would be vacuous"
-
-                  # The DOTFILES by content, minus what the contract composed from the mode; and the
-                  # PACKAGE PROFILE by resolved store path rather than by walking two closures — a
-                  # profile is input-addressed, so one package set is one store path and two paths
-                  # are two package sets. Minutes cheaper, same answer.
-                  if diff -r -x "${contractComposed}" ${filesOf p.floor} ${filesOf p.rich} >/dev/null \
-                    && [ "$(readlink -f ${profileOf p.floor})" = "$(readlink -f ${profileOf p.rich})" ]; then
-                    echo "${p.user}: ${p.mode} receives exactly what ${contract.floorMode} receives — this mode substitutes no content (legitimate, ADR-0027)"
-                  else
-                    echo "${p.user}: ${p.mode} substitutes content against ${contract.floorMode}"
-                    diverged=yes
-                  fi
-                '') pairs
-                + ''
-                  [ -n "$diverged" ] || fail "NO reference user receives different content across the modes it runs in — every pair above realizes the same dotfiles AND the same package profile once the contract's own ${contractComposed} is set aside, so the one mechanism the per-mode build exists for has no worked example here. Restore the substitution: point a user's two modes at two DIFFERENT modules, each carrying the content that session can carry (see users/duo-a/user.nix)."
-                  touch $out
-                ''
-              );
           }
         )
       );
