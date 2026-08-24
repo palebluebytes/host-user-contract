@@ -70,18 +70,14 @@ let
   # in mkContractHome fails there loudly rather than silently shifting what these read.
   umbrellaOf = r: (lib.elemAt r.modules 0) { };
   baselineOf = r: (lib.elemAt r.modules 1) { };
-  # The desktop dotfile module is a FUNCTION of the mode's `desktop` parameter, so applying it is
-  # the whole of what it does: the gui build materialises the file, and a build for a mode with no
-  # desktop to choose materialises nothing at all.
-  desktopOf = r: (lib.elemAt r.modules 2) { };
-  configurationOf = r: lib.elemAt r.modules 3;
+  configurationOf = r: lib.elemAt r.modules 2;
   # The MODULES a mode's `configuration` actually names. The deferredModule value itself always
   # differs across two modes — its `_file` records the option path it was defined under, so
   # `contract.gui.configuration` and `contract.cli.configuration` are never equal even when they
   # name one file. So the comparison reaches through to what was NAMED, which is the fact the
   # claims below are actually about.
   namedModules = r: lib.concatMap (m: m.imports or [ ]) (configurationOf r).imports;
-  inlineOf = r: lib.elemAt r.modules 4;
+  inlineOf = r: lib.elemAt r.modules 3;
   inlineModule = inlineOf recorded;
 
   # --- the per-mode configuration, and its control ---
@@ -194,9 +190,9 @@ in
   assertions = [
     # --- composition: the module list mkContractHome hands the injected builder ---
     {
-      name = "mkContractHome: composes umbrella → baseline → desktop → the mode's configuration → inline, then extraModules";
+      name = "mkContractHome: composes umbrella → baseline → the mode's configuration → inline, then extraModules";
       ok =
-        lib.length recorded.modules == 6
+        lib.length recorded.modules == 5
         && umbrellaOf recorded ? options
         && (umbrellaOf recorded).options.contract ? identity
         && baselineOf recorded == homeBaselineModule { }
@@ -232,15 +228,20 @@ in
         && namedModules (oneModuleHome "gui") == [ referenceHomeModules.oneModule ];
     }
     {
-      # The desktop dotfile carries the gui mode's own `desktop` parameter into the home, where a
-      # greeter's launcher reads it before evaluating any of the home's Nix. The portable user asks
-      # for plasma; the two-module user asks for sway; and a cli home — a terminal has no desktop
-      # to choose — gets nothing, so the mechanism costs a non-graphical home exactly zero.
-      name = "mkContractHome: the gui home carries its own desktop choice; the cli home carries none";
+      # THE CONTRACT COMPOSES NO CONTENT. It used to write the gui mode's `desktop` parameter into
+      # the home as `~/.contract-desktop`; that parameter is PUBLISHED in the binding index now
+      # (ADR-0021), so the modules the contract adds declare options and set options, and not one
+      # of them writes a FILE. `recorded` is the portable user, who names `desktop = "plasma"` —
+      # so this is asserted over exactly the user who used to produce the file.
+      #
+      # It is what lets a consumer judge whether a MODE substituted content without first setting
+      # the contract's own output aside, which is the subtraction ADR-0027 no longer needs.
+      name = "mkContractHome: the contract composes no home CONTENT of its own, even for a user naming a desktop";
       ok =
-        (desktopOf recorded).home.file.".contract-desktop".text == "plasma"
-        && (desktopOf (twoModuleHome "gui")).home.file.".contract-desktop".text == "sway"
-        && desktopOf (twoModuleHome "cli") == { };
+        !(umbrellaOf recorded ? home)
+        && !(baselineOf recorded ? home)
+        && !(inlineModule ? home.file)
+        && !(inlineOf (twoModuleHome "gui") ? home.file);
     }
     {
       name = "mkContractHome: building a mode the user does not run in is a hard error";

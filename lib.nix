@@ -386,6 +386,25 @@ let
   # makes for a grant set, and the only shape anything downstream consumes.
   enabledModesOf = decl: lib.filter (m: decl.${m}.enable) modeNames;
 
+  # THE MODE PARAMETERS a declaration carries, per enabled mode — `{ <mode> = { <param> = v; }; }`.
+  #
+  # A PROJECTION of the mode registry's own `options`, exactly as the declaration schema itself is
+  # (./contract-user.nix): the parameter NAMES come from `modes.nix` and are never listed here, so a
+  # mode that gains a parameter publishes it with no edit in this file and none in any consumer. A
+  # mode declaring no options yields `{ }`, which is what `cli` has and costs a terminal user
+  # nothing.
+  #
+  # It exists because a mode parameter is a fact about the USER that a SEAT needs — the gui mode's
+  # `desktop` is the one there is today, and its reader is whatever launches a session (ADR-0021).
+  # That reader is host-side and arrives long after the bind, so the value has to be PUBLISHED
+  # rather than buried in a built home: the binding index is where a host already looks for
+  # everything else it needs to know about a user without opening one (ADR-0011).
+  modeParamsOf =
+    decl:
+    lib.genAttrs (enabledModesOf decl) (
+      m: lib.getAttrs (lib.attrNames (modeRegistry.${m}.options or { })) decl.${m}
+    );
+
   # THE UNTOUCHED declaration — the schema evaluated with no definitions at all. Every mode key and
   # every parameter is ALWAYS present on an evaluated declaration (the schema is fully typed and
   # carries no freeform), so "did this user configure the gui mode?" cannot be answered by key
@@ -675,8 +694,10 @@ let
   # points at (`contract.<mode>.configuration`) — the reason the declaration is keyed by mode at
   # all (ADR-0010, ADR-0012).
   #
-  # THE DESKTOP DOTFILE IS COMPOSED BY DEFAULT (ADR-0021): a mode with no `desktop` parameter, or
-  # an empty one, writes nothing and costs that home nothing.
+  # IT COMPOSES NO CONTENT OF ITS OWN. The two modules the contract adds — the identity umbrella and
+  # the home baseline — declare options; neither writes a FILE. A mode's own parameters (the gui
+  # mode's `desktop`) do not land here at all: they are published in the binding index, where the
+  # host-side reader that needs them can reach them without opening a home (ADR-0021, ADR-0027).
   #
   # What stays consumer-side BY DESIGN: `pkgs` (each home layers its own overlays/config, and the
   # platform is read off it), `stateVersion` (a consumer fact — real repos differ — so no contract
@@ -686,11 +707,10 @@ let
   # itself.
   mkContractHome =
     {
-      # Kit-injected (a caller never passes these): the home umbrella, the baseline, the desktop
-      # dotfile writer, and the identity.json loader behind `identity`'s default.
+      # Kit-injected (a caller never passes these): the home umbrella, the baseline, and the
+      # identity.json loader behind `identity`'s default.
       homeModule,
       homeBaselineModule,
-      homeDesktopModule,
       loadIdentity,
       # THE INJECTION SURFACE: home-manager's own builder, passed verbatim.
       homeManagerConfiguration,
@@ -748,7 +768,6 @@ let
       modules = [
         homeModule
         homeBaselineModule
-        (homeDesktopModule (forMode.desktop or ""))
         forMode.configuration
         {
           contract.identity = who.identity;
@@ -877,6 +896,11 @@ let
       ) built;
       contractUsers.${system}.${userName} = {
         inherit identity modes;
+        # The mode PARAMETERS this user declared, keyed by mode — the same set `modes` is keyed
+        # over, because both are what the USER says (what got BUILT here is `contractPackages`,
+        # which a system's home matrix narrows). A reader that selected a mode looks its parameters
+        # up under that mode and finds them, whether it selected declaratively or at a greeter.
+        modeParams = modeParamsOf who.declaration;
         contractPackages = built;
       };
     };

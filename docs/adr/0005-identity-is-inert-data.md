@@ -17,8 +17,8 @@ they are allowed to run code.
 **A user's identity is a JSON file, `identity.json`, read with `jq` before any Nix runs.**
 
 ```
-name · email · username        required
-gmail · hashedPassword · sshKey · trustedKeys    optional
+username                                              required
+name · email · hashedPassword · sshKey · trustedKeys  optional
 ```
 
 The greeter's ordering is the decision in one list:
@@ -43,8 +43,9 @@ then fixed *who resolves the path*, because the layout rule had been transcribed
 the producer's directory scan, the producer coin and the home builder, so one file was read two or
 three times per evaluation by three owners.
 
-The third was **who fills the optional fields**. `identity.json` may omit `sshKey`, `gmail`,
-`hashedPassword` and `trustedKeys`, and something has to say what an omitted one becomes. That was
+The third was **who fills the optional fields**. `identity.json` may omit everything but
+`username` — `name`, `email`, `sshKey`, `hashedPassword` and `trustedKeys` — and something has to
+say what an omitted one becomes. That was
 happening in three places at once — each option surface's own submodule defaults, and a third
 `evalModules` inside the runtime account-plan evaluator — so "what a user with no `sshKey` has" had
 three owners free to disagree. `loadIdentity` now parses, validates *and* resolves, and
@@ -213,4 +214,4 @@ rejection: even if every tooling obstacle were fixed tomorrow, there would be no
   [0006](0006-identity-describes-a-person.md)'s reading of an identity as one description of one
   person. The `trustedKeys` merge above sharpens the case rather than reopening it: the credential
   half would have to stay inert data regardless, so the split buys only the authoring win on
-  `name`, `email` and `gmail` — and leaves those free to be forced by any module in the tree.
+  `name` and `email` — and leaves those free to be forced by any module in the tree.

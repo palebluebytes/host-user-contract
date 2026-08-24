@@ -60,6 +60,18 @@ let
     }
   ];
   guiOnly = evalDeclaration [ { contract.gui.enable = true; } ];
+  # …and one naming a DESKTOP — the gui mode's own PARAMETER. It is varied here for the same reason
+  # the mode set is: what a user says is this domain's one input, and the desktop is the parameter
+  # whose publication route the index claim below is about.
+  withDesktop = evalDeclaration [
+    {
+      contract.cli.enable = true;
+      contract.gui = {
+        enable = true;
+        desktop = "plasma";
+      };
+    }
+  ];
   mkMemberWith = declaration: member: member // { inherit declaration; };
   mkMember = mkMemberWith bothModes;
   membersRunning = declaration: {
@@ -219,6 +231,16 @@ let
     pkgsFor = _: pkgs;
     buildHome = buildSyntheticHome;
   };
+
+  # The same fleet over a declaration that names a desktop, so the parameter claim below reads a
+  # real value rather than the option's own default.
+  desktopFleet = mkContractFleet {
+    members = membersRunning withDesktop;
+    homeMatrix = outputMatrix;
+    pkgsFor = _: pkgs;
+    buildHome = buildSyntheticHome;
+  };
+  desktopIndex = desktopFleet.contractUsers.${system}.${portableName};
 
   # PARITY with the rung below: for one system, the fleet must emit exactly what `mkContractUsers`
   # emits over the same built homes. `mkContractFleet` adds the fold, never a second bake — so if
@@ -546,6 +568,42 @@ in
           lib.attrNames outputFleet.contractUsers.${system}.${portableName}.contractPackages == [
             "cli"
             "gui"
+          ];
+    }
+    {
+      # THE MODE PARAMETERS TRAVEL IN THE INDEX, keyed by mode — a projection of the registry's own
+      # `options` (lib.nix's `modeParamsOf`), so a mode that gains a parameter publishes it with no
+      # edit here, in the producer, or in any consumer.
+      #
+      # This is how the gui mode's `desktop` reaches a seat. It used to be written into the built
+      # home as `~/.contract-desktop`, which made the CONTRACT the author of home content and cost
+      # every content-divergence judgement a subtraction rule (ADR-0021, ADR-0027). A parameter is a
+      # fact about the USER, and the index is where a reader already looks for those without opening
+      # a home.
+      name = "mkContractFleet: the index publishes each enabled mode's own PARAMETERS, keyed by mode";
+      ok =
+        desktopIndex.modeParams == {
+          # `cli` declares no options at all, so it publishes an empty set: a terminal user carries
+          # no parameters, and the cost of the mechanism to them is zero.
+          cli = { };
+          gui.desktop = "plasma";
+        }
+        &&
+          # A user who names none gets the option's own default rather than a missing key, so every
+          # reader finds the parameter under the mode it belongs to — always, and without an `or`.
+          outputFleet.contractUsers.${system}.${portableName}.modeParams == {
+            cli = { };
+            gui.desktop = "";
+          }
+        &&
+          # The whole index entry, ENUMERATED — so a field added to or dropped from the seam fails
+          # here by name, rather than at whichever consumer happened to read it (ADR-0026's
+          # reasoning about probes, applied to the seam instead of to an option surface).
+          lib.sort (a: b: a < b) (lib.attrNames desktopIndex) == [
+            "contractPackages"
+            "identity"
+            "modeParams"
+            "modes"
           ];
     }
     {

@@ -218,11 +218,12 @@ let
   # is. A report line saying the same thing would never be printed: the proof is a build input of
   # the report, so it takes the report down before the report can render anything.
   #
-  # THE CONTRACT'S OWN CONTENT IS SUBTRACTED. `.contract-desktop` is composed by `mkContractHome`
-  # out of the mode's `desktop` parameter, so counting it would let this proof pass on a string the
-  # CONTRACT wrote — the same emptiness as passing on the `mode` frozen into the manifest, one file
-  # over. Without the subtraction every reference user naming a desktop reads as a worked example
-  # while substituting nothing.
+  # NOTHING IS SUBTRACTED, and that is a property of the contract rather than of this proof. The
+  # contract used to compose `~/.contract-desktop` into every gui home out of the mode's `desktop`
+  # parameter, so this comparison had to exclude that file by name or pass on a string the CONTRACT
+  # wrote — the same emptiness as passing on the `mode` frozen into the manifest, one file over. The
+  # parameter is published in the binding index now (ADR-0021), the contract composes no content at
+  # all, and every difference this proof finds is therefore the USER's (ADR-0027).
   #
   # BOTH LANDING SITES are compared, because either alone fails the demonstration the other way
   # round: a home substituting `home.file` puts nothing in the profile, and one substituting
@@ -254,9 +255,6 @@ let
       # The two places mode-specific content can LAND in a realized home.
       filesOf = home: "${home.activationPackage}/home-files";
       profileOf = home: "${home.activationPackage}/home-path";
-      # What the contract composes from the mode itself, excluded by NAME from the dotfile
-      # comparison (see above). One entry, and the contract owns it.
-      contractComposed = ".contract-desktop";
     in
     assert lib.assertMsg (pairs != [ ]) (
       "${proof}: no member publishes a home for any mode BESIDE "
@@ -276,11 +274,11 @@ let
         [ -e ${profileOf p.floor} ] || fail "${p.user}'s ${contract.floorMode} home realized no home-path profile at all — the comparison would be vacuous"
         [ -e ${profileOf p.rich} ] || fail "${p.user}'s ${p.mode} home realized no home-path profile at all — the comparison would be vacuous"
 
-        # The DOTFILES by content, minus what the contract composed from the mode; and the
-        # PACKAGE PROFILE by resolved store path rather than by walking two closures — a
-        # profile is input-addressed, so one package set is one store path and two paths
-        # are two package sets. Minutes cheaper, same answer.
-        if diff -r -x "${contractComposed}" ${filesOf p.floor} ${filesOf p.rich} >/dev/null \
+        # The DOTFILES by content — the whole tree, with nothing set aside, because the contract
+        # composes none of it (see above); and the PACKAGE PROFILE by resolved store path rather
+        # than by walking two closures — a profile is input-addressed, so one package set is one
+        # store path and two paths are two package sets. Minutes cheaper, same answer.
+        if diff -r ${filesOf p.floor} ${filesOf p.rich} >/dev/null \
           && [ "$(readlink -f ${profileOf p.floor})" = "$(readlink -f ${profileOf p.rich})" ]; then
           echo "${p.user}: ${p.mode} receives exactly what ${contract.floorMode} receives — this mode substitutes no content (legitimate, ADR-0027)"
         else
@@ -289,7 +287,7 @@ let
         fi
       '') pairs
       + ''
-        [ -n "$diverged" ] || fail "NO reference user receives different content across the modes it runs in — every pair above realizes the same dotfiles AND the same package profile once the contract's own ${contractComposed} is set aside, so the one mechanism the per-mode build exists for has no worked example here. Restore the substitution: point a user's two modes at two DIFFERENT modules, each carrying the content that session can carry (see users/duo-a/user.nix)."
+        [ -n "$diverged" ] || fail "NO reference user receives different content across the modes it runs in — every pair above realizes the same dotfiles AND the same package profile, so the one mechanism the per-mode build exists for has no worked example here. Restore the substitution: point a user's two modes at two DIFFERENT modules, each carrying the content that session can carry (see users/duo-a/user.nix)."
         touch $out
       ''
     );

@@ -103,7 +103,7 @@ let
 
   # --- the identity.json loader: lossless over identity.nix ---
   # A fixture identity.json written at eval time, carrying every optional field the schema knows,
-  # so the loader is proven to carry all of them rather than only the required three.
+  # so the loader is proven to carry all of them rather than only the required `username`.
   identityFixture = builtins.toFile "identity.json" (
     builtins.toJSON {
       name = "Dana Example";

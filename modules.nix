@@ -130,18 +130,4 @@
     # restart-on-switch semantics against upstream default churn (ADR-0014).
     systemd.user.startServices = lib.mkDefault "sd-switch";
   };
-
-  # The DESKTOP dotfile, as a function of the value rather than a module that reads one. A greeter
-  # launches the session before evaluating any of the home's Nix, so the choice has to travel with
-  # the home as a file (`~/.contract-desktop`, read by contract-greeter-session) — which is why it
-  # cannot move host-side (ADR-0021).
-  #
-  # It takes the desktop NAME because the value does not live in the home: the gui mode's `desktop`
-  # parameter is declared in `users/<u>/user.nix`, and `mkContractHome` hands it here when it
-  # composes the gui home. Empty ⇒ nothing is written, and the seat's default is used.
-  homeDesktopModule =
-    desktop: _:
-    lib.optionalAttrs (desktop != "") {
-      home.file.".contract-desktop".text = desktop;
-    };
 }

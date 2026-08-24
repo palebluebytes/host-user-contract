@@ -74,13 +74,16 @@
     display = true;
     options = {
       # Which DESKTOP this user logs into. FREE-FORM and DE-agnostic by design: the contract
-      # carries the user's opaque preference so it travels with the home — the same desktop on any
+      # carries the user's opaque preference so it travels with the USER — the same desktop on any
       # seat that offers it, which is the portable-user north star — and the SEAT maps the name to
       # a real DE and its launch (`contract.greeter.desktops`). An un-offered or empty name
       # degrades to the seat default. It NEVER names a system package.
       #
-      # Its only consumer is `~/.contract-desktop`, which the contract writes into the gui home so
-      # the greeter's launcher can read the choice BEFORE evaluating any of the home's Nix.
+      # It is PUBLISHED, not written into the home: `modeParamsOf` projects this option set into
+      # the binding index (`contractUsers.<sys>.<u>.modeParams.gui.desktop`), where a seat reads it
+      # having built nothing. That projection is why `options` lives here beside the mode rather
+      # than in a parallel namespace — one declaration, read by the user's own schema and by the
+      # index alike, so a mode that gains a parameter publishes it with no edit anywhere.
       desktop = lib.mkOption {
         type = lib.types.str;
         default = "";

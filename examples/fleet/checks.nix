@@ -8,6 +8,11 @@
   lib,
   pkgs,
   nixosConfigurations,
+  # The users repo, read as a HOST reads it: through the published binding index. It is here for
+  # the one claim below that is about what a seat can learn about a user WITHOUT building or
+  # opening anything (ADR-0011, ADR-0021).
+  users,
+  system,
   # How this fleet REPORTS what it found — the contract's own claim report (issue #87), taken as an
   # argument like every other value here. This file used to carry its own filter, its own `ok`/`FAIL`
   # rendering and its own exit, near-verbatim with the conformance suite's; neither copy knew about
@@ -24,6 +29,9 @@ let
   # which is the whole of "the mode is selected per host" from the outside.
   boundHome =
     host: user: cfgs.${host}.systemd.services."contract-activate-${user}".serviceConfig.ExecStart;
+  # One user's entry in the users repo's binding index — the whole of what a host reads about them
+  # before it binds. Plain data: no home is built and no manifest is opened to reach it.
+  indexFor = user: users.contractUsers.${system}.${user};
 
   assertions = [
     {
@@ -115,6 +123,23 @@ let
     {
       name = "agent (exposed) evaluates coherently — exposure is a plain host fact, no ban";
       ok = cfgs.agent.contract.exposed && (failing cfgs.agent == [ ]);
+    }
+    {
+      # THE DESKTOP IS READABLE AS DATA. ada names `desktop = "plasma"` in her own `user.nix`, and
+      # a seat learns it the way it learns everything else about her — off the published index,
+      # with no home built and no file opened. That is the route the value takes to a session
+      # launcher now (ADR-0021), and this is the consumer end of it.
+      #
+      # `desk` is the seat that would use it; `vault` is headless and never asks. Nothing about
+      # this is a GRANT — a desktop preference is a parameter of the session shape, not a power.
+      name = "mode parameters travel as published data: a seat reads ada's desktop off the index";
+      ok =
+        indexFor "ada" ? modeParams
+        && (indexFor "ada").modeParams.gui.desktop == "plasma"
+        &&
+          # ben runs in a terminal only, and the floor declares no parameters at all — so he
+          # publishes an empty set rather than a missing key.
+          (indexFor "ben").modeParams == { cli = { }; };
     }
   ];
 in

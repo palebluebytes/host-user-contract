@@ -90,7 +90,10 @@ two paths disagree about what a machine can run, the greeter is what the design 
   one mode carries it; zero or two is a named error.
 - **mode parameters** — a mode's own knobs, declared beside it in `modes.nix` and appearing on
   `contract.<mode>` in a user's declaration. Today: `gui.desktop`. Parameters live on the thing they
-  parameterise, so there is no second namespace to keep in step.
+  parameterise, so there is no second namespace to keep in step. They are **published** in the
+  binding index as `modeParams.<mode>` — a projection of the registry's `options`, exactly as the
+  declaration schema is — because a parameter is a fact about the user that a seat needs *before*
+  it opens anything. A mode declaring none publishes `{ }`.
 - **runs** — the modes a host runs: the floor, plus whatever `contract.modes` declares
   (`runsWith`). It **filters the registry** rather than concatenating the declaration, which makes
   the declaration a SET rather than a sequence — order and duplicates wash out, a redundantly
@@ -186,9 +189,10 @@ provisioned by the user's own home module.
   account from `identity.json` plus the safe-set grant, so a greeter user realizes identically to a
   build-time one — modulo the `greeter-users` seat marker, which is seat infrastructure rather than
   part of the portable account.
-- **binding index** — `contractUsers.<system>.<user> = { identity; modes; contractPackages }`, plain
-  data. A host selects by *reading* it, never by building every home to inspect a manifest; a
-  greeter reads `modes` off it with one cheap `nix eval`.
+- **binding index** — `contractUsers.<system>.<user> = { identity; modes; modeParams; contractPackages }`,
+  plain data. A host selects by *reading* it, never by building every home to inspect a manifest; a
+  greeter reads `modes` off it with one cheap `nix eval`, and the selected mode's `modeParams` with
+  another.
 - **source** — whatever publishes that index. Usually a pinned users flake, but nothing requires a
   flake (the conformance suite hands plain attrsets), which is why the argument is not
   `usersFlake`. It is per-user with a top-level default, so one host can bind across repos.
@@ -301,8 +305,9 @@ present.
 - **declaration** (what a user says, in `user.nix`) vs **configuration** (the home-manager module a
   mode points at). The first is read as data; the second is built.
 - **desktop** vs **session type** — **desktop** (`contract.gui.desktop`) is the user's intent, an
-  experience that travels with the identity, and the only thing the contract carries. **Session
-  type** (`wayland`/`x11`) is not a contract concern at all: the seat's launch command owns it.
+  experience that travels with the user as a published mode parameter, and the only thing the
+  contract carries. **Session type** (`wayland`/`x11`) is not a contract concern at all: the seat's
+  launch command owns it.
 - **user secret** is ambiguous on its own — say *public identity*, *hashedPassword*, or *feature
   secret* (and note the contract handles only the first two).
 - **program scope vs system effects** — do not conflate "the host decides feature grants" with "the

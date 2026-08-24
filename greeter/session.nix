@@ -1,8 +1,15 @@
 # (8) the session launcher: the greeter SELECTS the desktop, the HOST binds the backend.
-# Usage: contract-greeter-session <username> <home-dir>
-# ADR-0021: the contract resolves the user's chosen DESKTOP (surfaced from the bound home as
-# ~/.contract-desktop, else the seat default) against the desktops the SEAT offers, and execs that
-# desktop's command AS the user in greetd's seat session. The contract ships no desktop (ADR-0002).
+# Usage: contract-greeter-session <username> <home-dir> [desktop]
+# ADR-0021: the contract resolves the user's chosen DESKTOP against the desktops the SEAT offers and
+# execs that desktop's command AS the user in greetd's seat session. The contract ships no desktop
+# (ADR-0002).
+#
+# THE DESKTOP ARRIVES AS AN ARGUMENT, from whoever selected the mode it is a parameter of — the
+# orchestrator reads it off the user's published binding index in the same eval that reads their
+# modes (./bind.nix). It is not read out of the home: a mode parameter is a fact about the USER, and
+# the index is where a reader already looks for those without opening a built home (ADR-0021). An
+# empty or omitted argument is the ordinary case — the seat's default is used — so a caller that has
+# no value to pass simply does not pass one.
 {
   pkgs,
   lib,
@@ -29,7 +36,10 @@ pkgs.writeShellApplication {
   text = ''
           username=$1
           home=$2
+          # The user's chosen desktop, selected by the caller. Absent/empty ⇒ the seat default.
+          want=''${3:-}
           defaultDesktop=${lib.escapeShellArg defaultDesktop}
+          [ -n "$want" ] || want=$defaultDesktop
 
           # Resolve a desktop NAME to its launch command (the seat's offered desktops).
           resolve() {
@@ -38,14 +48,6 @@ pkgs.writeShellApplication {
               *) return 1 ;;
             esac
           }
-
-          # The user's chosen desktop is surfaced from their home (~/.contract-desktop, materialised
-          # by the producer from the gui mode's own `desktop` parameter); absent ⇒ the seat default.
-          if [ -f "$home/.contract-desktop" ]; then
-            want=$(cat "$home/.contract-desktop")
-          else
-            want=$defaultDesktop
-          fi
 
           # An un-offered/unknown desktop degrades to the seat default — never breaks the login (ADR-0021).
           dcmd=""

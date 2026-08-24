@@ -116,6 +116,15 @@ pkgs.writeShellApplication {
     if [ -n "$pubfile" ]; then rm -f "$pubfile"; fi
     echo "greeter: binding '$username' in mode '$mode'" >&2
 
+    # 4c. the selected mode's own PARAMETERS, read off the binding index — plain data, forcing no
+    # home, in the same restricted-eval posture as the mode read above. `desktop` is the one
+    # parameter a seat consumes today (ADR-0021), and it is spelled here for the same reason
+    # `contract.greeter.desktops` is: this step IS the desktop step. A repo publishing no index
+    # (the homes-only fallback above), or a mode declaring no parameters, simply yields nothing and
+    # the launcher falls back to the seat's default.
+    desktop=$(env NIX_CONFIG="$evalConfig" nix eval --raw \
+      "$src#contractUsers.$system.$username.modeParams.$mode.desktop" 2>/dev/null) || desktop=""
+
     # 5/6. evaluate + build the home THROUGH the contract, under the contract-pinned restricted-eval
     # posture — handed to the host's homeBuilder as NIX_CONFIG so a naive `nix build` binding
     # inherits the floor; it augments the seat's nix.conf (experimental-features survive).
@@ -126,7 +135,7 @@ pkgs.writeShellApplication {
     # needs to know which session shape this login was bound in.
     contract-greeter-provision "$username" "$src/${identityFile}" "$activation" "$tier" "$mode"
 
-    # 8. launch the session (the desktop is selected here; the host-bound backend renders it).
-    exec contract-greeter-session "$username" "/home/$username"
+    # 8. launch the session (the desktop was selected at 4c; the host-bound backend renders it).
+    exec contract-greeter-session "$username" "/home/$username" "$desktop"
   '';
 }

@@ -630,11 +630,12 @@ in
         ];
     }
     {
-      name = "mkContractUsers: the binding index carries { identity; modes; contractPackages }";
+      name = "mkContractUsers: the binding index carries { identity; modes; modeParams; contractPackages }";
       ok =
         lib.attrNames emittedIndex == [
           "contractPackages"
           "identity"
+          "modeParams"
           "modes"
         ]
         && emittedIndex.identity.username == portableName;

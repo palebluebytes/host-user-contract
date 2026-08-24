@@ -13,7 +13,7 @@
 #
 # ada's `identity.json` is the members' ONE documented FULL FORM — every field the contract's
 # identity schema knows, spelled out, because the schema is worth seeing written down once. Only
-# `name`, `email` and `username` are REQUIRED; the other six users omit whatever nothing reads for
+# `username` is REQUIRED; the other six users omit whatever nothing reads for
 # them. Note what an identity does NOT carry: any notion of what this account may DO. It is a
 # person, not their powers.
 {

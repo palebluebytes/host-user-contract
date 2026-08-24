@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-08-20). Closes the last self-escalation channel opened by
 [0001](0001-host-user-contract.md)'s trust boundary.
 
-Every field of an identity is descriptive (`name`, `email`, `gmail`) or a login credential
+Every field of an identity is descriptive (`name`, `email`) or a login credential
 (`hashedPassword`, `sshKey`, `trustedKeys`). Nothing in it decides what an account may **do**.
 
 That was not always true. The identity carried `extraGroups`: a list of group names the user wrote

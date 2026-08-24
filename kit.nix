@@ -234,7 +234,6 @@ in
           inherit (modules)
             homeModule
             homeBaselineModule
-            homeDesktopModule
             ;
         }
       );

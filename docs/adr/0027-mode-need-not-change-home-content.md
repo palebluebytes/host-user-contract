@@ -44,19 +44,28 @@ dotfile, and a `hostFacts` specialArg that is inert unless a module reads it. `a
 `examples/users` is the live case. The store deduplicates; what a converged pair actually costs is
 an extra **evaluation**, not an extra closure per user.
 
-## 3. The property cannot be stated without the contract satisfying it on the user's behalf
+## 3. Whatever judges the property must judge the USER's content, not the contract's
 
-`mkContractHome` composes `~/.contract-desktop` out of the mode's `desktop` parameter
-([0021](0021-display-server-agnostic.md)). So **any** user who names a desktop has two homes that
-differ, having substituted nothing — `ada`, `cleo` and `duo-b` are all in that state today. A check
-that counts realized difference naively passes on a string **the contract wrote**, which is exactly
-the emptiness it was written to reject — "the same content with a different `mode` frozen into the
-manifest" — relocated one file over.
+`mkContractHome` used to compose `~/.contract-desktop` out of the mode's `desktop` parameter, so
+**any** user who merely named a desktop had two homes that differed, having substituted nothing —
+`ada`, `cleo` and `duo-b` were all in that state. A check counting realized difference naively
+passed on a string **the contract wrote**, which is exactly the emptiness it was written to reject —
+"the same content with a different `mode` frozen into the manifest" — relocated one file over.
 
-Neither cheap eval-time approximation escapes this. `drvPath` is unsound in both directions (equal
-for `admin`, unequal for a user who only named a desktop), and comparing two `configuration` values
-compares merged `deferredModule`s whose wrapper records the option path each came through, so every
-pair differs — including two references to one file.
+That was fixed at the source rather than worked around: the desktop parameter is published in the
+binding index now and the contract composes no home content at all
+([0021](0021-display-server-agnostic.md)). Every difference a comparison finds is therefore the
+user's, and nothing has to be set aside first.
+
+The requirement it leaves behind is the general one: **a judgement about mode substitution must be
+made over content whose author is the user.** Had the contract kept a writer, the judgement would
+have had to exclude its output by name, and the exclusion — not the comparison — would have been the
+load-bearing part.
+
+Neither cheap eval-time approximation reaches the question anyway. `drvPath` is unsound in both
+directions, and comparing two `configuration` values compares merged `deferredModule`s whose wrapper
+records the option path each came through, so every pair differs — including two references to one
+file.
 
 ## Decision
 
@@ -72,8 +81,8 @@ exist to demonstrate the mechanisms this repo documents. `examples/users` carrie
 
 - **classifies** every (user, non-floor mode) pair rather than requiring anything of one — a
   convergent pair is reported and passes;
-- **subtracts `.contract-desktop`** before judging content, because the contract will not count its
-  own output as a user's evidence;
+- **compares the realized tree whole**, with nothing set aside — which is a property of the
+  contract composing no content, not a choice this proof makes;
 - fails only when **no** pair in the whole fleet diverges, which is the demonstration obligation
   stated as a proof;
 - reaches that verdict in the **build**, since realized content is the only place it is answerable,
@@ -89,10 +98,11 @@ the rule are visible in the fixture set rather than only the half that diverges.
   repo as its own choice.
 - **`mkMemberChecks` keeps exactly three helpers.** Nothing folds in, and the members adapter is
   unchanged.
-- **The subtraction rule generalises.** Wherever content divergence is judged, contract-composed
-  content is set aside first. `.contract-desktop` is the only such file today, and the contract
-  owns it — this is not the classification [0023](0023-no-classification-of-home-content.md) rules
-  out, because the contract is only declining to count what it wrote itself.
+- **Nothing is subtracted, because there is nothing to subtract.** The contract composes no content
+  into a home, so a content comparison is a comparison of the user's own output. Should the contract
+  ever acquire a writer again, this section is where the obligation to exclude it is recorded —
+  excluding what the contract itself wrote is not the classification
+  [0023](0023-no-classification-of-home-content.md) rules out.
 
 ## Considered alternatives
 
@@ -109,6 +119,10 @@ the rule are visible in the fixture set rather than only the half that diverges.
   paths, which `conformance/` cannot exercise at all
   ([0002](0002-contract-is-a-standalone-flake.md)) — a check whose only load-bearing half is
   untestable here is not a contract deliverable.
-- **Count `.contract-desktop` as evidence of substitution** — rejected on §3.
+- **Count `.contract-desktop` as evidence of substitution** — rejected on §3, and now moot: the
+  contract no longer writes it ([0021](0021-display-server-agnostic.md)).
+- **Keep the file and subtract it by name** — *was* the decision; reversed. It worked, but it made
+  every future content judgement carry an exception list, and the file it exempted turned out not to
+  need to exist.
 - **Say nothing and leave the question open** — rejected: it has now been proposed twice from
   consumer repos, which is what [0023](0023-no-classification-of-home-content.md) exists to stop.

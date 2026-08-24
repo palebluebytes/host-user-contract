@@ -34,14 +34,35 @@ or decides wayland versus x11.**
   shape that needs a shared display surface* ([0009](0009-host-declares-modes.md)). What the host
   brings up in response is entirely its own.
 
-## The choice must be readable before the home is
+## The choice travels in the binding index, not in the home
 
-The greeter's launcher runs **before** evaluating any of the home's Nix, so the desktop choice has
-to be surfaced as a file. The contract writes `~/.contract-desktop` into the home from the
-declaration. It cannot move host-side for exactly that reason.
+A desktop name is a **parameter of a mode**, which makes it a fact about the *user* — so it is
+published where every other fact about a user is published: the binding index,
+`contractUsers.<system>.<user>.modeParams.<mode>`
+([0011](0011-prebuilt-binding-mode.md)). A reader that has selected a mode looks that mode's
+parameters up and finds them, having built nothing and opened nothing.
 
-It is composed into every home by default and is **inert when no desktop is named**, so it costs a
-terminal home nothing.
+`modeParams` is a **projection of the mode registry's own `options`**, exactly as the user's
+declaration schema is ([0010](0010-user-declares-session-shapes.md)). A mode that gains a parameter
+publishes it with no edit in the producer and none in any consumer; a mode that declares none — the
+`cli` floor — publishes an empty set, so the mechanism costs a terminal user nothing.
+
+The **session launcher takes the desktop as an argument**, from whoever selected the mode it
+parameterises. On the greeter path the orchestrator reads it in the same restricted-eval `nix eval`
+that reads the user's published modes, one step after selection. An empty or omitted value is the
+ordinary case and degrades to the seat default, so a caller with nothing to pass passes nothing.
+
+**This was a file, and the file was the mistake.** The contract used to write
+`~/.contract-desktop` into every gui home, on the reasoning that a launcher cannot evaluate Nix. The
+launcher indeed cannot — but the orchestrator that invokes it already evaluates twice before
+reaching it, so the premise never bound. What the file did buy was a real cost: it made the contract
+the author of home CONTENT, and every judgement about whether a *mode* substituted content then had
+to set the contract's own output aside first ([0027](0027-mode-need-not-change-home-content.md)).
+Publishing the value as data removes the writer and the subtraction together, and leaves the rule
+that **the contract composes no content into a home** true without qualification.
+
+A host on the declarative path is better served too: it reads the parameter at eval time, where it
+can wire its own display manager with it, rather than needing a runtime hook to read a dotfile.
 
 ## Full desktops work, and one launch detail is worth recording
 
@@ -62,6 +83,8 @@ Window managers need no special case. They are `desktops` entries with nothing u
 - **Adding a desktop is a host edit**, never a contract release.
 - **The gui mode's registry entry carries no protocol** — only the input groups a graphical session
   needs, a display flag, and the free-form name.
+- **The contract composes no content into a home**, without qualification. `~/.contract-desktop` was
+  the only exception and it is gone.
 
 ## Considered alternatives
 
@@ -75,5 +98,18 @@ Window managers need no special case. They are `desktops` entries with nothing u
 - **Leave it, since the fleet is single-protocol anyway** — rejected: the mechanism was live in the
   schema, the conformance suite and the greeter, and it broke a real host on a contract bump.
 - **Put the desktop choice in the identity** — rejected: a desktop is *experience*, not identity. It
-  belongs with the session shape it parameterizes, so it travels as part of the portable home rather
+  belongs with the session shape it parameterizes, so it travels as that mode's own parameter rather
   than as part of the credential.
+- **Write it into the home as `~/.contract-desktop`** — *was* the decision; reversed above. Its
+  premise (a launcher cannot evaluate, so the value must be a file) does not hold — the orchestrator
+  that invokes the launcher evaluates twice before reaching it — and it made the contract the author
+  of home content, which cost [0027](0027-mode-need-not-change-home-content.md) a standing
+  subtraction rule. The one property it genuinely had, *any launcher can read it with no Nix at
+  all*, went unused: this repo's own declarative display binding sets its default session host-side
+  and never consulted the file.
+- **Thread the desktop from the greeter to the launcher as an argument and publish nothing** —
+  rejected, and it is the tempting half-move. It fixes the home-content problem while leaving the
+  value reachable only by something that has already evaluated the user's flake, so a declarative
+  host has no route to it at all — strictly worse than the file, which at least existed. The
+  argument is how the launcher *receives* it; the index is how it is *published*, and both are
+  needed.

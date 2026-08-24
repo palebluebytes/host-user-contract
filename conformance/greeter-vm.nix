@@ -129,17 +129,25 @@ mkSeatVM {
     # boot in ./account-plan.nix now that the rule has a single source; the VM no longer carries a
     # second `nokey` fixture for it.)
 
-    # Per-user desktop SELECTION (ADR-0021): no home choice ⇒ the seat default (plasma) launches.
+    # Per-user desktop SELECTION (ADR-0021). The desktop is the gui mode's own PARAMETER, read off
+    # the user's published index by the orchestrator and handed to the launcher — so these drive the
+    # launcher the way `bind` does, by argument, rather than by planting a file in the home.
+    #
+    # Nothing selected ⇒ the seat default (plasma) launches. Both spellings of "nothing" are
+    # exercised: the argument omitted (a caller with no value at all) and the argument empty (what a
+    # user who enables gui without naming a desktop publishes).
     machine.succeed("contract-greeter-session example /home/example")
     machine.succeed("grep -qx plasma /tmp/desktop-launched")
-    # The user's home chooses gnome ⇒ gnome launches instead.
-    machine.succeed("echo gnome > /home/example/.contract-desktop")
-    machine.succeed("contract-greeter-session example /home/example")
+    machine.succeed('contract-greeter-session example /home/example ""')
+    machine.succeed("grep -qx plasma /tmp/desktop-launched")
+    # The user asked for gnome ⇒ gnome launches instead.
+    machine.succeed("contract-greeter-session example /home/example gnome")
     machine.succeed("grep -qx gnome /tmp/desktop-launched")
     # A desktop the seat does NOT offer degrades to the default, never breaks the login (ADR-0021).
-    machine.succeed("echo hyprland > /home/example/.contract-desktop")
-    machine.succeed("contract-greeter-session example /home/example")
+    machine.succeed("contract-greeter-session example /home/example hyprland")
     machine.succeed("grep -qx plasma /tmp/desktop-launched")
+    # …and the contract no longer writes anything into the home to carry that choice (ADR-0027).
+    machine.fail("test -e /home/example/.contract-desktop")
 
     # Tier 2 (ephemeral) provisioning is designed-for but DEFERRED — the helper refuses it BY NAME,
     # before touching the account. Asserted on the message for the same reason the arity claims

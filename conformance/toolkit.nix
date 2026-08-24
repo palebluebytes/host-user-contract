@@ -66,15 +66,13 @@ rec {
   # ── The HOME eval side ───────────────────────────────────────────────────────────────────────
   # The home umbrella is deliberately thin — a home is handed its identity and nothing else, since
   # the user's whole voice lives one level up in `user.nix`. So the synthetic home eval supplies
-  # the three required identity fields and leaves the optional ones UNDEFINED — deliberately NOT
+  # the ONE required identity field and leaves every optional one UNDEFINED — deliberately NOT
   # `resolveIdentity`d, unlike `mkUser` above, which is what gives the confinement probes both a
   # thing to FORCE (`contract.identity.username`, always present) and a field nobody has defined to
-  # use as a POSITIVE CONTROL (`contract.identity.gmail`). A resolved record would define every
+  # use as a POSITIVE CONTROL (`contract.identity.sshKey`). A resolved record would define every
   # field, and the positive control would then be a SECOND definition of a readOnly option —
   # failing for the opposite of the reason it is testing.
   homeIdentity = {
-    name = "Probe User";
-    email = "probe@example.invalid";
     username = "probe";
   };
   evalHome =
@@ -90,7 +88,7 @@ rec {
   # UNDECLARED option anywhere in the module set throws here.
   homeForce = c: c.contract.identity.username;
   homePositiveControl = {
-    contract.identity.gmail = "probe@example.invalid";
+    contract.identity.sshKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIProbePositiveControl";
   };
 
   # The home umbrella's DECLARED SURFACE, as sorted option paths — `evalHome` returns that eval's
