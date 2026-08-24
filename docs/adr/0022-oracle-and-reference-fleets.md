@@ -99,6 +99,33 @@ prose, and it is *additive*: the other five are untouched, because one of them i
 conformance suite against the bare umbrella with no home-manager and no package set, and a shared
 module setting a home-manager option would break that.
 
+## The reference host fleet binds from one source
+
+A host is not restricted to one users repo: `source` is per-user with a top-level default
+([0015](0015-consumer-surface.md)), so a contractor's own flake can be bound beside the operator's.
+The reference host fleet does not demonstrate that with a second repo, and the omission is
+deliberate.
+
+A second users flake would add the *composition* of two things already proven apart. That a second
+source binds a member the default has never heard of is the oracle's job, and it does it: a fixture
+binds `contractor` from an `elsewhere` the default source does not publish, alongside `all = true`.
+That a real producer flake is bindable is the fleet's own default bind, on every host. And a bind
+reads nothing but `contractUsers.<sys>.<user>`, so no code path can tell one source from two —
+there is no behaviour between those two proofs for a second repo to reach. The gap is rhetorical,
+not a gap in coverage.
+
+The cost is not the obvious one. A source owes no `checks`, so it need not join the CI matrix; it
+would be evaluated transitively when the fleet builds the accounts it binds. What it would cost is a
+fourth `flake.lock` to hold in step across three `path:` inputs, and a second home-manager-carrying
+mapper whose whole job is to publish one user — bought to teach the flake-input `follows` wiring,
+which is the only part of it a consumer copying this fleet does not already have.
+
+So `vault` names the per-user key on one bind and nothing more. That line is not a two-repo
+demonstration and must not be described as one. What it is is a live use of a **reserved bind key**,
+and its job is that the fleet stops evaluating if the key ever stops being reserved — an
+unrecognised bind key is a hard error, so `svc.source` would be read as an unknown affordance. Which
+is also why the fleet owes no dedicated claim here: *every host evaluates* already carries it.
+
 ## Consequences
 
 - **CI walks three targets.** The contract's suite is the gate that can run anywhere; the fleets
@@ -118,6 +145,10 @@ module setting a home-manager option would break that.
 - **Let the fleet author its own seat host** rather than publishing the harness — rejected: that is
   the drift the raw path at least made visible. Two seat hosts, one of them exercised by every
   runtime proof the contract has and the other by a single fleet check, is one host too many.
+- **A second users flake, so the fleet binds two genuinely different repos** — rejected, for the
+  reasons above. The reason is *not* that a standalone single-user example flake was once deleted:
+  that removal retargeted the oracle's realistic fixture atoms onto the reference user fleet and
+  says nothing about what a host fleet may bind.
 - **Move the harness out of `conformance/`** to a top-level file, so no export list is needed —
   rejected: ten of its eleven callers are the suite's own VMs, and hoisting a file for its single
   outside consumer moves the ownership away from everyone who uses it. The suite owns the file; the

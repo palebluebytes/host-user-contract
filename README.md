@@ -326,7 +326,7 @@ The positive-space counterpart to the synthetic conformance suite:
   per mode.
 - [`examples/fleet/`](examples/fleet/) — a **host repo**: `desk` (a seat: declares `gui`, confers
   `containers` to one user and `sudo` to another, and affords ada nothing at all), plus headless
-  `vault` (which binds one user from a second `source`) and `agent`. With a VM test that boots a
+  `vault` (which names the per-user `source` key explicitly) and `agent`. With a VM test that boots a
   seat and provisions a real home end-to-end.
 
 ## Verifying
