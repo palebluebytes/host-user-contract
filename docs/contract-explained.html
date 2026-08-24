@@ -1,0 +1,1524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>host ↔ user contract — the negotiated interface, explained</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   host ↔ user contract — explainer
+   Aesthetic: a bilateral treaty drafted on a technical schematic.
+   Two parties, colour-coded, with a seam running down the middle.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --ink:        #0F0D0B;
+  --ink-2:      #16130F;
+  --panel:      #1B1712;
+  --panel-2:    #221D17;
+  --rule:       #3A322A;
+  --rule-soft:  #2A241E;
+
+  --bone:       #EFE7D9;
+  --bone-dim:   #B8AE9E;
+  --bone-faint: #7C7365;
+
+  /* the two parties */
+  --host:       #E8A33D;   /* amber  — the machine */
+  --host-deep:  #8A5E1C;
+  --host-wash:  rgba(232,163,61,.09);
+  --user:       #52BFAB;   /* verdigris — the person */
+  --user-deep:  #1F6659;
+  --user-wash:  rgba(82,191,171,.09);
+  --both:       #C9B8D8;   /* the contract itself */
+  --refuse:     #E0603F;
+  --refuse-wash:rgba(224,96,63,.10);
+
+  --sans: "IBM Plex Sans", ui-sans-serif, "Helvetica Neue", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --disp: "Fraunces", "Iowan Old Style", Georgia, serif;
+
+  --gut: clamp(1.1rem, 3.2vw, 2.6rem);
+  --measure: 74ch;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 2rem; }
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--sans);
+  font-weight: 300;
+  font-size: 16.5px;
+  line-height: 1.68;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* paper grain + a faint drafting grid, so nothing is a flat fill */
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--rule-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule-soft) 1px, transparent 1px);
+  background-size: 88px 88px, 88px 88px;
+  opacity: .30;
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 15%, transparent 80%);
+}
+body::after {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .30;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+}
+
+.wrap { position: relative; z-index: 1; }
+
+/* ── typography ─────────────────────────────────────────────────────── */
+h1, h2, h3, h4 { font-family: var(--disp); font-weight: 600; line-height: 1.08; margin: 0; font-variation-settings: "SOFT" 20, "WONK" 1; }
+p { margin: 0 0 1.05em; max-width: var(--measure); }
+a { color: var(--both); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { color: var(--bone); }
+code, kbd { font-family: var(--mono); font-size: .855em; }
+strong { font-weight: 600; color: #FBF5EA; }
+em { font-style: italic; }
+
+.lede { font-size: clamp(1.05rem, 1.9vw, 1.32rem); line-height: 1.55; color: var(--bone-dim); font-weight: 300; max-width: 60ch; }
+
+/* ── layout ─────────────────────────────────────────────────────────── */
+.shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 0; max-width: 1520px; margin: 0 auto; }
+@media (max-width: 1080px) { .shell { grid-template-columns: 1fr; } }
+
+nav.toc {
+  position: sticky; top: 0; align-self: start; height: 100vh;
+  padding: 2.4rem 1.4rem 2rem 2rem;
+  border-right: 1px solid var(--rule-soft);
+  overflow-y: auto; font-size: .795rem;
+}
+@media (max-width: 1080px) { nav.toc { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule-soft); } }
+nav.toc .brand { font-family: var(--disp); font-size: 1.02rem; letter-spacing: -.01em; margin-bottom: 1.5rem; color: var(--bone); display:block; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+nav.toc li { margin: 0 0 .1rem; }
+nav.toc a {
+  display: grid; grid-template-columns: 2.1rem 1fr; gap: .1rem;
+  padding: .34rem .4rem .34rem 0; color: var(--bone-faint); text-decoration: none;
+  border-left: 2px solid transparent; padding-left: .7rem; transition: color .18s, border-color .18s, background .18s;
+}
+nav.toc a .n { font-family: var(--mono); font-size: .72rem; color: var(--rule); }
+nav.toc a:hover { color: var(--bone); background: rgba(255,255,255,.025); }
+nav.toc a.on { color: var(--bone); border-left-color: var(--both); }
+nav.toc a.on .n { color: var(--both); }
+
+main { padding: 0 var(--gut) 8rem; min-width: 0; }
+
+/* ── hero ───────────────────────────────────────────────────────────── */
+header.hero { padding: clamp(3rem, 9vh, 6.5rem) 0 3.2rem; border-bottom: 1px solid var(--rule-soft); position: relative; }
+.eyebrow { font-family: var(--mono); font-size: .70rem; letter-spacing: .22em; text-transform: uppercase; color: var(--bone-faint); margin-bottom: 1.5rem; }
+h1 {
+  font-size: clamp(2.6rem, 7.4vw, 5.6rem);
+  letter-spacing: -.035em; line-height: .93;
+  font-variation-settings: "SOFT" 40, "WONK" 1, "opsz" 144;
+}
+h1 .arrows { color: var(--both); font-weight: 300; font-style: italic; }
+h1 .hw { color: var(--host); }
+h1 .uw { color: var(--user); }
+.hero .lede { margin-top: 1.7rem; }
+
+.legend { display: flex; flex-wrap: wrap; gap: .5rem .55rem; margin-top: 2.4rem; }
+.key {
+  font-family: var(--mono); font-size: .715rem; letter-spacing: .04em;
+  padding: .32rem .62rem; border: 1px solid var(--rule); border-radius: 2px;
+  display: inline-flex; align-items: center; gap: .48rem; color: var(--bone-dim);
+}
+.key i { width: .62rem; height: .62rem; border-radius: 50%; display: block; }
+.key.h i { background: var(--host); } .key.h { border-color: var(--host-deep); }
+.key.u i { background: var(--user); } .key.u { border-color: var(--user-deep); }
+.key.c i { background: var(--both); } .key.c { border-color: #5C5168; }
+
+/* ── sections ───────────────────────────────────────────────────────── */
+section { padding: 4.6rem 0 1rem; border-bottom: 1px solid var(--rule-soft); }
+section:last-of-type { border-bottom: 0; }
+.sec-head { display: grid; grid-template-columns: 4.6rem minmax(0,1fr); gap: .4rem; align-items: start; margin-bottom: 1.9rem; }
+@media (max-width: 620px) { .sec-head { grid-template-columns: 1fr; gap: .4rem; } }
+.sec-num { font-family: var(--disp); font-style: italic; font-size: 2.5rem; line-height: 1; color: var(--rule); font-variation-settings: "WONK" 1; }
+h2 { font-size: clamp(1.7rem, 3.6vw, 2.55rem); letter-spacing: -.025em; }
+h2 + .sub { font-family: var(--mono); font-size: .74rem; letter-spacing: .14em; text-transform: uppercase; color: var(--bone-faint); margin-top: .7rem; }
+h3 { font-size: 1.24rem; letter-spacing: -.012em; margin: 2.6rem 0 .85rem; color: #FBF5EA; }
+h3:first-child { margin-top: 0; }
+h4 { font-size: 1.02rem; margin: 1.8rem 0 .55rem; letter-spacing: -.008em; }
+
+/* ── party tokens ───────────────────────────────────────────────────── */
+.t { font-family: var(--mono); font-size: .855em; padding: .06em .34em; border-radius: 2px; white-space: nowrap; }
+.t.h { color: var(--host); background: var(--host-wash); }
+.t.u { color: var(--user); background: var(--user-wash); }
+.t.c { color: var(--both); background: rgba(201,184,216,.08); }
+
+/* ── cards & panels ─────────────────────────────────────────────────── */
+.panel { background: var(--panel); border: 1px solid var(--rule-soft); border-radius: 3px; padding: 1.5rem 1.6rem; }
+.panel.h { border-left: 3px solid var(--host); }
+.panel.u { border-left: 3px solid var(--user); }
+.panel.c { border-left: 3px solid var(--both); }
+.panel.x { border-left: 3px solid var(--refuse); }
+
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin: 1.6rem 0; }
+@media (max-width: 860px) { .duo { grid-template-columns: 1fr; } }
+.trio { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1.1rem; margin: 1.6rem 0; }
+
+.card-h { font-family: var(--mono); font-size: .7rem; letter-spacing: .17em; text-transform: uppercase; margin-bottom: .85rem; }
+.card-h.h { color: var(--host); } .card-h.u { color: var(--user); } .card-h.c { color: var(--both); } .card-h.x { color: var(--refuse); }
+.panel p:last-child { margin-bottom: 0; }
+.panel p, .panel li { font-size: .935rem; }
+
+.aside {
+  border-left: 2px solid var(--rule); padding: .15rem 0 .15rem 1.15rem; margin: 1.7rem 0;
+  color: var(--bone-dim); font-size: .935rem; max-width: 66ch;
+}
+.aside .tag { font-family: var(--mono); font-size: .67rem; letter-spacing: .16em; text-transform: uppercase; color: var(--bone-faint); display: block; margin-bottom: .35rem; }
+
+.law {
+  display: grid; grid-template-columns: 1.4rem 1fr; gap: .9rem; align-items: start;
+  padding: 1rem 0; border-bottom: 1px dashed var(--rule-soft);
+}
+.law:last-child { border-bottom: 0; }
+.law .dot { font-family: var(--mono); font-size: .76rem; color: var(--both); padding-top: .18rem; }
+.law b { font-family: var(--disp); font-size: 1.06rem; font-weight: 600; display: block; margin-bottom: .18rem; color: #FBF5EA; }
+.law span { font-size: .925rem; color: var(--bone-dim); }
+
+/* ── code ───────────────────────────────────────────────────────────── */
+pre {
+  background: var(--ink-2); border: 1px solid var(--rule-soft); border-radius: 3px;
+  padding: 1.05rem 1.2rem; overflow-x: auto; margin: 1.2rem 0;
+  font-family: var(--mono); font-size: .805rem; line-height: 1.62; color: #D9D0C0;
+}
+pre .c { color: #6E6455; font-style: italic; }
+pre .k { color: var(--both); }
+pre .s { color: #C8B48B; }
+pre .hn { color: var(--host); }
+pre .un { color: var(--user); }
+pre .b { color: #E6DECF; font-weight: 500; }
+.code-label {
+  font-family: var(--mono); font-size: .665rem; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--bone-faint); margin: 1.5rem 0 -.45rem;
+}
+.code-label.h { color: var(--host); } .code-label.u { color: var(--user); }
+
+/* ── tables ─────────────────────────────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; margin: 1.3rem 0 1.9rem; border: 1px solid var(--rule-soft); border-radius: 3px; }
+table { border-collapse: collapse; width: 100%; font-size: .855rem; min-width: 620px; }
+thead th {
+  text-align: left; font-family: var(--mono); font-weight: 500; font-size: .66rem;
+  letter-spacing: .15em; text-transform: uppercase; color: var(--bone-faint);
+  padding: .78rem .95rem; border-bottom: 1px solid var(--rule); background: var(--ink-2);
+  position: sticky; top: 0;
+}
+tbody td { padding: .72rem .95rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; color: var(--bone-dim); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr { transition: background .14s; }
+tbody tr:hover { background: rgba(255,255,255,.022); }
+td.opt { font-family: var(--mono); font-size: .8rem; color: var(--bone); white-space: nowrap; }
+td.opt.h { color: var(--host); } td.opt.u { color: var(--user); }
+td .ty { font-family: var(--mono); font-size: .755rem; color: var(--bone-faint); }
+.pill {
+  font-family: var(--mono); font-size: .655rem; letter-spacing: .06em; text-transform: uppercase;
+  padding: .16rem .42rem; border-radius: 2px; border: 1px solid var(--rule); color: var(--bone-faint); white-space: nowrap;
+}
+.pill.req { color: var(--refuse); border-color: rgba(224,96,63,.45); }
+.pill.ro  { color: var(--both);   border-color: #574C63; }
+.pill.def { color: var(--bone-faint); }
+.pill.priv{ color: var(--refuse); border-color: rgba(224,96,63,.45); }
+
+/* ── diagrams ───────────────────────────────────────────────────────── */
+figure { margin: 2rem 0; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption { font-size: .82rem; color: var(--bone-faint); margin-top: .85rem; font-family: var(--mono); letter-spacing: .02em; max-width: 72ch; }
+.svg-l { font-family: "IBM Plex Mono", monospace; font-size: 11px; fill: var(--bone-dim); }
+.svg-t { font-family: "IBM Plex Mono", monospace; font-size: 9px; letter-spacing: .13em; }
+.svg-b { font-family: "Fraunces", Georgia, serif; font-size: 15px; fill: var(--bone); }
+
+/* ── interactive machines ───────────────────────────────────────────── */
+.machine {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--rule); border-radius: 4px; margin: 2rem 0;
+  overflow: hidden;
+}
+.machine-head {
+  display: flex; align-items: baseline; gap: .8rem; flex-wrap: wrap;
+  padding: .85rem 1.3rem; border-bottom: 1px solid var(--rule); background: var(--ink-2);
+}
+.machine-head b { font-family: var(--mono); font-size: .7rem; letter-spacing: .17em; text-transform: uppercase; color: var(--both); font-weight: 500; }
+.machine-head span { font-size: .8rem; color: var(--bone-faint); }
+.machine-body { display: grid; grid-template-columns: 1fr 1fr 1.15fr; }
+@media (max-width: 940px) { .machine-body { grid-template-columns: 1fr; } }
+.mcol { padding: 1.25rem 1.3rem; border-right: 1px solid var(--rule-soft); }
+.mcol:last-child { border-right: 0; }
+@media (max-width: 940px) { .mcol { border-right: 0; border-bottom: 1px solid var(--rule-soft); } }
+.mcol > h5 {
+  margin: 0 0 .9rem; font-family: var(--mono); font-size: .67rem; letter-spacing: .16em;
+  text-transform: uppercase; font-weight: 500;
+}
+.mcol.h > h5 { color: var(--host); } .mcol.u > h5 { color: var(--user); } .mcol.o > h5 { color: var(--both); }
+
+label.sw {
+  display: flex; align-items: center; gap: .6rem; padding: .36rem .55rem; margin: 0 0 .3rem -.55rem;
+  border-radius: 3px; cursor: pointer; font-family: var(--mono); font-size: .805rem; color: var(--bone-dim);
+  transition: background .14s, color .14s; user-select: none;
+}
+label.sw:hover { background: rgba(255,255,255,.03); color: var(--bone); }
+label.sw input { appearance: none; width: 15px; height: 15px; border: 1px solid var(--rule); border-radius: 2px; margin: 0; flex: none; position: relative; transition: all .16s; cursor: pointer; }
+label.sw input:checked { border-color: currentColor; }
+label.sw.h input:checked { background: var(--host); border-color: var(--host); }
+label.sw.u input:checked { background: var(--user); border-color: var(--user); }
+label.sw.x input:checked { background: var(--refuse); border-color: var(--refuse); }
+label.sw input:checked::after { content: "✓"; position: absolute; inset: 0; color: #14110E; font-size: 11px; line-height: 13px; text-align: center; font-weight: 700; }
+label.sw small { color: var(--bone-faint); font-size: .72rem; margin-left: auto; padding-left: .5rem; }
+label.sw.dis { opacity: .35; pointer-events: none; }
+
+.mnote { font-size: .755rem; color: var(--bone-faint); margin: .85rem 0 0; line-height: 1.5; font-family: var(--sans); }
+
+.verdict { min-height: 100%; }
+.verdict .vline { font-family: var(--mono); font-size: .8rem; margin: 0 0 .5rem; color: var(--bone-dim); display: flex; gap: .5rem; }
+.verdict .vline b { color: var(--bone); font-weight: 500; }
+.result-box { border-radius: 3px; padding: .9rem 1rem; margin-top: 1rem; border: 1px solid; font-size: .85rem; }
+.result-box.ok { border-color: var(--user-deep); background: var(--user-wash); }
+.result-box.no { border-color: rgba(224,96,63,.5); background: var(--refuse-wash); }
+.result-box .rh { font-family: var(--mono); font-size: .68rem; letter-spacing: .15em; text-transform: uppercase; margin-bottom: .5rem; }
+.result-box.ok .rh { color: var(--user); }
+.result-box.no .rh { color: var(--refuse); }
+.result-box .rm { font-family: var(--mono); font-size: .775rem; line-height: 1.55; color: var(--bone); }
+.result-box .rw { font-size: .79rem; color: var(--bone-dim); margin-top: .6rem; line-height: 1.5; }
+.result-box .rf { font-size: .79rem; color: var(--bone-dim); margin-top: .5rem; padding-top: .5rem; border-top: 1px dashed var(--rule); }
+.result-box .rf b { color: var(--bone); font-weight: 500; }
+
+.grouplist { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .55rem; }
+.gchip { font-family: var(--mono); font-size: .735rem; padding: .2rem .48rem; border-radius: 2px; border: 1px solid var(--rule); color: var(--bone-dim); }
+.gchip.mode { border-color: var(--user-deep); color: var(--user); background: var(--user-wash); }
+.gchip.grant { border-color: rgba(224,96,63,.45); color: var(--refuse); background: var(--refuse-wash); }
+.gchip.none { border-style: dashed; color: var(--bone-faint); }
+
+/* ── flow steps ─────────────────────────────────────────────────────── */
+.flow { margin: 1.8rem 0; counter-reset: fl; }
+.step {
+  display: grid; grid-template-columns: 2.2rem 1fr; gap: 1rem; align-items: start;
+  padding: .95rem 0; border-bottom: 1px dashed var(--rule-soft); position: relative;
+}
+.step:last-child { border-bottom: 0; }
+.step .sn {
+  font-family: var(--mono); font-size: .72rem; color: var(--ink); background: var(--bone-faint);
+  width: 1.65rem; height: 1.65rem; border-radius: 50%; display: grid; place-items: center; font-weight: 600;
+}
+.step.hs .sn { background: var(--host); } .step.us .sn { background: var(--user); } .step.cs .sn { background: var(--both); }
+.step b { display: block; font-family: var(--disp); font-size: 1.05rem; font-weight: 600; margin-bottom: .2rem; color: #FBF5EA; }
+.step p { margin: 0; font-size: .9rem; color: var(--bone-dim); }
+.step .who { font-family: var(--mono); font-size: .64rem; letter-spacing: .13em; text-transform: uppercase; margin-left: .6rem; }
+.step.hs .who { color: var(--host); } .step.us .who { color: var(--user); } .step.cs .who { color: var(--both); }
+
+/* ── reveal ─────────────────────────────────────────────────────────── */
+.rv { opacity: 0; transform: translateY(14px); transition: opacity .6s cubic-bezier(.2,.7,.3,1), transform .6s cubic-bezier(.2,.7,.3,1); }
+.rv.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } html { scroll-behavior: auto; } }
+
+.hero .anim { opacity: 0; animation: rise .85s cubic-bezier(.2,.7,.3,1) forwards; }
+.hero .anim:nth-child(1) { animation-delay: .05s } .hero .anim:nth-child(2) { animation-delay: .16s }
+.hero .anim:nth-child(3) { animation-delay: .30s } .hero .anim:nth-child(4) { animation-delay: .44s }
+@keyframes rise { to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .hero .anim { opacity: 1; animation: none; } }
+
+footer { padding: 3.5rem 0 2rem; color: var(--bone-faint); font-size: .8rem; font-family: var(--mono); }
+ul.tight { padding-left: 1.15rem; margin: .6rem 0 1rem; }
+ul.tight li { margin-bottom: .38rem; }
+hr.seam { border: 0; border-top: 1px dashed var(--rule); margin: 2.4rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="shell">
+
+<!-- ══════════════ NAV ══════════════ -->
+<nav class="toc">
+  <a class="brand" href="#top">host&#8202;<span style="color:var(--both)">↔</span>&#8202;user<br>contract</a>
+  <ol>
+    <li><a href="#s1"><span class="n">01</span><span>What it is</span></a></li>
+    <li><a href="#s2"><span class="n">02</span><span>The two parties</span></a></li>
+    <li><a href="#s3"><span class="n">03</span><span>Two vocabularies</span></a></li>
+    <li><a href="#s4"><span class="n">04</span><span>The user&rsquo;s options</span></a></li>
+    <li><a href="#s5"><span class="n">05</span><span>The host&rsquo;s options</span></a></li>
+    <li><a href="#s6"><span class="n">06</span><span>The bind &amp; selection</span></a></li>
+    <li><a href="#s7"><span class="n">07</span><span>The account plan</span></a></li>
+    <li><a href="#s8"><span class="n">08</span><span>The greeter</span></a></li>
+    <li><a href="#s9"><span class="n">09</span><span>The producer surface</span></a></li>
+    <li><a href="#s10"><span class="n">10</span><span>What gets published</span></a></li>
+    <li><a href="#s11"><span class="n">11</span><span>Proving it</span></a></li>
+    <li><a href="#s12"><span class="n">12</span><span>The laws</span></a></li>
+  </ol>
+</nav>
+
+<main id="top">
+
+<!-- ══════════════ HERO ══════════════ -->
+<header class="hero">
+  <div class="eyebrow anim">A NixOS interface specification &nbsp;·&nbsp; palebluebytes/host-user-contract</div>
+  <h1 class="anim">Any <span class="hw">host</span><br><span class="arrows">can enable</span><br>any <span class="uw">user</span>.</h1>
+  <p class="lede anim">
+    This repository is not a host configuration and not a user configuration. It is the
+    <strong>negotiated interface between them</strong> — a shared schema, a host-invariant way of
+    turning a person into an account, and the derivation logic both sides agree on. It depends on
+    nothing but nixpkgs&nbsp;<code>lib</code>: no home-manager, no packages.
+  </p>
+  <div class="legend anim">
+    <span class="key h"><i></i>HOST — the machine</span>
+    <span class="key u"><i></i>USER — the person</span>
+    <span class="key c"><i></i>CONTRACT — neither</span>
+  </div>
+</header>
+
+<!-- ══════════════ 1 ══════════════ -->
+<section id="s1">
+  <div class="sec-head"><div class="sec-num">01</div>
+    <div><h2>What this repo actually does</h2><div class="sub">The north star, and the problem underneath it</div></div>
+  </div>
+
+  <p class="rv">
+    Imagine a machine sitting in a room. Somebody walks up to it, types a flake URL, a username and a
+    password — and their machine is <em>there</em>. Their desktop, their dotfiles, their shell, their
+    editor. Nothing about that person was declared on that machine in advance. They were a stranger to
+    it thirty seconds ago.
+  </p>
+  <p class="rv">
+    That is the north star, and everything else in this repository is the build-time version of the
+    same handshake. When the walk-up path and the declarative path disagree about what a machine can
+    run, <strong>the walk-up path is what the design is answerable to</strong> — not the other way round.
+  </p>
+
+  <h3 class="rv">The problem it solves</h3>
+  <p class="rv">
+    In an ordinary NixOS fleet, a host's configuration owns its users: their groups, their passwords,
+    their home content, all tangled into <code>configuration.nix</code>. Move a person to a second
+    machine and you copy, edit and drift. Give a person a machine to log into and you must first
+    change that machine's source and rebuild it.
+  </p>
+  <p class="rv">
+    This contract cuts that knot by splitting the question into two halves that never touch:
+  </p>
+
+  <div class="duo rv">
+    <div class="panel u">
+      <div class="card-h u">The user answers</div>
+      <p><strong>Who am I, and what session shapes do I run in?</strong></p>
+      <p>A public identity (<code>identity.json</code>) and a declaration (<code>user.nix</code>) naming
+      the <em>modes</em> they run in and the home-manager module to build for each. Nothing about
+      privilege. Nothing about any particular machine.</p>
+    </div>
+    <div class="panel h">
+      <div class="card-h h">The host answers</div>
+      <p><strong>What can this box run, and what may this person do on it?</strong></p>
+      <p>Two different kinds of statement, deliberately kept apart: <span class="t h">contract.modes</span>
+      once for the machine, and an <em>affordance</em> at each bind, on the line that already names the
+      person.</p>
+    </div>
+  </div>
+
+  <div class="aside rv">
+    <span class="tag">The distinction the whole design rests on</span>
+    <strong>A display is a fact about the hardware; sudo is a judgement about a person.</strong> A
+    headless server does not <em>decline</em> to give Ada a desktop — it <em>cannot run one</em>.
+    Incapacity is not a ban. That is why the two live in different places and are never negotiated
+    against each other.
+  </div>
+</section>
+
+<!-- ══════════════ 2 ══════════════ -->
+<section id="s2">
+  <div class="sec-head"><div class="sec-num">02</div>
+    <div><h2>The two parties and the seam</h2><div class="sub">Two repositories that know nothing of each other's internals</div></div>
+  </div>
+
+  <p class="rv">
+    In practice there are two consumer repositories. A <strong>users repo</strong> builds each person's
+    home ahead of time and publishes it. A <strong>host repo</strong> binds whichever of those people
+    it is willing to confer something to. The contract sits between, and is imported by both.
+  </p>
+
+  <figure class="rv">
+  <svg viewBox="0 0 1000 340" role="img" aria-label="Diagram: a users repo builds homes, publishes a binding index; a host repo reads the index and binds a user.">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#7C7365"/>
+      </marker>
+      <marker id="aru" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#52BFAB"/>
+      </marker>
+      <marker id="arh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#E8A33D"/>
+      </marker>
+    </defs>
+
+    <!-- the seam -->
+    <line x1="500" y1="14" x2="500" y2="326" stroke="#3A322A" stroke-width="1" stroke-dasharray="3 5"/>
+    <text x="500" y="330" class="svg-t" fill="#5A5145" text-anchor="middle">THE SEAM</text>
+
+    <!-- USER side -->
+    <rect x="24" y="46" width="300" height="176" rx="3" fill="rgba(82,191,171,.055)" stroke="#1F6659"/>
+    <text x="40" y="70" class="svg-t" fill="#52BFAB">USERS REPO</text>
+    <text x="40" y="98" class="svg-b" fill="#EFE7D9">users/ada/</text>
+    <text x="40" y="124" class="svg-l">identity.json &#8212; who she is</text>
+    <text x="40" y="146" class="svg-l">user.nix &#8212; which modes she runs in</text>
+    <text x="40" y="168" class="svg-l">home.nix &#8212; an ordinary HM module</text>
+    <text x="40" y="200" class="svg-l" fill="#7C7365">&#215; one directory per person</text>
+
+    <!-- contract in middle -->
+    <rect x="392" y="88" width="216" height="92" rx="3" fill="rgba(201,184,216,.07)" stroke="#5C5168"/>
+    <text x="500" y="112" class="svg-t" fill="#C9B8D8" text-anchor="middle">THE CONTRACT</text>
+    <text x="500" y="136" class="svg-b" text-anchor="middle" style="font-size:13px">mkContractFleet</text>
+    <text x="500" y="160" class="svg-b" text-anchor="middle" style="font-size:13px">bindContractUsers</text>
+
+    <!-- HOST side -->
+    <rect x="676" y="46" width="300" height="176" rx="3" fill="rgba(232,163,61,.055)" stroke="#8A5E1C"/>
+    <text x="692" y="70" class="svg-t" fill="#E8A33D">HOST REPO</text>
+    <text x="692" y="98" class="svg-b" fill="#EFE7D9">hosts/desk.nix</text>
+    <text x="692" y="124" class="svg-l">contract.modes = [ &quot;gui&quot; ]</text>
+    <text x="692" y="146" class="svg-l">bindContractUsers { &#8230; }</text>
+    <text x="692" y="168" class="svg-l">+ the bindings it supplies</text>
+    <text x="692" y="200" class="svg-l" fill="#7C7365">&#215; one per machine</text>
+
+    <!-- flows -->
+    <path d="M 324 122 L 386 122" stroke="#52BFAB" stroke-width="1.4" marker-end="url(#aru)" fill="none"/>
+    <text x="355" y="112" class="svg-t" fill="#52BFAB" text-anchor="middle">BAKE</text>
+    <path d="M 614 122 L 670 122" stroke="#E8A33D" stroke-width="1.4" marker-end="url(#arh)" fill="none"/>
+    <text x="642" y="112" class="svg-t" fill="#E8A33D" text-anchor="middle">BIND</text>
+
+    <!-- published artifact -->
+    <rect x="330" y="248" width="340" height="58" rx="3" fill="#16130F" stroke="#3A322A"/>
+    <text x="500" y="270" class="svg-t" fill="#7C7365" text-anchor="middle">WHAT CROSSES THE SEAM &#8212; PLAIN DATA</text>
+    <text x="500" y="292" class="svg-l" fill="#EFE7D9" text-anchor="middle">contractUsers.&lt;system&gt;.&lt;user&gt; = { identity; modes; contractPackages }</text>
+    <path d="M 250 226 C 250 250, 300 276, 326 276" stroke="#52BFAB" stroke-width="1.2" fill="none" marker-end="url(#aru)" opacity=".8"/>
+    <path d="M 750 226 C 750 250, 700 276, 674 276" stroke="#E8A33D" stroke-width="1.2" fill="none" marker-start="url(#arh)" opacity=".8"/>
+  </svg>
+  <figcaption>The users repo emits a <em>binding index</em> — pure data. The host reads it. Neither side
+  imports the other's internals, and the host never evaluates the user's home to find out what the user
+  can do.</figcaption>
+  </figure>
+
+  <h3 class="rv">Everything is built ahead of time</h3>
+  <p class="rv">
+    A home is a <strong>sealed derivation</strong>. It is built by the users repo, on the users repo's
+    own terms, before any host has been asked about it. This is the single most consequential fact in
+    the design: a host can only <em>pick</em> a home, never adjust one. Content cannot be injected into
+    something already built.
+  </p>
+  <p class="rv">
+    Which is why the two words the rest of this document turns on are different words. A <em>mode</em>
+    is the part a bind <strong>cannot</strong> change — it is baked in. A <em>grant</em> is the part a
+    bind <strong>can</strong> still confer, at activation, on the account rather than on the home.
+  </p>
+</section>
+
+<!-- ══════════════ 3 ══════════════ -->
+<section id="s3">
+  <div class="sec-head"><div class="sec-num">03</div>
+    <div><h2>Two vocabularies that touch nowhere</h2><div class="sub">modes.nix and features.nix — the two registries</div></div>
+  </div>
+
+  <p class="rv">
+    The contract has exactly two registries, and each is the single source of truth for one vocabulary.
+    Every other surface in the repository — a user's option set, a host's enum, the greeter's offer, the
+    group list on an account — is a <em>projection</em> of one of them. Keys cannot drift, because there
+    is only one set of keys.
+  </p>
+
+  <figure class="rv">
+  <svg viewBox="0 0 1000 300" role="img" aria-label="Diagram: the mode registry is asked from both ends; the feature registry is asked only by the host.">
+    <line x1="500" y1="10" x2="500" y2="290" stroke="#3A322A" stroke-width="1" stroke-dasharray="3 5"/>
+
+    <!-- MODE registry -->
+    <rect x="360" y="26" width="280" height="98" rx="3" fill="rgba(201,184,216,.07)" stroke="#5C5168"/>
+    <text x="500" y="48" class="svg-t" fill="#C9B8D8" text-anchor="middle">modes.nix &#183; THE MODE REGISTRY</text>
+    <text x="500" y="74" class="svg-b" text-anchor="middle" style="font-size:14px">cli &#8212; the floor</text>
+    <text x="500" y="98" class="svg-b" text-anchor="middle" style="font-size:14px">gui &#8212; a graphical desktop</text>
+    <text x="500" y="116" class="svg-l" fill="#7C7365" text-anchor="middle">one question, asked from two ends</text>
+
+    <path d="M 356 66 L 250 66" stroke="#52BFAB" stroke-width="1.3" fill="none" marker-end="url(#aru)"/>
+    <text x="300" y="56" class="svg-t" fill="#52BFAB" text-anchor="middle">&#8220;WHICH DO I RUN IN?&#8221;</text>
+    <text x="140" y="70" class="svg-l" fill="#52BFAB" text-anchor="middle">the USER asks</text>
+
+    <path d="M 644 66 L 750 66" stroke="#E8A33D" stroke-width="1.3" fill="none" marker-end="url(#arh)"/>
+    <text x="700" y="56" class="svg-t" fill="#E8A33D" text-anchor="middle">&#8220;WHICH CAN THIS BOX RUN?&#8221;</text>
+    <text x="866" y="70" class="svg-l" fill="#E8A33D" text-anchor="middle">the HOST asks</text>
+
+    <!-- barrier -->
+    <line x1="120" y1="150" x2="880" y2="150" stroke="#3A322A" stroke-width="1" stroke-dasharray="2 6"/>
+    <text x="500" y="145" class="svg-t" fill="#5A5145" text-anchor="middle">NO VALUE CROSSES BETWEEN THEM</text>
+
+    <!-- FEATURE registry -->
+    <rect x="360" y="172" width="280" height="106" rx="3" fill="rgba(232,163,61,.055)" stroke="#8A5E1C"/>
+    <text x="500" y="194" class="svg-t" fill="#E8A33D" text-anchor="middle">features.nix &#183; THE FEATURE REGISTRY</text>
+    <text x="500" y="218" class="svg-l" fill="#EFE7D9" text-anchor="middle">sudo &#183; containers &#183; virtualization &#183; nix-daemon</text>
+    <text x="500" y="242" class="svg-l" fill="#7C7365" text-anchor="middle">every one is PRIVILEGED &#183; none takes a parameter</text>
+    <text x="500" y="266" class="svg-l" fill="#7C7365" text-anchor="middle">a POWER a host confers on a PERSON</text>
+
+    <path d="M 644 220 L 750 220" stroke="#E8A33D" stroke-width="1.3" fill="none" marker-end="url(#arh)"/>
+    <text x="866" y="224" class="svg-l" fill="#E8A33D" text-anchor="middle">only the HOST asks</text>
+    <path d="M 356 220 L 260 220" stroke="#3A322A" stroke-width="1.3" fill="none" stroke-dasharray="4 4"/>
+    <text x="160" y="216" class="svg-l" fill="#5A5145" text-anchor="middle">the user has no</text>
+    <text x="160" y="232" class="svg-l" fill="#5A5145" text-anchor="middle">feature voice at all</text>
+  </svg>
+  <figcaption>Two registries, two questions. A mode is a <em>capability</em> — a fact about a machine and
+  a shape a home was built for. A feature is a <em>power</em> — a judgement about a person. Nothing in
+  <code>modes.nix</code> names a feature and nothing in <code>features.nix</code> names a mode.</figcaption>
+  </figure>
+
+  <h3 class="rv">The mode registry &mdash; <code>modes.nix</code></h3>
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Mode</th><th>Is</th><th>Groups it carries</th><th>Needs a display?</th><th>Its own parameters</th></tr></thead>
+    <tbody>
+      <tr><td class="opt"><b>cli</b> <span class="pill">FLOOR</span></td>
+          <td>A terminal-only session.</td>
+          <td><span class="gchip none">none</span></td><td>no</td><td>none</td></tr>
+      <tr><td class="opt"><b>gui</b></td>
+          <td>A graphical desktop session.</td>
+          <td><span class="gchip mode">input</span> <span class="gchip mode">uinput</span> <span class="gchip mode">plugdev</span> <span class="gchip mode">dialout</span></td>
+          <td>yes &rarr; <span class="t c">contract.display.enabled</span></td>
+          <td><span class="t u">desktop</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <p class="rv">
+    <strong>The floor is implicit and unexcludable.</strong> <code>cli</code> carries the
+    <code>floor</code> flag, which means every host runs it, nobody declares it, and there is no
+    spelling anywhere that removes it. Exactly one mode may be the floor; zero or two is a named error.
+    Modes are <strong>mutually exclusive</strong> — a home is built for exactly one — which is why
+    <em>N</em> modes yield at most <em>N</em> homes per user rather than 2<sup>N</sup>.
+  </p>
+
+  <h3 class="rv">The feature registry &mdash; <code>features.nix</code></h3>
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Feature</th><th>Confers</th><th>Groups</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td class="opt h">sudo</td><td>Administrative access, and nothing more.</td>
+          <td><span class="gchip grant">wheel</span></td>
+          <td>The minimal privileged grant. A user can never obtain <code>wheel</code> by declaring it — an identity cannot name a group at all.</td></tr>
+      <tr><td class="opt h">containers</td><td>Privileged container-runtime access.</td>
+          <td><span class="gchip grant">docker</span> <span class="gchip grant">podman</span></td>
+          <td>Both are root-equivalent. Atomic, so &ldquo;containers without sudo&rdquo; is expressible.</td></tr>
+      <tr><td class="opt h">virtualization</td><td>Running VMs.</td>
+          <td><span class="gchip grant">disk</span> <span class="gchip grant">qemu-libvirtd</span> <span class="gchip grant">libvirtd</span></td>
+          <td>A power somebody decided you should have, not a property of the machine.</td></tr>
+      <tr><td class="opt h">nix-daemon</td><td>Talking to the Nix daemon socket.</td>
+          <td><span class="gchip grant">nix-users</span></td>
+          <td>Without it a user is <em>daemon-restricted</em>: they cannot build derivations, install packages, or add store paths beyond what the host activated for them.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="trio rv">
+    <div class="panel">
+      <div class="card-h">Atomic</div>
+      <p>Each feature confers exactly one concern's groups. A host <em>composes</em> them
+      (<code>sudo</code> + <code>containers</code>) rather than granting one coarse role.</p>
+    </div>
+    <div class="panel">
+      <div class="card-h">Parameterless</div>
+      <p>A feature is a boolean. Anything that would need a parameter is not a feature — a desktop
+      <em>name</em> is a property of the graphical session, so it lives on the mode.</p>
+    </div>
+    <div class="panel x">
+      <div class="card-h x">The safe set is empty</div>
+      <p>The &ldquo;safe set&rdquo; is derived, not listed: the features declaring no privileged
+      groups. Today that is <strong>none of them</strong>, so a walk-up stranger receives a
+      <em>session</em>, and no power at all.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 4 ══════════════ -->
+<section id="s4">
+  <div class="sec-head"><div class="sec-num">04</div>
+    <div><h2>The user&rsquo;s side &mdash; every option</h2><div class="sub">Two files, and that is the whole of what a person says</div></div>
+  </div>
+
+  <p class="rv">
+    A user is a directory. Everything a person can say to this contract is in it, and the surface is
+    deliberately tiny: a user names <strong>who they are</strong> and <strong>which session shapes they
+    run in</strong>. There is no third thing.
+  </p>
+
+  <div class="code-label u">users/ada/user.nix &mdash; the declaration</div>
+  <pre class="rv"><span class="c"># The WHOLE of what a user says.</span>
+{
+  <span class="un">contract.cli</span> = {
+    <span class="b">enable</span>        = <span class="k">true</span>;
+    <span class="b">configuration</span> = <span class="s">./home.nix</span>;
+  };
+  <span class="un">contract.gui</span> = {
+    <span class="b">enable</span>        = <span class="k">true</span>;
+    <span class="b">configuration</span> = <span class="s">./home.nix</span>;   <span class="c"># or ./gui.nix, if the session needs different content</span>
+    <span class="b">desktop</span>       = <span class="s">"plasma"</span>;     <span class="c"># a free-form name the seat maps to a real desktop</span>
+  };
+}</pre>
+
+  <h3 class="rv">The declaration schema</h3>
+  <p class="rv">
+    This is a <em>projection of the mode registry</em>: one submodule per mode, generated. A contract
+    that gains a mode gains its declaration with no edit anywhere, and a user naming a mode the
+    contract does not have is an eval error in the user's own repo rather than a user nothing can bind.
+  </p>
+
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td class="opt u">contract.&lt;mode&gt;.enable</td><td class="ty">bool</td><td><span class="pill def">false</span></td>
+          <td>Whether this user runs in this session shape. <strong>Nothing defaults to enabled</strong> — a default would decide what a user <em>is</em> without the user having said anything. Enabling none is a named error at bake time.</td></tr>
+      <tr><td class="opt u">contract.&lt;mode&gt;.configuration</td><td class="ty">deferredModule</td><td><span class="pill def">{ }</span></td>
+          <td>The home-manager module built <em>for this mode</em>. Deferred, so reading which modes a user runs in never forces the home. Empty is legitimate — a service account or a break-glass admin still gets an account and the contract's home baseline.</td></tr>
+      <tr><td class="opt u">contract.gui.desktop</td><td class="ty">str</td><td><span class="pill def">&quot;&quot;</span></td>
+          <td>The <code>gui</code> mode's own parameter. A free-form, DE-agnostic name that <em>travels with the user</em> — published in the binding index as <code>modeParams.gui.desktop</code>, so the seat maps it to a real desktop without opening a home. An un-offered or empty name degrades to the seat's default. It never names a package.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="aside rv">
+    <span class="tag">Why two modes may name the same file</span>
+    That is the common case — a home that does not depend on the session. Point them at different
+    modules only when the content genuinely differs (a sway config has no terminal equivalent), which is
+    exactly <em>why</em> a mode is a mode: content cannot be injected into a sealed derivation, so those
+    are two derivations rather than one home with a switch in it. A user whose two modes build identical
+    homes is <strong>conforming, not misconfigured</strong>.
+  </div>
+
+  <h3 class="rv">The identity &mdash; <code>users/ada/identity.json</code></h3>
+  <p class="rv">
+    Inert data, not Nix. That is load-bearing: a greeter authenticates against this file
+    <strong>before evaluating a single line</strong> of the user's Nix. An identity describes a
+    <em>person</em>, never their powers — every field is either descriptive or a login credential, and
+    nothing in it reaches host state on its own.
+  </p>
+
+  <div class="code-label u">users/ada/identity.json &mdash; the full form</div>
+  <pre class="rv">{
+  <span class="b">"name"</span>:           <span class="s">"Ada Reference"</span>,
+  <span class="b">"email"</span>:          <span class="s">"ada@example.invalid"</span>,
+  <span class="b">"username"</span>:       <span class="s">"ada"</span>,
+  <span class="b">"hashedPassword"</span>: <span class="s">"$y$j9T$A5WpCOX3TaFRciO.ILZsD1$pHwIEiJI6anN/oQw&#8230;"</span>,
+  <span class="b">"sshKey"</span>:         <span class="s">"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIADAexamplekeyada"</span>,
+  <span class="b">"trustedKeys"</span>:    []
+}</pre>
+
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Becomes</th></tr></thead>
+    <tbody>
+      <tr><td class="opt u">username</td><td class="ty">str</td><td><span class="pill req">required</span></td><td><strong>The one required field.</strong> The system account name — the one value nothing downstream can invent. It must equal the index key, or the producer refuses to publish.</td></tr>
+      <tr><td class="opt u">name</td><td class="ty">str</td><td><span class="pill def">&quot;&quot;</span></td><td>The account's GECOS / description.</td></tr>
+      <tr><td class="opt u">email</td><td class="ty">str</td><td><span class="pill def">&quot;&quot;</span></td><td>Descriptive; read by home modules through <code>contract.identity</code>.</td></tr>
+      <tr><td class="opt u">hashedPassword</td><td class="ty">str</td><td><span class="pill def">&quot;&quot;</span></td><td>The login credential, carried verbatim. A one-way hash — the only secret this contract touches.</td></tr>
+      <tr><td class="opt u">sshKey</td><td class="ty">str</td><td><span class="pill def">&quot;&quot;</span></td><td>The primary authorized key (dropped when empty).</td></tr>
+      <tr><td class="opt u">trustedKeys</td><td class="ty">listOf str</td><td><span class="pill def">[ ]</span></td><td>Further authorized keys, appended after the primary.</td></tr>
+    </tbody>
+  </table></div>
+
+  <p class="rv">
+    An unknown key is a loud error, and a missing required field is a loud error — never a
+    silently-wrong account. Note what the schema does <strong>not</strong> contain: any notion of what
+    this account may <em>do</em>. It used to carry <code>extraGroups</code>, and that was the one
+    exception — a user wrote group names into their own public record and a host materialised them,
+    filtered by a deny-list. On the greeter path that meant a stranger could put themselves in a group
+    by editing their own file. It is gone.
+  </p>
+
+  <h3 class="rv">What a home is handed</h3>
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Home option</th><th>Type</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td class="opt u">contract.identity.*</td><td class="ty">the identity schema above</td>
+          <td><span class="pill ro">read-only</span> A home <em>holds</em> its identity — it neither loads it nor authors it, so <code>git.userName</code> and friends read one resolved value instead of every home re-parsing JSON. A second definition is an eval error, not a merge.</td></tr>
+      <tr><td class="ty" colspan="3">&hellip;and that is the whole of it. The contract composes <strong>no content</strong> into a home — the mode's own parameters (<code>gui.desktop</code>) are published in the binding index instead, where a seat reads them without opening anything.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="panel u rv" style="margin-top:1.6rem">
+    <div class="card-h u">The user's one refusal</div>
+    <p>A user cannot ask for a feature and cannot veto one — which powers an account holds is the
+    host's decision alone, because a user-side veto would be a second authority over one value with
+    nothing forcing the two to agree. But the refusal a user <em>actually</em> needs —
+    <em>never give me a desktop</em> — is already expressible: don't enable the <code>gui</code> mode,
+    and no host can select a graphical home that was never built.</p>
+  </div>
+
+  <h3 class="rv">Confinement &mdash; what a home cannot say</h3>
+  <p class="rv">
+    A user's home is a home-manager module with <strong>no system channel</strong>.
+    <code>users.users</code>, <code>security.sudo</code>, <code>boot.*</code>, <code>sops.*</code> are
+    <em>unexpressible</em>, not merely rejected. Privilege escalation is impossible because the
+    vocabulary to ask for it does not exist. The check kit ships a proof of this that a consumer runs
+    against its <em>real</em> module set, positive control included.
+  </p>
+</section>
+
+<!-- ══════════════ 5 ══════════════ -->
+<section id="s5">
+  <div class="sec-head"><div class="sec-num">05</div>
+    <div><h2>The host&rsquo;s side &mdash; every option</h2><div class="sub">One statement about the machine, one per person</div></div>
+  </div>
+
+  <p class="rv">
+    A host says two different kinds of thing, and keeping them apart <em>is</em> the shape of the whole
+    design. Everything the contract puts on a host lives under <span class="t c">contract.*</span> —
+    there is one option prefix and none per party.
+  </p>
+
+  <div class="code-label h">hosts/desk.nix &mdash; a seat</div>
+  <pre class="rv">{ contract, users, ... }:
+{
+  <span class="c"># WHAT THIS MACHINE IS &#8212; declared once, for the box.</span>
+  <span class="hn">contract.modes</span> = [ <span class="s">"gui"</span> ];
+
+  imports = [
+    contract.nixosModules.default
+
+    <span class="c"># WHAT EACH PERSON MAY DO &#8212; declared at the bind, which already names them.</span>
+    (contract.lib.<span class="b">bindContractUsers</span> {
+      <span class="b">source</span> = users;
+      <span class="b">users</span> = {
+        ada             = { };            <span class="c"># nothing afforded &#8212; the MACHINE gives her the desktop</span>
+        cleo.containers = <span class="k">true</span>;
+        admin.sudo      = <span class="k">true</span>;
+      };
+    })
+  ];
+}</pre>
+
+  <h3 class="rv">A. What the machine <em>is</em></h3>
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td class="opt h">contract.modes</td><td class="ty">listOf enum [ cli gui ]</td><td><span class="pill def">[ ]</span></td>
+          <td>The session shapes this machine can run, <em>beyond the floor</em>. <strong>Fail-closed</strong>: a host that says nothing runs <code>cli</code> and only <code>cli</code>. It is a <strong>set</strong>, not a sequence — <code>[ "gui" ]</code>, <code>[ "gui" "cli" ]</code> and <code>[ "cli" "gui" ]</code> are one declaration, and there is no spelling that excludes the floor.</td></tr>
+      <tr><td class="opt h">contract.exposed</td><td class="ty">bool (enableOption)</td><td><span class="pill def">false</span></td>
+          <td>A plain fact an operator records — this box is agent-facing / internet-exposed. The contract enforces nothing on it; it is available for a host's own policy and is one of the three <code>hostFacts</code> a home is told.</td></tr>
+      <tr><td class="opt h">contract.packagePolicy.<br>allowedPrograms</td><td class="ty">listOf str</td><td><span class="pill def">[ ]</span></td>
+          <td>After activation, the host replaces <code>~/.nix-profile</code> with the <em>intersection</em> of this list and the user's published package manifest. Each name resolves to <code>pkgs.&lt;name&gt;</code> from the <em>host's</em> pin; unknown names are dropped. Empty means no policy at all. Meaningful mainly for a daemon-restricted user, for whom that profile is the only store they can reach.</td></tr>
+      <tr><td class="opt c">contract.display.enabled</td><td class="ty">bool</td><td><span class="pill ro">read-only &#183; derived</span></td>
+          <td>Does any mode this machine runs need a shared display surface? Derived from the <code>display</code> flag in the mode registry — never by naming <code>gui</code>. It follows the <em>box</em>, not its users, so a seat has one before anybody is bound, which is exactly what a greeter needs. Your SDDM/GDM/greetd binding reads this one neutral flag; the contract names no display server and no session type.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 class="rv">B. What each person <em>may do</em></h3>
+  <p class="rv">
+    Affordances are function arguments, not options — they ride the bind, at the one site that already
+    names the user. There is no host-wide default for a bind to inherit, which is deliberate: giving one
+    account <code>sudo</code> and another none is the same one mechanism written twice.
+  </p>
+
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Function / argument</th><th>Type</th><th>Default</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td class="opt h">bindContractUsers</td><td class="ty" colspan="2">&rarr; a NixOS module</td>
+          <td><strong>A host's whole user list, in one call.</strong> It adds no rule of its own — each entry is a <code>bindContractUser</code>, and the merge is the module system's. What it removes is the repetition.</td></tr>
+      <tr><td class="opt h">&#8195;source</td><td class="ty">flake / attrset</td><td><span class="pill def">null</span></td>
+          <td>Whatever publishes <code>contractUsers.&lt;system&gt;.&lt;user&gt;</code>. <em>Not</em> called <code>usersFlake</code> because nothing requires a flake.</td></tr>
+      <tr><td class="opt h">&#8195;users</td><td class="ty">{ &lt;name&gt; = { &lt;feature&gt; = bool; source ? …; }; }</td><td><span class="pill def">{ }</span></td>
+          <td>One entry per person. The key does <strong>selection</strong>, not naming — the account's name comes from the user's own <code>identity.json</code>, and the producer refuses to publish a user whose key and identity disagree. An entry may be empty. <code>source</code> is a per-user override of the default.</td></tr>
+      <tr><td class="opt h">&#8195;all</td><td class="ty">bool</td><td><span class="pill def">false</span></td>
+          <td>Bind <em>every</em> user the default source publishes. Off by default and deliberately so: a users repo holds accounts that belong on some machines and not others, and binding them everywhere by omission is invisible until it matters.</td></tr>
+      <tr><td class="opt h">bindContractUser</td><td class="ty">{ source; username; affordances ? { } }</td><td>&mdash;</td>
+          <td>The singular underneath. <code>affordances</code> is <code>{ &lt;feature&gt; = bool; }</code>, typed against the registry by hand rather than by the module system — an unknown feature name is a typo in the host's own repo, and must not silently become &ldquo;affords nothing&rdquo;.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 class="rv">C. The account schema &mdash; written by a bind, never by an operator</h3>
+  <p class="rv">
+    These options exist so that <em>a bind has somewhere to write</em>. An operator never sets them. The
+    identity in particular is <strong>held, not authored</strong>: a second definition is an eval error
+    rather than a merge — which matters because <code>trustedKeys</code> is a list, and lists merge by
+    concatenation, so without that posture a second module naming the same user could append an SSH key
+    to a realized account with nothing to notice.
+  </p>
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Option</th><th>Type</th><th>Written by</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td class="opt c">contract.users.&lt;u&gt;.identity</td><td class="ty">the identity schema</td><td>the bind</td><td><span class="pill ro">held</span> Carried straight out of the binding index.</td></tr>
+      <tr><td class="opt c">contract.users.&lt;u&gt;.granted.&lt;f&gt;</td><td class="ty">bool, one per feature</td><td>the bind</td><td>The grant seen as an <em>option path</em>. <code>granted</code> is never an argument; <code>affordances</code> is never an option.</td></tr>
+      <tr><td class="opt c">contract.users.&lt;u&gt;.mode</td><td class="ty">enum [ cli gui ]</td><td>the bind</td><td><span class="pill def">cli</span> The session shape this account was bound in — the account needs it, because a graphical session's input groups ride the <em>mode</em> rather than a grant.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 class="rv">D. The bindings a host supplies</h3>
+  <p class="rv">
+    The contract ships generic <strong>mechanism</strong>; the host supplies only <strong>bindings</strong>.
+    That split keeps every fleet from re-implementing — and drifting on — the security-critical parts.
+    The bindings are: the display / desktop launch commands, the home builder, and the trust-tier policy.
+    All three live in <a href="#s8">the greeter's option set</a>.
+  </p>
+</section>
+
+<!-- ══════════════ 6 ══════════════ -->
+<section id="s6">
+  <div class="sec-head"><div class="sec-num">06</div>
+    <div><h2>The bind, and the selection</h2><div class="sub">Where the two sides actually meet</div></div>
+  </div>
+
+  <p class="rv">
+    A bind walks five steps. It infers <code>system</code> from the host's own <code>pkgs</code>; reads
+    the user's entry out of the binding index; reads which modes this machine runs; <strong>selects</strong>
+    the mode; and grants what it afforded. Note what is <em>not</em> in that list: anything about a
+    display. A graphical session's input groups follow the selected mode, so an ordinary desktop user's
+    bind carries no affordances at all.
+  </p>
+
+  <h3 class="rv">The selection kernel</h3>
+  <p class="rv">
+    Both the declarative bind and the runtime greeter select through <strong>one kernel</strong>, so the
+    two paths cannot come to different answers. No mode name appears in the algorithm — the floor is a
+    parameter, because a literal would make the registry's own flag decorative.
+  </p>
+
+  <pre class="rv"><span class="c"># runs      = the floor &#8746; whatever the MACHINE declared</span>
+<span class="c"># published = the modes this user actually has a built home for, HERE, on this system</span>
+
+candidates = runs &#8745; published
+rich       = candidates &#8722; { floor }
+
+<span class="k">if</span>  candidates is empty  &#8594; <span class="hn">REFUSE</span>   <span class="c"># no mode is common to the host and the user</span>
+<span class="k">if</span>  |rich| &gt; 1           &#8594; <span class="hn">REFUSE</span>   <span class="c"># two rich modes: no ordering exists to break the tie</span>
+<span class="k">if</span>  rich is non-empty    &#8594; rich[0]  <span class="c"># a rich mode always beats the floor</span>
+<span class="k">otherwise</span>               &#8594; floor</pre>
+
+  <!-- ══ MACHINE 1: selection simulator ══ -->
+  <div class="machine rv" id="sim1">
+    <div class="machine-head">
+      <b>Try it &#183; the selection</b>
+      <span>Set what the machine runs and what the person publishes. The verdict is computed with the real rules.</span>
+    </div>
+    <div class="machine-body">
+      <div class="mcol h">
+        <h5>Host &#183; contract.modes</h5>
+        <label class="sw h dis"><input type="checkbox" checked disabled><span>cli</span><small>the floor — always</small></label>
+        <label class="sw h"><input type="checkbox" id="h_gui" checked><span>gui</span><small>this box has a display</small></label>
+        <label class="sw h" id="h_mob_l" style="display:none"><input type="checkbox" id="h_mob"><span>mobile</span><small>hypothetical</small></label>
+        <p class="mnote">Fail-closed: a host that declares nothing runs the floor and only the floor.</p>
+        <label class="sw x" style="margin-top:1.1rem"><input type="checkbox" id="third"><span>+ a third mode</span><small>demo</small></label>
+        <p class="mnote">The registry is designed for a third, incomparable rich mode (<code>mobile</code> is the shape one takes). Switch it on to reach the two-rich-modes refusal, which two modes can never produce.</p>
+      </div>
+      <div class="mcol u">
+        <h5>User &#183; user.nix + the matrix</h5>
+        <label class="sw u"><input type="checkbox" id="u_cli" checked><span>contract.cli.enable</span></label>
+        <label class="sw u"><input type="checkbox" id="u_gui" checked><span>contract.gui.enable</span></label>
+        <label class="sw u" id="u_mob_l" style="display:none"><input type="checkbox" id="u_mob"><span>contract.mobile.enable</span></label>
+        <p class="mnote" style="margin-bottom:.9rem">&hellip;and what the producer's <code>mkHomeMatrix</code> row <em>subtracts</em> for this system:</p>
+        <label class="sw x"><input type="checkbox" id="m_gui"><span>gui = false</span><small>not baked here</small></label>
+        <label class="sw x" id="m_mob_l" style="display:none"><input type="checkbox" id="m_mob"><span>mobile = false</span><small>not baked here</small></label>
+        <p class="mnote">A row states only what it takes <em>away</em>. Fail-open, because an under-bake is silent and an omitted mode must therefore default to baked.</p>
+      </div>
+      <div class="mcol o verdict">
+        <h5>The bind</h5>
+        <div class="vline"><span style="color:var(--host)">runs</span> <b id="v_runs"></b></div>
+        <div class="vline"><span style="color:var(--user)">declares</span> <b id="v_decl"></b></div>
+        <div class="vline"><span style="color:var(--user)">publishes here</span> <b id="v_pub"></b></div>
+        <div class="vline"><span style="color:var(--bone-faint)">candidates</span> <b id="v_cand"></b></div>
+        <div id="v_out"></div>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="rv">The three refusals, and why each exists separately</h3>
+  <p class="rv">
+    Every refusal in this repository carries three things: the <strong>problem</strong>, the
+    <strong>why</strong>, and the <strong>fix</strong>. That is not decoration — two of these failures
+    look identical under <code>tryEval</code>, and telling them apart is the whole point, because they
+    have different causes, different fixes and different owners.
+  </p>
+
+  <div class="trio rv">
+    <div class="panel x">
+      <div class="card-h x">Unknown affordance</div>
+      <p><em>Checked first, before anything else.</em> A misspelled feature name would silently afford
+      nothing, and the account would come up quietly less powerful than the host meant.</p>
+    </div>
+    <div class="panel x">
+      <div class="card-h x">Matrix subtraction</div>
+      <p>A mode this host runs <em>and</em> this user runs in, which this system's home matrix took
+      away. Nothing built the home — so without this guard, selection would quietly fall back to the
+      floor and activate a terminal home on a graphical seat <strong>with no message at all</strong>.
+      It reports <em>before</em> selection, deliberately, so the right cause is named.</p>
+    </div>
+    <div class="panel x">
+      <div class="card-h x">No common mode</div>
+      <p>This user runs nothing this host runs. A mode is what a home <em>is</em>, so a mismatch is a
+      refusal rather than a silently lesser home.</p>
+    </div>
+  </div>
+
+  <div class="aside rv">
+    <span class="tag">And one more, deeper down</span>
+    <strong>The coupling guard.</strong> A host may activate a home only if it actually runs the mode
+    that home was built for — read from the frozen manifest, not inferred. Selection satisfies this by
+    construction; the guard covers the internal path where the kernel is called directly. It is the
+    <em>mode</em> rather than the grant, because a grant not conferred degrades silently by design,
+    whereas a graphical home activated on a machine with no display is a worse answer than an error.
+  </div>
+</section>
+
+<!-- ══════════════ 7 ══════════════ -->
+<section id="s7">
+  <div class="sec-head"><div class="sec-num">07</div>
+    <div><h2>The account plan</h2><div class="sub">One pure function, rendered by two adapters</div></div>
+  </div>
+
+  <p class="rv">
+    Once a mode is selected and a grant is decided, one pure function turns
+    <code>(identity, grants, mode)</code> into a neutral account record. <code>realization.nix</code>
+    renders it into <code>users.users</code> at build time; the greeter's <code>provision</code> renders
+    the <em>same</em> record at login. Two adapters, one rule — so the security-critical part cannot
+    drift between the declarative path and the walk-up path.
+  </p>
+
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Account field</th><th>Comes from</th></tr></thead>
+    <tbody>
+      <tr><td class="opt">description</td><td>the identity's display <code>name</code> (GECOS)</td></tr>
+      <tr><td class="opt">hashedPassword</td><td>the login credential, carried verbatim</td></tr>
+      <tr><td class="opt">authorizedKeys</td><td>the primary <code>sshKey</code> (dropped when empty), then <code>trustedKeys</code>, in that order</td></tr>
+      <tr><td class="opt">extraGroups</td><td><strong>what the MODE needs &cup; what the GRANT confers.</strong> There is no third source.</td></tr>
+    </tbody>
+  </table></div>
+
+  <!-- ══ MACHINE 2: account plan ══ -->
+  <div class="machine rv" id="sim2">
+    <div class="machine-head">
+      <b>Try it &#183; the account plan</b>
+      <span>Two group sources meet in one union. Watch where privilege can and cannot enter.</span>
+    </div>
+    <div class="machine-body">
+      <div class="mcol u">
+        <h5>The mode it was bound in</h5>
+        <label class="sw u"><input type="radio" name="apmode" value="cli" style="border-radius:50%"><span>cli</span><small>the floor</small></label>
+        <label class="sw u"><input type="radio" name="apmode" value="gui" checked style="border-radius:50%"><span>gui</span><small>graphical</small></label>
+        <p class="mnote">A mode's groups are non-privileged <em>by construction</em> — a mode is a capability, never a power. They still run through the privileged filter anyway, which is not vestigial: it is the one line stopping a privileged name added to <code>modes.nix</code> from reaching every account in that mode with no grant.</p>
+      </div>
+      <div class="mcol h">
+        <h5>What the host afforded</h5>
+        <label class="sw h"><input type="checkbox" class="afd" value="sudo"><span>sudo</span></label>
+        <label class="sw h"><input type="checkbox" class="afd" value="containers"><span>containers</span></label>
+        <label class="sw h"><input type="checkbox" class="afd" value="virtualization"><span>virtualization</span></label>
+        <label class="sw h"><input type="checkbox" class="afd" value="nix-daemon"><span>nix-daemon</span></label>
+        <p class="mnote">Stated at the bind, on the line that already names the person. There is no host-wide default to inherit and no user-side veto to negotiate with.</p>
+      </div>
+      <div class="mcol o verdict">
+        <h5>Resulting account</h5>
+        <div class="vline"><span style="color:var(--bone-faint)">description</span> <b>Ada Reference</b></div>
+        <div class="vline"><span style="color:var(--bone-faint)">hashedPassword</span> <b>$y$j9T$&hellip;</b></div>
+        <div class="vline"><span style="color:var(--bone-faint)">authorizedKeys</span> <b>[ ssh-ed25519 &hellip; ]</b></div>
+        <div style="margin-top:1rem">
+          <div class="vline" style="margin-bottom:.15rem"><span style="color:var(--bone-faint)">extraGroups</span></div>
+          <div class="grouplist" id="ap_groups"></div>
+        </div>
+        <div id="ap_note" style="margin-top:1.1rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel rv" style="margin-top:1.4rem">
+    <div class="card-h">Where privilege can enter &mdash; and where it cannot</div>
+    <p>Powers route through <strong>grants</strong>, never raw identity. An identity cannot name a group
+    at all, so the realization has no untrusted-input story to tell and no self-escalation route to
+    close. And <em>every grant rides the bind, over whatever home already exists</em> — so a grant can
+    never change a home, and one home serves granted and ungranted alike, for every feature without
+    exception.</p>
+  </div>
+</section>
+
+<!-- ══════════════ 8 ══════════════ -->
+<section id="s8">
+  <div class="sec-head"><div class="sec-num">08</div>
+    <div><h2>The greeter &mdash; the walk-up path</h2><div class="sub">A flake URL, a username, a password</div></div>
+  </div>
+
+  <p class="rv">
+    <code>nixosModules.greeter</code> is the reference runtime login path. It is opt-in per seat — a
+    headless host simply never enables it, which is incapacity, not a ban — and it is replaceable, as
+    long as a replacement honours the ordering below and confers at most the safe set.
+  </p>
+  <p class="rv">
+    Its governing discipline is <strong>data before code</strong>: authenticate on inert data before any
+    of the user's Nix is evaluated. <em>Eval is not a sandbox.</em>
+  </p>
+
+  <div class="flow rv">
+    <div class="step cs"><div class="sn">1</div><div><b>Prompt<span class="who">replaceable UI</span></b><p>A flake URL, a username and a password. Nothing about this person is declared on this machine.</p></div></div>
+    <div class="step cs"><div class="sn">2</div><div><b>Archive the source<span class="who">no user Nix yet</span></b><p><code>nix flake archive</code> fetches the repo and its input closure. Still nothing evaluated.</p></div></div>
+    <div class="step cs"><div class="sn">3</div><div><b>Authenticate, eval-free<span class="who">the crux of the ordering</span></b><p><code>jq</code> reads <code>identity.json</code> directly: the password, and the Tier-1 signature over the repo. No Nix has run.</p></div></div>
+    <div class="step hs"><div class="sn">4</div><div><b>Classify the tier<span class="who">host policy</span></b><p><code>tier1</code> — signed by a host-trusted key, home persisted, restricted eval. <code>tier2</code> is designed-for but deferred, and refused <em>by name</em> rather than silently downgraded.</p></div></div>
+    <div class="step cs"><div class="sn">5</div><div><b>Select the mode<span class="who">the same kernel as a bind</span></b><p>Read the user's published modes off the flake's binding index with one cheap <code>nix eval</code>, and intersect them with what this seat runs. The selected mode's own parameters — <code>gui.desktop</code> — are read the same way, off <code>modeParams</code> — frozen to a store file at build time, so a seat with no display cannot claim to offer a desktop.</p></div></div>
+    <div class="step hs"><div class="sn">6</div><div><b>Build the home<span class="who">host binding</span></b><p>The host's <code>homeBuilder</code> is invoked as <code>homeBuilder &lt;src&gt; &lt;username&gt; &lt;mode&gt;</code>, under the pinned restricted-eval posture. <strong>The mode is the greeter's answer, not the binding's</strong> — a seat never hardcodes one.</p></div></div>
+    <div class="step cs"><div class="sn">7</div><div><b>Provision<span class="who">the runtime realization</span></b><p>Fully realize the account from the identity plus the safe-set grant, and activate the home. This is the shell-side equivalent of <code>realization.nix</code>, rendering the <em>same</em> account plan — so a greeter user realizes identically to a build-time one, modulo a <code>greeter-users</code> seat marker.</p></div></div>
+    <div class="step us"><div class="sn">8</div><div><b>Launch the session<span class="who">the user's own choice</span></b><p>Map the desktop read at step 5 to one of the seat's offered <code>desktops</code>, and exec that command — exactly as a display manager would. An un-offered or empty name degrades to <code>defaultDesktop</code>, never a failed login.</p></div></div>
+  </div>
+
+  <h3 class="rv">The greeter's options &mdash; all of them</h3>
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td class="opt h">contract.greeter.enable</td><td class="ty">bool</td><td><span class="pill def">false</span></td>
+          <td>Turn on greetd plus the whole bind &rarr; select &rarr; build &rarr; provision flow.</td></tr>
+      <tr><td class="opt h">&#8195;.tier</td><td class="ty">enum [ tier1 tier2 ]</td><td><span class="pill def">tier1</span></td>
+          <td>The trust tier this seat binds a walk-up repo at. <code>tier2</code> (untrusted, ephemeral home, hardened eval) is designed-for and deferred — the provisioning helper refuses it by name today.</td></tr>
+      <tr><td class="opt h">&#8195;.trustedSigners</td><td class="ty">listOf str</td><td><span class="pill def">[ ]</span></td>
+          <td>SSH public keys whose signature over a user repo marks it semi-trusted. <strong>The sole Tier-1 authority</strong> — empty means no repo is Tier-1 on this seat, and a repo can never vouch for its own tier. Distinct from the user's <code>trustedKeys</code>, which are <em>login</em> keys.</td></tr>
+      <tr><td class="opt h">&#8195;.homeBuilder</td><td class="ty">null / str / path / package</td><td><span class="pill def">null</span></td>
+          <td>The host binding that builds the user's own home output — typically <code>nix build "&lt;src&gt;#homes.&lt;system&gt;.&lt;user&gt;.&lt;mode&gt;.activationPackage"</code> — and prints the path. Null by default because building a real home needs home-manager, which the contract does not depend on.</td></tr>
+      <tr><td class="opt h">&#8195;.desktops.&lt;name&gt;.command</td><td class="ty">str</td><td>&mdash;</td>
+          <td>The self-contained command that launches this desktop, keyed by the free-form name a user asks for. <strong>The seat owns the session type</strong>: if the desktop needs <code>XDG_SESSION_TYPE</code>, the command sets it. The contract does not know wayland from x11.</td></tr>
+      <tr><td class="opt h">&#8195;.defaultDesktop</td><td class="ty">str</td><td><span class="pill def">&quot;&quot;</span></td>
+          <td>Which <code>desktops</code> entry to launch when the user asks for none, or asks for one this seat does not offer.</td></tr>
+      <tr><td class="opt c">&#8195;.tier1EvalConfig</td><td class="ty">attrs</td><td><span class="pill ro">read-only</span></td>
+          <td>Introspection of the pinned restricted-eval posture handed to the builder as <code>NIX_CONFIG</code>. A host may <em>add</em> restrictions, never remove these.</td></tr>
+      <tr><td class="opt c">&#8195;.affordances</td><td class="ty">attrsOf bool</td><td><span class="pill ro">read-only &#183; { }</span></td>
+          <td>What this seat confers on a walk-up user: the safe set, which is <strong>empty</strong>. There is no operator in the loop at a greeter, so a stranger receives every runtime-eligible feature — and every feature carries privileged groups, so that is nothing at all.</td></tr>
+      <tr><td class="opt c">&#8195;.runs</td><td class="ty">listOf str</td><td><span class="pill ro">read-only &#183; derived</span></td>
+          <td>The modes this seat runs, through the same derivation a declarative bind uses. This is what makes &ldquo;a desktop by default&rdquo; true for a stranger: the seat declared it once, and the mode carries its own input groups. Nothing is granted to make that happen.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 class="rv">The Tier-1 eval posture</h3>
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Setting</th><th>Value</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td class="opt">accept-flake-config</td><td class="ty">false</td><td><strong>The un-widenable linchpin</strong> — a repo cannot self-certify its own eval.</td></tr>
+      <tr><td class="opt">restrict-eval</td><td class="ty">true</td><td>Eval cannot reach outside the declared inputs.</td></tr>
+      <tr><td class="opt">allow-import-from-derivation</td><td class="ty">false</td><td>Eval cannot force a build and import its output.</td></tr>
+      <tr><td class="opt">sandbox</td><td class="ty">true</td><td>The build itself runs isolated — no network, no host filesystem.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="code-label h">a seat, end to end</div>
+  <pre class="rv">{
+  imports = [ contract.nixosModules.greeter ];
+  <span class="hn">contract.modes</span>          = [ <span class="s">"gui"</span> ];        <span class="c"># this seat has a display</span>
+  <span class="hn">contract.greeter.enable</span> = <span class="k">true</span>;
+  <span class="hn">contract.greeter.homeBuilder</span>            = <span class="s">"&#8230;"</span>;   <span class="c"># your `nix build` one-liner</span>
+  <span class="hn">contract.greeter.desktops.plasma.command</span> = <span class="s">"&#8230;"</span>;
+}
+<span class="c"># No user is named anywhere.</span></pre>
+</section>
+
+<!-- ══════════════ 9 ══════════════ -->
+<section id="s9">
+  <div class="sec-head"><div class="sec-num">09</div>
+    <div><h2>The producer surface</h2><div class="sub">How a users repo bakes a fleet of homes</div></div>
+  </div>
+
+  <p class="rv">
+    The other half of <code>lib</code>. A host <em>binds</em>; a producer <em>bakes</em>. The producer's
+    job is to build every member for every mode its system can run <em>and</em> the user runs in, and to
+    publish the result as plain data.
+  </p>
+
+  <div class="code-label u">a users repo's flake.nix</div>
+  <pre class="rv">fleet = contract.lib.<span class="b">mkContractFleet</span> {
+  <span class="b">members</span>    = contract.lib.<span class="b">mkMembers</span> { usersDir = <span class="s">./users</span>; };
+  <span class="b">homeMatrix</span> = contract.lib.<span class="b">mkHomeMatrix</span> {
+    systems = {
+      x86_64-linux      = { };        <span class="c"># `{ }` = every mode; a row states only what it takes AWAY</span>
+      aarch64-linux.gui = <span class="k">false</span>;    <span class="c"># a headless builder tier</span>
+    };
+  };
+  <span class="b">pkgsFor</span>       = sys: nixpkgs.legacyPackages.${sys};
+  <span class="b">defaultSystem</span> = <span class="s">"x86_64-linux"</span>;
+  <span class="b">buildHome</span>     = { member, mode, pkgs }: contract.lib.<span class="b">mkContractHome</span> {
+    <span class="k">inherit</span> member mode pkgs;
+    homeManagerConfiguration = home-manager.lib.homeManagerConfiguration;
+    stateVersion = <span class="s">"25.11"</span>;
+  };
+};
+<span class="c"># &#8594; inherit (fleet) homes homeConfigurations packages contractUsers;</span></pre>
+
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Function</th><th>Takes</th><th>Gives</th></tr></thead>
+    <tbody>
+      <tr><td class="opt u">mkMembers</td><td class="ty">{ usersDir }</td><td>{ &lt;name&gt; = { name; dir; identity; declaration; }; } — the repo's one answer to <em>who is here and what does each say</em>. A directory holding no member is a named error, never an empty set that bakes nothing while every output stays green.</td></tr>
+      <tr><td class="opt u">mkHomeMatrix</td><td class="ty">{ systems }</td><td>{ &lt;system&gt; = [ &lt;mode&gt; ]; } — declared as <strong>subtraction</strong>, because an under-bake is silent. A contract that gains a mode bakes it everywhere with no consumer edit.</td></tr>
+      <tr><td class="opt u">mkContractFleet</td><td class="ty">{ members; homeMatrix; pkgsFor; buildHome; defaultSystem ? null }</td><td>{ homes; homeConfigurations; packages; contractUsers; systems; pkgsBySystem; } — every output already nested by system. It instantiates <code>pkgs</code> once per system, never once per user.</td></tr>
+      <tr><td class="opt u">mkContractHome</td><td class="ty">{ homeManagerConfiguration; pkgs; member; mode; stateVersion; extraModules ? [] }</td><td>One built home. <strong>Your builder stays yours</strong> — the contract applies it and never imports home-manager.</td></tr>
+      <tr><td class="opt u">mkContractUser<br>mkContractUsers</td><td class="ty">{ pkgs; member(s); homes }</td><td>The published package + index entry, for when your build is <em>not</em> every member &times; every mode.</td></tr>
+      <tr><td class="opt u">evalUser</td><td class="ty">{ userFile }</td><td>A user's evaluated declaration — no build. This is what lets a greeter read someone's modes with one cheap <code>nix eval</code>.</td></tr>
+      <tr><td class="opt u">enabledModesOf</td><td class="ty">a declaration</td><td>The modes it enables.</td></tr>
+      <tr><td class="opt u">loadIdentity<br>resolveIdentity</td><td class="ty">a path / a partial identity</td><td>The identity, complete — parsed, checked, defaults filled. One loader, one resolution site, one value.</td></tr>
+      <tr><td class="opt u">renderNixConfig</td><td class="ty">settings</td><td>A <code>NIX_CONFIG</code> string.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="aside rv">
+    <span class="tag">Publication</span>
+    What a system publishes for a user is <strong>that system's matrix row &cap; the modes that user runs
+    in</strong>. The fold intersects <em>before</em> it builds, so a home nobody could bind is never
+    built. A system baking none of a user's modes publishes an empty index entry there rather than
+    refusing — the matrix is fail-<em>open</em> on coverage, and the refusal belongs at the bind, where
+    both sides can be named.
+  </div>
+
+  <h3 class="rv">The CLI adapter</h3>
+  <p class="rv">
+    <code>homeConfigurations.&lt;user&gt;-&lt;mode&gt;</code> is the flat shape
+    <code>home-manager switch --flake .#ada-gui</code> resolves. Nothing in the contract reads it — a
+    host binds through the index and a greeter builds <code>homes</code>. The flat naming is not a
+    repo's choice: home-manager's CLI quotes the fragment before it reaches Nix, so no nested spelling
+    resolves. Being <em>external and identical for every users repo</em> is precisely why it has one
+    owner rather than a fold per repo.
+  </p>
+</section>
+
+<!-- ══════════════ 10 ══════════════ -->
+<section id="s10">
+  <div class="sec-head"><div class="sec-num">10</div>
+    <div><h2>What actually crosses the seam</h2><div class="sub">The binding index, the contractPackage, the manifest</div></div>
+  </div>
+
+  <p class="rv">
+    Everything a host needs to know about a user is <strong>plain data</strong>. A host selects by
+    <em>reading</em>, never by building every home to inspect what came out.
+  </p>
+
+  <div class="trio rv">
+    <div class="panel c">
+      <div class="card-h c">binding index</div>
+      <p><code>contractUsers.&lt;system&gt;.&lt;user&gt;</code><br>
+      <code>= { identity; modes; modeParams;<br>&nbsp;&nbsp;&nbsp;&nbsp;contractPackages }</code></p>
+      <p style="margin-top:.7rem"><code>modes</code> is carried <em>as well as</em>
+      <code>contractPackages</code> precisely so the matrix-subtraction guard has something to compare
+      against. <code>modeParams</code> carries each mode's own knobs, so a seat learns a user's
+      desktop without building or opening a home.</p>
+    </div>
+    <div class="panel c">
+      <div class="card-h c">contractPackage</div>
+      <p>What a producer publishes per home: <strong>the activation script</strong> plus a
+      <code>contract-manifest.json</code> sidecar.</p>
+      <p style="margin-top:.7rem">One package per <em>mode</em>, because a home is identified by the
+      mode it was built for.</p>
+    </div>
+    <div class="panel c">
+      <div class="card-h c">the manifest</div>
+      <p>Freezes exactly four fields:<br>
+      <code>{ version, username, packages, mode }</code></p>
+      <p style="margin-top:.7rem">The <code>mode</code> is there because it is the one thing about a
+      home a bind <em>cannot change</em> — and therefore the one thing worth asserting about.</p>
+    </div>
+  </div>
+
+  <h3 class="rv">Versioning and compatibility</h3>
+  <p class="rv">
+    <strong>Compatibility is by major version.</strong> A contractPackage a users repo published keeps
+    binding on a host that has moved on — until a major release, which is refused by name with a message
+    explaining that the agreement itself changed. Pre-1.0 the minor plays the major's part, so
+    <code>0.3.1</code> and <code>0.3.9</code> are compatible while <code>0.4.0</code> is not.
+  </p>
+  <p class="rv">
+    Keeping <code>inputs.users.inputs.contract.follows = "contract"</code> in the host's flake sidesteps
+    the question entirely: both sides are then the same contract, by construction.
+  </p>
+
+  <h3 class="rv">Activation, on the host</h3>
+  <p class="rv">
+    A bind installs a systemd oneshot — not an <code>activationScript</code> — because activation must
+    run <em>after</em> PAM is configured. It executes the home's <code>activate</code> inside a real
+    login session (<code>runuser -l</code>), which is what a genuine home-manager activation needs for
+    its sd-switch step: a running user systemd manager and an <code>XDG_RUNTIME_DIR</code>. The account
+    is set to <code>linger</code>, so the home's user services keep running after activation exits.
+    If <code>allowedPrograms</code> is non-empty, a second step then replaces
+    <code>~/.nix-profile</code> with the host-built policy profile.
+  </p>
+</section>
+
+<!-- ══════════════ 11 ══════════════ -->
+<section id="s11">
+  <div class="sec-head"><div class="sec-num">11</div>
+    <div><h2>Proving it</h2><div class="sub">Three surfaces, three kinds of evidence</div></div>
+  </div>
+
+  <p class="rv">
+    The contract ships three distinct surfaces, answering three different questions. <strong>lib</strong>
+    is the contract's own functions. The <strong>check kit</strong>, inside <code>lib</code>, hands a
+    consumer the <em>technique</em> for proving a claim about its own repo — the contract hands over the
+    technique, never the verdict. <strong>testing</strong> hands over a <em>machine</em>: it boots a seat
+    host, and the claim stays the caller's to write.
+  </p>
+
+  <h3 class="rv">The check kit &mdash; proofs only a consumer can run</h3>
+  <div class="tbl-wrap rv"><table>
+    <thead><tr><th>Check</th><th>Proves</th></tr></thead>
+    <tbody>
+      <tr><td class="opt">mkConfinementCheck</td><td>Your <em>real</em> module set has no system channel — positive control included.</td></tr>
+      <tr><td class="opt">mkIdentityPostureCheck</td><td>Every <code>identity.json</code> carries the hash strength <em>you</em> chose. Consumer-owned and opt-in, because a private repo may legitimately ship <code>$6$</code> while a public one needs memory-hard <code>$y$</code>. The loader imposes none.</td></tr>
+      <tr><td class="opt">mkHomeEvalCheck</td><td>Every home you build evaluates, on every system you build for.</td></tr>
+      <tr><td class="opt">mkMemberChecks</td><td>All three, across every member, in one call. <strong>Use the adapter</strong> unless your fleet builds different members on different systems — a hand-listed check set always misses the member somebody forgot to add, and a missing check reads exactly like a passing one.</td></tr>
+      <tr><td class="opt">mkClaimReport</td><td>Nothing — it <em>reports</em>. Runs your named claims, prints an <code>ok</code>/<code>FAIL</code> line each, threads in proofs whose <em>being built</em> is the verdict, and fails the build if anything failed. An empty claim list is refused: a report folded over nothing prints a header and passes.</td></tr>
+      <tr><td class="opt">mkProofPrelude</td><td>The shell an execution proof opens with — a <code>fail &lt;message&gt;</code> that names the proof on stderr and exits non-zero.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 class="rv">The seat harness</h3>
+  <p class="rv">
+    <code>testing.mkSeatHarness</code> gives a consumer the boot base, the greeter preamble and greetd
+    wiring, and the fixtures a seat test varies against. It is what the contract's own runtime proofs are
+    built on — published so that a consumer's VM test binds <em>that same harness</em> rather than
+    re-authoring a seat host free to drift from it.
+  </p>
+
+  <h3 class="rv">Running everything</h3>
+  <p class="rv">
+    &ldquo;Run everything&rdquo; is three targets, because the two reference fleets carry their own
+    checks — they need home-manager, which the contract deliberately does not input. Nothing but running
+    all three catches drift between them.
+  </p>
+  <pre class="rv">nix flake check .                <span class="c"># the contract: synthetic conformance + runtime VM tests</span>
+nix flake check ./examples/users <span class="c"># the reference users repo</span>
+nix flake check ./examples/fleet <span class="c"># the reference host repo</span></pre>
+
+  <div class="duo rv">
+    <div class="panel c">
+      <div class="card-h c">The conformance suite</div>
+      <p>Adversarial <em>synthetic</em> worlds probing the decision logic — proving the filter
+      <strong>drops</strong> and the guard <strong>fires</strong>. No host repo, no home-manager. It
+      borrows real atoms from the reference fleets, <strong>never the reverse</strong>.</p>
+    </div>
+    <div class="panel c">
+      <div class="card-h c">The runtime VMs</div>
+      <p>Booted NixOS VMs proving what eval cannot show: that the display surface <em>renders</em>, that
+      a greeter login materialises a real account and activates a real home, that the full
+      archive&nbsp;&rarr;&nbsp;auth&nbsp;&rarr;&nbsp;build&nbsp;&rarr;&nbsp;provision&nbsp;&rarr;&nbsp;session
+      loop runs end to end, and that a real Plasma desktop comes up the way a display manager would exec
+      it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 12 ══════════════ -->
+<section id="s12">
+  <div class="sec-head"><div class="sec-num">12</div>
+    <div><h2>The laws</h2><div class="sub">Every one of these is enforced somewhere, not merely intended</div></div>
+  </div>
+
+  <div class="rv">
+    <div class="law"><div class="dot">01</div><div><b>A user is self-contained.</b><span>Identity, declaration and home all live in the user's own directory. Lifting one user out into their own repo is a directory move. No host may own a user's credentials.</span></div></div>
+    <div class="law"><div class="dot">02</div><div><b>A grant can never change a home.</b><span>A home is built ahead of time and sealed. One home serves granted and ungranted alike, for every feature without exception — there is no per-feature flag saying otherwise.</span></div></div>
+    <div class="law"><div class="dot">03</div><div><b>An identity describes a person, never their powers.</b><span>An account's groups come from exactly two places, and both are decisions somebody else made: the session it was bound in, and what the host afforded.</span></div></div>
+    <div class="law"><div class="dot">04</div><div><b>The two registries touch nowhere.</b><span>No entry in <code>modes.nix</code> names a feature; no entry in <code>features.nix</code> names a mode. No value crosses between them.</span></div></div>
+    <div class="law"><div class="dot">05</div><div><b>Incapacity, not a ban.</b><span>A headless host does not refuse a desktop, it cannot run one. That is why <code>contract.modes</code> and <code>affordances</code> are different mechanisms in different places.</span></div></div>
+    <div class="law"><div class="dot">06</div><div><b>Data before code.</b><span>A greeter authenticates on inert data before any of the user's Nix is evaluated. Eval is not a sandbox.</span></div></div>
+    <div class="law"><div class="dot">07</div><div><b>No secrets beyond the login credential.</b><span>A one-way <code>hashedPassword</code> and public keys. A user's own home secrets ride the user's own key, provisioned by the user's own home module — never through the contract.</span></div></div>
+    <div class="law"><div class="dot">08</div><div><b>The runtime evaluates the same kernels.</b><span>Selection and the account plan each have exactly one implementation, executed at build time and at login. A rule with two spellings is a rule with two behaviours.</span></div></div>
+    <div class="law"><div class="dot">09</div><div><b>One option prefix per party.</b><span>Everything is under <code>contract.*</code>, on both eval-sides. There is no second prefix and none per party.</span></div></div>
+    <div class="law"><div class="dot">10</div><div><b>Mechanism from the contract, bindings from the host.</b><span>The display launch, the home builder, the trust policy are the host's. Everything security-critical is the contract's, so no fleet re-implements it and drifts.</span></div></div>
+    <div class="law"><div class="dot">11</div><div><b>The contract depends on nothing but nixpkgs lib.</b><span>No home-manager, no packages. That is what lets a greeter re-import the kit at login with only <code>lib</code> in hand, and what forces the reference fleets to carry their own checks.</span></div></div>
+    <div class="law"><div class="dot">12</div><div><b>Fail-closed on capability, fail-open on coverage.</b><span>A host that says nothing runs only the floor. A matrix row that says nothing bakes everything. Fail-closed where the risk of the unknown is admitting something; fail-open where the risk is omitting it.</span></div></div>
+  </div>
+
+  <hr class="seam">
+
+  <h3 class="rv">Where to read further</h3>
+  <div class="trio rv">
+    <div class="panel">
+      <div class="card-h">docs/adr/</div>
+      <p>Twenty-seven architecture decision records. Every decision, with its rationale <em>and what was
+      rejected</em>.</p>
+    </div>
+    <div class="panel">
+      <div class="card-h">CONTEXT.md</div>
+      <p>The glossary — the index of <em>language</em>, not decisions. Each word means one thing,
+      everywhere.</p>
+    </div>
+    <div class="panel">
+      <div class="card-h">examples/</div>
+      <p>The positive space: <code>examples/users</code> (a real users repo, seven people) and
+      <code>examples/fleet</code> (a real host repo — a seat plus two headless boxes).</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Generated from the repository at <code>~/code/host-user-contract</code> &nbsp;·&nbsp; the contract, its two registries, and everything both parties can say.
+</footer>
+
+</main>
+</div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   Data mirrored from the repo's two registries.
+   ══════════════════════════════════════════════════════════════════ */
+const FLOOR = "cli";
+const MODE_GROUPS = {
+  cli:    [],
+  gui:    ["input", "uinput", "plugdev", "dialout"],
+  mobile: ["input", "uinput"]          /* hypothetical — see modes.nix's closing comment */
+};
+const FEATURE_GROUPS = {
+  "sudo":           ["wheel"],
+  "containers":     ["docker", "podman"],
+  "virtualization": ["disk", "qemu-libvirtd", "libvirtd"],
+  "nix-daemon":     ["nix-users"]
+};
+const PRIVILEGED = new Set([
+  "wheel","docker","podman","disk","qemu-libvirtd","libvirtd","nix-users","kvm"
+]);
+
+const $ = id => document.getElementById(id);
+const fmt = l => l.length ? l.join(", ") : "—";
+
+/* ── simulator 1: the selection ────────────────────────────────── */
+function selection() {
+  const third = $("third").checked;
+  ["h_mob_l","u_mob_l","m_mob_l"].forEach(id => $(id).style.display = third ? "" : "none");
+  if (!third) { $("h_mob").checked = false; $("u_mob").checked = false; $("m_mob").checked = false; }
+
+  const modeOrder = third ? ["cli","gui","mobile"] : ["cli","gui"];
+
+  // runs = the floor ∪ what the machine declared  (runsWith: a filter over the registry)
+  const declared = [];
+  if ($("h_gui").checked) declared.push("gui");
+  if (third && $("h_mob").checked) declared.push("mobile");
+  const runs = modeOrder.filter(m => m === FLOOR || declared.includes(m));
+
+  // what the user declares
+  const userModes = [];
+  if ($("u_cli").checked) userModes.push("cli");
+  if ($("u_gui").checked) userModes.push("gui");
+  if (third && $("u_mob").checked) userModes.push("mobile");
+
+  // the matrix row for this system: subtraction only
+  const subtractedByRow = [];
+  if ($("m_gui").checked) subtractedByRow.push("gui");
+  if (third && $("m_mob").checked) subtractedByRow.push("mobile");
+
+  // published here = the user's enabled modes, narrowed by this system's row
+  const published = userModes.filter(m => !subtractedByRow.includes(m));
+
+  $("v_runs").textContent = fmt(runs);
+  $("v_decl").textContent = fmt(userModes);
+  $("v_pub").textContent  = fmt(published);
+
+  const candidates = runs.filter(m => published.includes(m));
+  const rich = candidates.filter(m => m !== FLOOR);
+  $("v_cand").textContent = fmt(candidates);
+
+  const out = $("v_out");
+  const refuse = (title, msg, why, fix) => {
+    out.innerHTML =
+      '<div class="result-box no"><div class="rh">' + title + '</div>' +
+      '<div class="rm">' + msg + '</div>' +
+      '<div class="rw">' + why + '</div>' +
+      '<div class="rf"><b>Fix:</b> ' + fix + '</div></div>';
+  };
+
+  // ── the bind's own precondition, checked BEFORE selection ──
+  const subtracted = runs.filter(m => userModes.includes(m) && !published.includes(m));
+  if (subtracted.length) {
+    refuse("Refused &#183; matrix subtraction",
+      "this host runs [" + runs.join(" ") + "] and “ada” runs in [" + userModes.join(" ") +
+      "], but [" + subtracted.join(" ") + "] is not published for “x86_64-linux” — the producer’s home matrix took it away",
+      "That matrix row is the users repo stating this system’s seats CANNOT run that mode, while this host affords the feature it is run under. Nothing built the home, so binding would fall back to the floor and activate a lesser session with no message at all.",
+      "Stop subtracting that mode for that system in the producer’s <code>mkHomeMatrix</code>, or stop declaring it on this host.");
+    return;
+  }
+
+  // ── selection's own two refusals ──
+  if (candidates.length === 0) {
+    refuse("Refused &#183; no common mode",
+      "no mode is common to the host and “ada” — this host runs [" + runs.join(" ") +
+      "]; “ada” publishes [" + (published.join(" ") || "") + "] here",
+      "A mode is what a home IS, so a mismatch is a REFUSAL rather than a silently lesser home.",
+      "Bind a user that enables one of the modes this host runs.");
+    return;
+  }
+  if (rich.length > 1) {
+    refuse("Refused &#183; more than one rich mode",
+      "more than one rich mode is available for “ada”: [" + rich.join(" ") + "]",
+      "Rich modes are incomparable by design — a phone and a desktop are not ordered against each other — so a host offering two of them has not said which session it means, and no ordering exists here to break the tie.",
+      "Narrow the host’s declared modes, or the user’s enabled modes, to one of them.");
+    return;
+  }
+
+  const mode = rich.length ? rich[0] : FLOOR;
+  const groups = MODE_GROUPS[mode].filter(g => !PRIVILEGED.has(g));
+  out.innerHTML =
+    '<div class="result-box ok"><div class="rh">Bound</div>' +
+    '<div class="rm">contract.users.ada.mode = <b>&quot;' + mode + '&quot;</b><br>' +
+    'activates <b>contractPackages.' + mode + '</b></div>' +
+    '<div class="rw">' +
+      (rich.length
+        ? "A rich mode always beats the floor — the machine runs it and the user has a home built for it."
+        : "The floor. Every host runs it, nobody declares it, and it is what is left when no richer session shape is common to both sides.") +
+    '</div>' +
+    '<div class="rf"><b>The mode carries:</b> ' +
+      (groups.length ? groups.map(g => '<code>' + g + '</code>').join(" ") : "no groups at all")
+    + '</div></div>';
+}
+
+/* ── simulator 2: the account plan ─────────────────────────────── */
+function accountPlan() {
+  const mode = document.querySelector('input[name="apmode"]:checked').value;
+  const afforded = [...document.querySelectorAll(".afd")].filter(c => c.checked).map(c => c.value);
+
+  // extraGroups = withoutPrivileged(mode groups)  ∪  grantedGroups(grants)
+  const modeGroups  = MODE_GROUPS[mode].filter(g => !PRIVILEGED.has(g));
+  const grantGroups = afforded.flatMap(f => FEATURE_GROUPS[f]);
+  const seen = new Set();
+  const rows = [];
+  modeGroups.forEach(g  => { if (!seen.has(g)) { seen.add(g); rows.push(["mode", g]); } });
+  grantGroups.forEach(g => { if (!seen.has(g)) { seen.add(g); rows.push(["grant", g]); } });
+
+  $("ap_groups").innerHTML = rows.length
+    ? rows.map(([k, g]) => '<span class="gchip ' + k + '">' + g + '</span>').join("")
+    : '<span class="gchip none">[ ]</span>';
+
+  const daemon = afforded.includes("nix-daemon");
+  $("ap_note").innerHTML =
+    '<div class="result-box ' + (afforded.length ? "no" : "ok") + '">' +
+    '<div class="rh">' + (afforded.length ? "Privileged" : "Unprivileged") + '</div>' +
+    '<div class="rm">' +
+      (afforded.length
+        ? "Every group above marked in red is root-adjacent, and a grant is the only route to it."
+        : "A session, and no power at all — exactly what a walk-up greeter user receives.") +
+    '</div>' +
+    '<div class="rw">' +
+      (mode === "gui"
+        ? "The <span class=\"t u\">gui</span> groups arrived with the MODE, not a grant. Nobody decided this person should have input devices — running a graphical session needs them. "
+        : "The floor needs no groups: a terminal has no devices to reach. ") +
+      (daemon
+        ? "With <code>nix-daemon</code> afforded, this user can build derivations and reach the store freely."
+        : "Without <code>nix-daemon</code>, this user is <b>daemon-restricted</b>: they cannot build derivations, install packages, or add store paths beyond what the host activated for them — which is what makes <code>packagePolicy.allowedPrograms</code> meaningful.") +
+    '</div></div>';
+}
+
+/* ── wiring ────────────────────────────────────────────────────── */
+["h_gui","h_mob","u_cli","u_gui","u_mob","m_gui","m_mob","third"]
+  .forEach(id => $(id).addEventListener("change", selection));
+document.querySelectorAll('input[name="apmode"], .afd')
+  .forEach(el => el.addEventListener("change", accountPlan));
+selection();
+accountPlan();
+
+/* ── scroll reveal ─────────────────────────────────────────────── */
+const io = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+}, { rootMargin: "0px 0px -8% 0px", threshold: 0.02 });
+document.querySelectorAll(".rv").forEach((el, i) => {
+  el.style.transitionDelay = (Math.min(i % 5, 4) * 45) + "ms";
+  io.observe(el);
+});
+
+/* ── active section in the nav ─────────────────────────────────── */
+const links = [...document.querySelectorAll("nav.toc a[href^='#s']")];
+const secs  = links.map(a => document.querySelector(a.getAttribute("href"))).filter(Boolean);
+const spy = new IntersectionObserver(es => {
+  es.forEach(e => {
+    if (!e.isIntersecting) return;
+    links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + e.target.id));
+  });
+}, { rootMargin: "-15% 0px -70% 0px" });
+secs.forEach(s => spy.observe(s));
+</script>
+</body>
+</html>
