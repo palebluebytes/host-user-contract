@@ -3,4 +3,4 @@
 #
 # `manifest.nix` imports it and gates on it: a manifest is accepted when its version shares this
 # one's compatibility line, so a published package binds until a MAJOR release.
-"0.1.0" # x-release-please-version
+"0.1.1" # x-release-please-version
