@@ -8,6 +8,12 @@
   lib,
   pkgs,
   nixosConfigurations,
+  # How this fleet REPORTS what it found — the contract's own claim report (issue #87), taken as an
+  # argument like every other value here. This file used to carry its own filter, its own `ok`/`FAIL`
+  # rendering and its own exit, near-verbatim with the conformance suite's; neither copy knew about
+  # the other, so the two were free to drift and the reference user fleet could only invent a third
+  # spelling. Now the three teach one shape, which is a reference fleet's whole job (ADR-0022).
+  mkClaimReport,
 }:
 let
   cfgs = lib.mapAttrs (_: c: c.config) nixosConfigurations;
@@ -111,20 +117,13 @@ let
       ok = cfgs.agent.contract.exposed && (failing cfgs.agent == [ ]);
     }
   ];
-
-  failures = builtins.filter (a: !a.ok) assertions;
-  report = lib.concatMapStringsSep "\n" (
-    a: "  ${if a.ok then "ok  " else "FAIL"}  ${a.name}"
-  ) assertions;
 in
-pkgs.runCommand "reference-fleet-checks" { } ''
-  cat <<'EOF'
-  reference fleet — real hosts × the reference user fleet (bound turnkey via bindContractUser):
-  ${report}
-  EOF
-  ${lib.optionalString (failures != [ ]) ''
-    echo "reference fleet checks FAILED (see above)" >&2
-    exit 1
-  ''}
-  touch $out
-''
+# Every claim above, through the shared report. No `proofs` here and that is the fleet's shape, not
+# an omission: these are all eval-level coherence claims over evaluated host configs, so there is
+# nothing to build beside them — the report renders no execution-proof section when there is none.
+mkClaimReport {
+  inherit pkgs;
+  name = "reference-fleet-checks";
+  title = "reference fleet — real hosts × the reference user fleet (bound turnkey via bindContractUser)";
+  claims = assertions;
+}

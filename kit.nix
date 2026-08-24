@@ -99,6 +99,11 @@ let
 
   # The check kit: the proofs a CONSUMER runs over its own repo (ADR-0025).
   checkKit = import ./check-kit.nix { inherit lib diag; };
+  # …and, on the same public surface but NOT one of its proofs, how a suite REPORTS what it found.
+  # A sibling import rather than a member of `check-kit.nix`: everything in that file fails LOUDLY
+  # at eval with a named message, and this one's verdict is deliberately in the BUILDER, so folding
+  # it in would make that file's own header false (issue #87).
+  claimReport = import ./claim-report.nix { inherit lib diag; };
 
   # --- the two substantial pieces, split out for focus ---
   contractLib = import ./lib.nix {
@@ -261,6 +266,12 @@ in
       mkHomeEvalCheck
       mkMemberChecks
       ;
+
+    # …and beside them, the one entry here that proves NOTHING: how a suite of named claims REPORTS
+    # itself — the `ok`/`FAIL` fold, the execution proofs threaded in as build inputs, and the
+    # non-zero exit. Same surface and same package-free rule as the four above, different question
+    # (`claim-report.nix` carries the signature and both kinds of claim).
+    inherit (claimReport) mkClaimReport;
   };
 
   # ── INTERNAL ─────────────────────────────────────────────────────────────────────────────────

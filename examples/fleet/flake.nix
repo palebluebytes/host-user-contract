@@ -73,6 +73,9 @@
         # counterpart to the synthetic suite's adversarial probes.
         fleet-eval = import ./checks.nix {
           inherit lib pkgs nixosConfigurations;
+          # The report the contract's own suite reports through, so this fleet and the oracle say
+          # what they found in one voice rather than two look-alike copies.
+          inherit (contract.lib) mkClaimReport;
         };
 
         # The runtime greeter path END-TO-END: a booted seat greeter-provisions ada from her

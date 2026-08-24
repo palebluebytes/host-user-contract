@@ -247,9 +247,15 @@ present.
   from them, **never the reverse**.
 - **check kit** — `check-kit.nix`: the proofs a CONSUMER runs over its OWN repo
   (`mkConfinementCheck`, `mkIdentityPostureCheck`, `mkHomeEvalCheck`, and `mkMemberChecks` folding
-  the three over a member set). A third thing beside the two above: the contract ships the
+  the three over a member set), plus `mkClaimReport`, which proves nothing and owns how a suite
+  REPORTS what it found. A third thing beside the two above: the contract ships the
   **technique**, never the verdict, because the material — a repo's real imports, identities and
   homes — is on the far side of the boundary ([0025](docs/adr/0025-consumer-check-kit.md)).
+- **claim report** — a suite's own output, through `mkClaimReport`: named claims rendered
+  `ok`/`FAIL`, execution proofs threaded in as build inputs, non-zero exit if anything failed. Two
+  KINDS of claim — an **eval claim** (`{ name; ok; }`, a boolean already decided) and an **execution
+  proof** (a derivation whose being built IS the verdict, for a claim only answerable from realized
+  content).
 - **positive control** — the legitimate case a negative check must still ACCEPT. Without it a
   harness that rejects everything reads as a passing check. Asserted before the negative claim, so
   a broken harness is reported as one.

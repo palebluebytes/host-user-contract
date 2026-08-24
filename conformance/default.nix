@@ -46,6 +46,7 @@ let
     bindContractUser
     bindContractUsers
     renderNixConfig
+    mkClaimReport
     ;
   inherit (kit.internal)
     diag
@@ -160,6 +161,16 @@ let
         mkMemberChecks
         ;
     })
+    # The report every claim above is delivered THROUGH — including this domain's own. Its two
+    # build-verdict directions are execution proofs, since a reporter's refusal lives in the
+    # builder and no eval-time claim can reach it.
+    (import ./claim-report.nix {
+      inherit
+        lib
+        pkgs
+        mkClaimReport
+        ;
+    })
     (import ./identity-posture.nix {
       inherit
         lib
@@ -253,22 +264,20 @@ let
   # the final runCommand's inputs, so building conformance builds them too.
   drvs = lib.foldl' (acc: d: acc // (d.drvs or { })) { } domains;
 
-  failures = builtins.filter (a: !a.ok) assertions;
-  report = lib.concatMapStringsSep "\n" (
-    a: "  ${if a.ok then "ok  " else "FAIL"}  ${a.name}"
-  ) assertions;
 in
-pkgs.runCommand "contract-conformance" drvs ''
-  cat <<'EOF'
-  contract conformance — synthetic users × the contract umbrella (no host repo):
-  ${report}
-
-  execution proofs (built ⇒ ok):
-  ${lib.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "  ${n}: ${v}") drvs)}
-  EOF
-  ${lib.optionalString (failures != [ ]) ''
-    echo "contract conformance FAILED (see above)" >&2
-    exit 1
-  ''}
-  touch $out
-''
+# Every claim above, and every execution proof beside it, delivered through the ONE report the check
+# kit owns (issue #87). What used to sit here — the failure filter, the `ok`/`FAIL` rendering, the
+# proofs section and the non-zero exit — was spelled out a second time in `examples/fleet/checks.nix`
+# and a third time, differently, in the reference user fleet. The format had no owner, so the copies
+# were free to drift and nothing would have caught it.
+#
+# Reached through `self.lib` like every other public name here, deliberately: the suite then reports
+# through the REAL flake output a consumer gets, so a report wired to the wrong kit attr fails the
+# suite rather than passing it quietly.
+mkClaimReport {
+  inherit pkgs;
+  name = "contract-conformance";
+  title = "contract conformance — synthetic users × the contract umbrella (no host repo)";
+  claims = assertions;
+  proofs = drvs;
+}

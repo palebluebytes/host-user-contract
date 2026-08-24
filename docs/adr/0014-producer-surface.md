@@ -18,6 +18,7 @@ silently when mistyped.
 | `mkContractFleet` | every member × system × mode, and the outputs |
 | `mkContractUsers` / `mkContractUser` | the two rungs below, for a bake that is not a cross-product |
 | `mkConfinementCheck` · `mkIdentityPostureCheck` · `mkHomeEvalCheck` · `mkMemberChecks` | the proofs only a consumer can run |
+| `mkClaimReport` | how a suite of named claims reports what it found |
 
 ### The bar for joining it
 

@@ -22,8 +22,8 @@ half can only be proven where those imports are.
 
 ## Decision
 
-**The contract ships the technique, not the verdict.** `check-kit.nix` exposes four functions a
-consumer calls in its own `checks`:
+**The contract ships the technique, not the verdict.** `check-kit.nix` exposes four proof functions
+a consumer calls in its own `checks`:
 
 | function | proves |
 | --- | --- |
@@ -31,6 +31,33 @@ consumer calls in its own `checks`:
 | `mkIdentityPostureCheck` | every identity carries the repo's chosen credential posture |
 | `mkHomeEvalCheck` | one user's every published home evaluates on every system baked |
 | `mkMemberChecks` | the members fold over the three above, so no call site names a check |
+
+…and one function that proves nothing at all.
+
+## The kit also owns how a suite REPORTS
+
+`mkClaimReport` is the fifth surface and the odd one out: the four above answer *is this repo's
+material sound?*, and it answers *how does a suite say what it found?* It takes a list of named
+`{ name; ok; }` claims, a report title, `pkgs`, and — optionally — **execution proofs**, derivations
+whose *being built* is the verdict. It renders an `ok`/`FAIL` line per claim, threads the proofs in
+as the report's own build inputs, and exits non-zero if anything failed.
+
+It is here rather than beside the contract's own internals for the same reason the four are: it is
+**technique**, the material is the consumer's, and it is package-free by the same injection. It also
+earns its place by the [0014](0014-producer-surface.md) bar — three sites in this repo were running
+that fold: two near-verbatim (the conformance collector and the reference host fleet, which now
+report through it) and a third, the reference user fleet, which had invented its own shell
+harnesses. A format with no owner is a format free to drift.
+
+**The two kinds of claim are not interchangeable.** An eval claim is decided before anything is
+built and reads as a line; a proof is decided by building. A verdict that can only be reached from
+*realized* content — what actually lands in a home — has to be a proof, and calling it an eval claim
+would be an approximation dressed as a verdict ([0027](0027-mode-need-not-change-home-content.md)
+carries the worked case).
+
+**An empty claim list is a hard error**, by the same rule as every other empty input here: a report
+folded over nothing prints its header, touches its output and reports success. That failure is
+invisible in exactly the way the whole kit exists to prevent.
 
 It is lib-only and package-free ([0002](0002-contract-is-a-standalone-flake.md)). The caller
 injects `pkgs` for a trivial witness derivation and — for the confinement check — **its own home

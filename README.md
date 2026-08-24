@@ -246,6 +246,14 @@ Use the adapter unless your fleet builds different members on different systems 
 check set always misses the member somebody forgot to add, and a missing check reads exactly like a
 passing one.
 
+One more, which proves nothing and reports everything:
+
+| function | does |
+| --- | --- |
+| `mkClaimReport { name; title; claims; pkgs; proofs ? { } }` | runs your named `{ name; ok; }` claims, prints an `ok`/`FAIL` line each, threads `proofs` (derivations whose *being built* is the verdict) in as build inputs, and fails the build if anything failed |
+
+An empty claim list is refused: a report folded over nothing prints a header and passes.
+
 ### Modules
 
 | output | for |
