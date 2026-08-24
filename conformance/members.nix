@@ -36,7 +36,23 @@ let
   # The REAL reference fleet — the synthetic suite borrows real atoms from the positive-space
   # example, never the reverse. The derivation must work over the layout a consumer actually ships,
   # not only over the fixture shaped for it.
-  realMembers = mkMembers { usersDir = ../examples/users/users; };
+  #
+  # Borrowed through the toolkit's reference seam rather than pointed at `examples/` here:
+  # `referenceMembers` IS `mkMembers` over `referenceUsersDir`, and it is the ONE derivation the
+  # suite makes over that directory (../conformance/toolkit.nix). `portable` is the role the
+  # reference fleet's two-mode user plays — this domain never needs to know who that is.
+  inherit (toolkit) referenceMembers referenceUsersDir;
+  portable = toolkit.referenceUsers.portable;
+
+  # The reference directory's own contents, read the same way the fixture's are above — because
+  # the borrowed atoms are all DERIVED from `referenceUsersDir`, and a claim whose two sides both
+  # came out of `mkMembers` would prove nothing about `mkMembers`. This is the independent side.
+  referenceEntries = builtins.readDir referenceUsersDir;
+  referenceNames = lib.filter (
+    n:
+    referenceEntries.${n} == "directory"
+    && builtins.pathExists (referenceUsersDir + "/${n}/identity.json")
+  ) (lib.attrNames referenceEntries);
 in
 {
   assertions = [
@@ -88,10 +104,13 @@ in
     {
       name = "members: derives the reference fleet's own members from the users-repo layout";
       ok =
-        (realMembers ? ada)
-        && realMembers.ada.dir == ../examples/users/users/ada
-        && realMembers.ada.identity.username == "ada"
-        && lib.length (lib.attrNames realMembers) > 1;
+        lib.attrNames referenceMembers == referenceNames
+        && lib.length referenceNames > 1
+        && lib.all (n: referenceMembers.${n}.dir == referenceUsersDir + "/${n}") referenceNames
+        # …and a borrowed member really carries what was on disk under its own name: the directory
+        # name and the username inside that directory's identity.json agree. The fixture claims
+        # above cannot make this one — its identity.json was written to match by hand.
+        && portable.identity.username == portable.name;
     }
   ];
 }

@@ -15,17 +15,18 @@
   mkIdentityPostureCheck,
 }:
 let
-  # `referenceIdentity` IS `loadIdentity examples/users/users/ada/identity.json` (../conformance/
-  # toolkit.nix) — the loader's own output, reused rather than re-loaded, so this domain reads the
-  # one load the suite already makes. Ada ships `$y$` yescrypt: `examples/users` lives in a PUBLIC
-  # repo, and ADR-0004 assigns a public/shared repo the yescrypt posture. So the REAL reference
-  # identity is the SATISFYING case here, and the rejecting case is synthetic.
+  # The reference fleet's PORTABLE user, borrowed by role through the toolkit's reference seam
+  # (../conformance/toolkit.nix). Her identity is the LOADER's own output on the member set the
+  # suite derives once, reused rather than re-loaded, so this domain reads the one load already
+  # made. She ships `$y$` yescrypt: `examples/users` lives in a PUBLIC repo, and ADR-0004 assigns a
+  # public/shared repo the yescrypt posture. So the REAL reference identity is the SATISFYING case
+  # here, and the rejecting case is synthetic.
   #
   # That is the right way round. The value the suite proves the loader returns untouched is a real
   # shipped credential, while the hash that must FAIL a posture is a fixture nobody ships — rather
   # than the reverse, which would have required the reference fleet to keep shipping a hash its own
   # ADR tells a public repo not to use, purely to serve a test.
-  inherit (toolkit) referenceIdentity;
+  referenceIdentity = toolkit.referenceUsers.portable.identity;
   yescryptIdentity = referenceIdentity;
   sha512Identity = referenceIdentity // {
     username = "sixto";

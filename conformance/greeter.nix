@@ -37,17 +37,24 @@ let
 
   # The auth-flow EXECUTION test (the CANONICAL eval-free auth): pull the
   # actual shipped `contract-greeter-auth` script out of the enabled greeter's systemPackages and
-  # run it against the reference user ada's identity.json. It must accept the right password and
-  # reject a wrong one / a mismatched username — having read only data (`jq` + libc crypt), never
-  # the user's Nix. Tier 2 isolates the password check (no signature); the Tier-1 block then
-  # exercises the signature branch with a real SSH key (good signature accepts, untrusted-key and
-  # absent signatures reject). The cleartext for ada's hashedPassword is
-  # "correct-horse-battery-staple".
+  # run it against the PORTABLE reference user's real identity.json. It must accept the right
+  # password and reject a wrong one / a mismatched username — having read only data (`jq` + libc
+  # crypt), never the user's Nix. Tier 2 isolates the password check (no signature); the Tier-1
+  # block then exercises the signature branch with a real SSH key (good signature accepts,
+  # untrusted-key and absent signatures reject).
   authScript =
     lib.findFirst (p: lib.hasInfix "contract-greeter-auth" (p.name or ""))
       (throw "conformance: contract-greeter-auth not found in the greeter's systemPackages")
       greeterBound.environment.systemPackages;
-  referenceSrc = ../examples/users/users/ada;
+  # The reference fleet's PORTABLE user — her real directory, her real username and the cleartext
+  # behind her real `hashedPassword` — borrowed by role through the toolkit's reference seam
+  # (../conformance/toolkit.nix), so this proof names no path and no person.
+  inherit (toolkit) referenceSecret;
+  portable = toolkit.referenceUsers.portable;
+  portableSrc = portable.dir;
+  # The username the AUTH SCRIPT matches on is the one inside `identity.json`, not the directory
+  # name — so this reads the identity, and ./members.nix is what keeps the two spellings honest.
+  portableName = portable.identity.username;
   authFlowTest =
     pkgs.runCommand "contract-greeter-auth-flow"
       {
@@ -58,20 +65,20 @@ let
       }
       ''
         export HOME=$PWD
-        src=${referenceSrc}
+        src=${portableSrc}
 
         echo "# right password ⇒ accepts"
-        printf '%s\n' 'correct-horse-battery-staple' \
-          | contract-greeter-auth "$src" ada tier2 /dev/null
+        printf '%s\n' '${referenceSecret}' \
+          | contract-greeter-auth "$src" ${portableName} tier2 /dev/null
 
         echo "# wrong password ⇒ rejects"
         if printf '%s\n' 'wrong-password' \
-          | contract-greeter-auth "$src" ada tier2 /dev/null 2>/dev/null; then
+          | contract-greeter-auth "$src" ${portableName} tier2 /dev/null 2>/dev/null; then
           echo "FAIL: a wrong password was accepted" >&2; exit 1
         fi
 
         echo "# username mismatch ⇒ rejects (no impersonation)"
-        if printf '%s\n' 'correct-horse-battery-staple' \
+        if printf '%s\n' '${referenceSecret}' \
           | contract-greeter-auth "$src" someone-else tier2 /dev/null 2>/dev/null; then
           echo "FAIL: a mismatched username was accepted" >&2; exit 1
         fi
@@ -81,8 +88,8 @@ let
         # reads the stored `$id$` prefix and applies the matching KDF, exactly as /etc/shadow does.
         # Proving that needs both branches driven, so the two fixtures are deliberately split by
         # algorithm:
-        #   - ada (above) carries $y$ yescrypt — the REAL reference identity, since examples/users
-        #     is a public repo, and a public repo takes the yescrypt posture;
+        #   - the reference user above carries $y$ yescrypt — the REAL shipped identity, since
+        #     examples/users is a public repo, and a public repo takes the yescrypt posture;
         #   - this synthetic fixture carries $6$ sha512crypt — legal under the PRIVATE-repo
         #     posture, and the branch a roaming user from a private repo will arrive with.
         # A format-handling regression on either therefore cannot pass conformance unnoticed. The
@@ -97,6 +104,9 @@ let
         IDENTITY
 
         echo "# sha512crypt: right password ⇒ accepts (the \$6\$ branch)"
+        # A LITERAL, not `referenceSecret`: the hash above is a frozen blob, so this cleartext
+        # cannot follow the reference fleet rotating its own. It is the same secret today and
+        # says so in prose; tying it to the atom would break this fixture the day that changed.
         printf '%s\n' 'correct-horse-battery-staple' \
           | contract-greeter-auth sha512-src sixto tier2 /dev/null
 
@@ -122,18 +132,18 @@ let
         printf '* %s\n' "$(cat attacker.pub)" > attacker-signers
 
         echo "# tier1: a host-trusted signature over the repo ⇒ accepts"
-        printf '%s\n' 'correct-horse-battery-staple' \
-          | contract-greeter-auth signed ada tier1 trusted-signers
+        printf '%s\n' '${referenceSecret}' \
+          | contract-greeter-auth signed ${portableName} tier1 trusted-signers
 
         echo "# tier1: a signature by an UNTRUSTED key ⇒ rejects"
-        if printf '%s\n' 'correct-horse-battery-staple' \
-          | contract-greeter-auth signed ada tier1 attacker-signers 2>/dev/null; then
+        if printf '%s\n' '${referenceSecret}' \
+          | contract-greeter-auth signed ${portableName} tier1 attacker-signers 2>/dev/null; then
           echo "FAIL: a signature by an untrusted key was accepted" >&2; exit 1
         fi
 
         echo "# tier1: no signature at all ⇒ rejects"
-        if printf '%s\n' 'correct-horse-battery-staple' \
-          | contract-greeter-auth "$src" ada tier1 trusted-signers 2>/dev/null; then
+        if printf '%s\n' '${referenceSecret}' \
+          | contract-greeter-auth "$src" ${portableName} tier1 trusted-signers 2>/dev/null; then
           echo "FAIL: an unsigned repo was accepted at tier1" >&2; exit 1
         fi
 

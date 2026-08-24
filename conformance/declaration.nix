@@ -29,7 +29,11 @@
   mkContractHome,
 }:
 let
-  inherit (toolkit) evalDeclaration referenceDeclaration;
+  inherit (toolkit) evalDeclaration;
+  # The reference fleet's PORTABLE user's own `user.nix`, evaluated once on the member set the
+  # toolkit derives and borrowed by role (../conformance/toolkit.nix) — this domain names neither
+  # the path nor the person.
+  referenceDeclaration = toolkit.referenceUsers.portable.declaration;
 
   # Nothing said at all.
   silent = evalDeclaration [ ];
@@ -166,9 +170,9 @@ in
 
     # ── THE REFERENCE ATOM ───────────────────────────────────────────────────────────────────
     {
-      # The real `users/ada/user.nix` from the reference fleet, read by this suite exactly as the
-      # producer reads it. If the reference user's own file ever stops saying what her header
-      # claims, this domain notices.
+      # The portable reference user's real `user.nix`, read by this suite exactly as the producer
+      # reads it. If that user's own file ever stops saying what the toolkit's note claims about
+      # her, this domain notices.
       name = "declaration: the reference user runs in both modes and asks for plasma";
       ok =
         enabledModesOf referenceDeclaration == [

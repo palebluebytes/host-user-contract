@@ -24,7 +24,6 @@
   lib,
   pkgs,
   toolkit,
-  mkMembers,
   mkMemberChecks,
 }:
 let
@@ -32,14 +31,17 @@ let
     evalHome
     homeForce
     homePositiveControl
-    referenceIdentity
     ;
+  # The reference fleet's PORTABLE user — a real shipped credential, borrowed by role through the
+  # toolkit's reference seam (../conformance/toolkit.nix) so this domain names no path and no
+  # person. She carries `$y$` yescrypt, the posture a public users repo takes.
+  referenceIdentity = toolkit.referenceUsers.portable.identity;
 
   # A synthetic member set: plain `{ name; dir; identity; }` members, which is all the adapter
   # consumes (the DERIVATION of a member set from a directory is ./members.nix's subject, and the
   # real derived one is claimed against below). Built over the suite's REAL reference identity, so
-  # the posture claims run against a credential a consumer actually ships — `ada` carries `$y$`,
-  # the public-repo posture `examples/users` chose.
+  # the posture claims run against a credential a consumer actually ships — the portable user
+  # carries `$y$`, the public-repo posture `examples/users` chose.
   memberFor = n: {
     name = n;
     dir = ./fixtures/members/pip;
@@ -112,8 +114,10 @@ let
 
   # The REAL derived members (the synthetic suite borrows real atoms from the positive-
   # space example, never the reverse) — the adapter must cover the fleet a consumer actually ships,
-  # not only a member set shaped for it here.
-  realMembers = mkMembers { usersDir = ../examples/users/users; };
+  # not only a member set shaped for it here. It is the suite's ONE `mkMembers` over that
+  # directory, borrowed rather than re-derived: a second read could drift from the set
+  # ./members.nix makes its claims about.
+  realMembers = toolkit.referenceMembers;
   realChecks = checksOver {
     members = realMembers;
     homes = homesOver realMembers;

@@ -23,20 +23,34 @@
   pkgs,
   system,
   toolkit,
-  loadIdentity,
   mkContractFleet,
   mkContractUsers,
 }:
 let
   inherit (toolkit) evalDeclaration;
+  # The two reference members this domain folds over, borrowed BY ROLE through the toolkit's
+  # reference seam (./toolkit.nix) — the suite takes real atoms from the positive-space example,
+  # never the reverse, and it does so without naming a path or a person.
+  inherit (toolkit.referenceUsers) portable cliOnly;
+  portableName = portable.name;
+  cliOnlyName = cliOnly.name;
+  # The pair as `attrNames` yields it — sorted, so a rename cannot silently reorder an expectation.
+  memberNames = lib.sort (a: b: a < b) [
+    portableName
+    cliOnlyName
+  ];
+  # The names the producer publishes for those two members over a set of modes. Derived rather
+  # than typed out, for the same reason: the RULE (`<user>-contractPackage-<mode>`) is what is
+  # being pinned, and it is spelled once here.
+  expectedPackageNames =
+    modes:
+    lib.sort (a: b: a < b) (lib.concatMap (n: map (m: "${n}-contractPackage-${m}") modes) memberNames);
 
-  # Two members, hand-built as in ./turnkey-bind.nix, so these stay claims about the FLEET rather
-  # than about `mkMembers` (which ./members.nix owns). Their identities come from the reference
-  # fleet — the suite borrows real atoms from the positive-space example, never the reverse.
-  #
-  # A member carries its DECLARATION, and the declaration is what decides which modes get built:
-  # the fold builds this system's row ∩ what the user runs in. So the declaration is a parameter
-  # here, and the publication claims below vary it rather than varying a home.
+  # Their DECLARATION is the one field this domain replaces, so these stay claims about the FLEET
+  # rather than about `mkMembers` (which ./members.nix owns): a member carries its declaration, and
+  # the declaration is what decides which modes get built — the fold builds this system's row ∩
+  # what the user runs in. So the declaration is a parameter here, and the publication claims below
+  # vary it rather than varying a home.
   bothModes = evalDeclaration [
     {
       contract.cli.enable = true;
@@ -44,15 +58,11 @@ let
     }
   ];
   guiOnly = evalDeclaration [ { contract.gui.enable = true; } ];
-  mkMemberWith = declaration: name: {
-    inherit name declaration;
-    dir = ../examples/users/users + "/${name}";
-    identity = loadIdentity (../examples/users/users + "/${name}/identity.json");
-  };
+  mkMemberWith = declaration: member: member // { inherit declaration; };
   mkMember = mkMemberWith bothModes;
   membersRunning = declaration: {
-    ada = mkMemberWith declaration "ada";
-    ben = mkMemberWith declaration "ben";
+    ${portableName} = mkMemberWith declaration portable;
+    ${cliOnlyName} = mkMemberWith declaration cliOnly;
   };
   members = membersRunning bothModes;
 
@@ -157,7 +167,7 @@ let
         true
     );
   emptyMembers = brokenBy { members = { }; };
-  unshapelyMembers = brokenBy { members = [ (mkMember "ada") ]; };
+  unshapelyMembers = brokenBy { members = [ (mkMember portable) ]; };
   emptyMatrix = brokenBy { homeMatrix = { }; };
   unshapelyMatrix = brokenBy { homeMatrix = [ ]; };
   unshapelyRow = brokenBy {
@@ -264,19 +274,15 @@ in
           "aarch64-linux"
           "x86_64-linux"
         ]
+        && lib.attrNames probeFleet.homes.x86_64-linux == memberNames
         &&
-          lib.attrNames probeFleet.homes.x86_64-linux == [
-            "ada"
-            "ben"
-          ]
-        &&
-          lib.attrNames probeFleet.homes.x86_64-linux.ada == [
+          lib.attrNames probeFleet.homes.x86_64-linux.${portableName} == [
             "cli"
             "gui"
           ]
         # The headless tier's row runs `cli` alone — the matrix is honoured per system, not
         # flattened into one set of modes.
-        && lib.attrNames probeFleet.homes.aarch64-linux.ada == [ "cli" ];
+        && lib.attrNames probeFleet.homes.aarch64-linux.${portableName} == [ "cli" ];
     }
     {
       # The cross-product is HARD-WIRED: every member is built for every mode in its system's row.
@@ -298,25 +304,25 @@ in
       # re-derives a path and the identity.json behind it is read once for the whole fleet.
       name = "mkContractFleet: buildHome is handed the MEMBER, identity and all";
       ok =
-        (recordedFor "x86_64-linux" "ben" "cli").member == members.ben
-        && (recordedFor "x86_64-linux" "ben" "cli").member.identity.username == "ben";
+        (recordedFor "x86_64-linux" cliOnlyName "cli").member == members.${cliOnlyName}
+        && (recordedFor "x86_64-linux" cliOnlyName "cli").member.identity.username == cliOnlyName;
     }
     {
       # The cell's own MODE — a builder that ignored this would see one mode for every home, and
       # `cli` and `gui` would be the same build under two names.
       name = "mkContractFleet: buildHome is handed its OWN cell's mode, per home";
       ok =
-        (recordedFor "x86_64-linux" "ada" "cli").mode == "cli"
-        && (recordedFor "x86_64-linux" "ada" "gui").mode == "gui"
-        && (recordedFor "aarch64-linux" "ada" "cli").mode == "cli";
+        (recordedFor "x86_64-linux" portableName "cli").mode == "cli"
+        && (recordedFor "x86_64-linux" portableName "gui").mode == "gui"
+        && (recordedFor "aarch64-linux" portableName "cli").mode == "cli";
     }
     {
       # THAT system's pkgs — a builder handed one system's pkgs for every row would bake the arm
       # tier on x86 and nothing would say so.
       name = "mkContractFleet: buildHome is handed the pkgs of the system whose row it is building";
       ok =
-        (recordedFor "aarch64-linux" "ben" "cli").pkgs.stdenv.hostPlatform.system == "aarch64-linux"
-        && (recordedFor "x86_64-linux" "ben" "gui").pkgs.stdenv.hostPlatform.system == "x86_64-linux";
+        (recordedFor "aarch64-linux" cliOnlyName "cli").pkgs.stdenv.hostPlatform.system == "aarch64-linux"
+        && (recordedFor "x86_64-linux" cliOnlyName "gui").pkgs.stdenv.hostPlatform.system == "x86_64-linux";
     }
 
     # --- pkgs is instantiated once per system, proven ---
@@ -325,10 +331,16 @@ in
       # rebuild of it. See `probePkgsFor` for why this comparison answers identity.
       name = "mkContractFleet: every home is handed the memo entry for its system, not a fresh application";
       ok =
-        sameValue (recordedFor "x86_64-linux" "ada" "cli").pkgs probeFleet.pkgsBySystem.x86_64-linux
-        && sameValue (recordedFor "x86_64-linux" "ada" "gui").pkgs probeFleet.pkgsBySystem.x86_64-linux
-        && sameValue (recordedFor "x86_64-linux" "ben" "cli").pkgs probeFleet.pkgsBySystem.x86_64-linux
-        && sameValue (recordedFor "aarch64-linux" "ada" "cli").pkgs probeFleet.pkgsBySystem.aarch64-linux;
+        sameValue (recordedFor "x86_64-linux" portableName "cli").pkgs probeFleet.pkgsBySystem.x86_64-linux
+        &&
+          sameValue (recordedFor "x86_64-linux" portableName "gui").pkgs
+            probeFleet.pkgsBySystem.x86_64-linux
+        &&
+          sameValue (recordedFor "x86_64-linux" cliOnlyName "cli").pkgs
+            probeFleet.pkgsBySystem.x86_64-linux
+        &&
+          sameValue (recordedFor "aarch64-linux" portableName "cli").pkgs
+            probeFleet.pkgsBySystem.aarch64-linux;
     }
     {
       # The NEGATIVE CONTROL, without which the claim above could pass by structural coincidence: a
@@ -395,33 +407,27 @@ in
       ok =
         lib.attrNames outputFleet.packages == [ system ]
         &&
-          lib.attrNames outputFleet.packages.${system} == [
-            "ada-contractPackage-cli"
-            "ada-contractPackage-gui"
-            "ben-contractPackage-cli"
-            "ben-contractPackage-gui"
+          lib.attrNames outputFleet.packages.${system} == expectedPackageNames [
+            "cli"
+            "gui"
           ];
     }
     {
       name = "mkContractFleet: `contractUsers` is nested by system and carries the binding index";
       ok =
         lib.attrNames outputFleet.contractUsers == [ system ]
-        &&
-          lib.attrNames outputFleet.contractUsers.${system} == [
-            "ada"
-            "ben"
-          ]
+        && lib.attrNames outputFleet.contractUsers.${system} == memberNames
         &&
           # The index entry is the coin's own: the member's identity, the modes it runs in, and one
           # contractPackage per PUBLISHED mode, keyed by that mode.
-          outputFleet.contractUsers.${system}.ada.identity == members.ada.identity
+          outputFleet.contractUsers.${system}.${portableName}.identity == members.${portableName}.identity
         &&
-          outputFleet.contractUsers.${system}.ada.modes == [
+          outputFleet.contractUsers.${system}.${portableName}.modes == [
             "cli"
             "gui"
           ]
         &&
-          lib.attrNames outputFleet.contractUsers.${system}.ada.contractPackages == [
+          lib.attrNames outputFleet.contractUsers.${system}.${portableName}.contractPackages == [
             "cli"
             "gui"
           ];
@@ -441,13 +447,9 @@ in
       # intersects before it builds: a home nobody could bind is never built, let alone published.
       name = "mkContractFleet: a gui-only member publishes its gui home alone, though the row names both";
       ok =
-        lib.attrNames guiOnlyFleet.homes.${system}.ada == [ "gui" ]
-        && lib.attrNames guiOnlyFleet.contractUsers.${system}.ada.contractPackages == [ "gui" ]
-        &&
-          lib.attrNames guiOnlyFleet.packages.${system} == [
-            "ada-contractPackage-gui"
-            "ben-contractPackage-gui"
-          ];
+        lib.attrNames guiOnlyFleet.homes.${system}.${portableName} == [ "gui" ]
+        && lib.attrNames guiOnlyFleet.contractUsers.${system}.${portableName}.contractPackages == [ "gui" ]
+        && lib.attrNames guiOnlyFleet.packages.${system} == expectedPackageNames [ "gui" ];
     }
     {
       # …and the intersection coming out EMPTY publishes nothing there, without refusing. A
@@ -461,9 +463,9 @@ in
       # flake has never heard of.
       name = "mkContractFleet: a system baking none of a member's modes publishes nothing for it there";
       ok =
-        uncoveredFleet.homes.${system}.ada == { }
-        && uncoveredFleet.contractUsers.${system}.ada.contractPackages == { }
-        && uncoveredFleet.contractUsers.${system}.ada.modes == [ "gui" ]
+        uncoveredFleet.homes.${system}.${portableName} == { }
+        && uncoveredFleet.contractUsers.${system}.${portableName}.contractPackages == { }
+        && uncoveredFleet.contractUsers.${system}.${portableName}.modes == [ "gui" ]
         && uncoveredFleet.packages.${system} == { };
     }
   ];

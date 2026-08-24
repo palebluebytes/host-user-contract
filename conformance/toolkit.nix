@@ -7,8 +7,10 @@
   homeModule,
   userOptions,
   nixosSystem,
-  loadIdentity,
   resolveIdentity,
+  # The contract's own member-set derivation, so the reference fleet's member set is BORROWED
+  # through the shipped function rather than re-derived by a second read of the same directory.
+  mkMembers,
   floorMode,
   system,
 }:
@@ -121,12 +123,74 @@ rec {
   # what a user's `user.nix` can and cannot say without owning a second copy of the options.
   evalDeclaration = mods: (lib.evalModules { modules = [ userOptions ] ++ mods; }).config.contract;
 
-  # A real atom borrowed from the reference user fleet: ada's directory (her identity.json and her
-  # `user.nix`), consumed by the producer domains exactly as a real users repo's would be. This is
-  # the one-way oracle→reference seam — the synthetic suite consumes realistic atoms from the
-  # reference fleet, never the reverse. `referenceIdentity` has username "ada", name "Ada
-  # Reference"; her declaration runs in both modes and asks for the plasma desktop.
-  referenceDir = ../examples/users/users/ada;
-  referenceIdentity = loadIdentity ../examples/users/users/ada/identity.json;
-  referenceDeclaration = evalDeclaration [ ../examples/users/users/ada/user.nix ];
+  # ── THE ONE-WAY ORACLE→REFERENCE SEAM (ADR-0022) ─────────────────────────────────────────────
+  # The synthetic suite may borrow realistic atoms FROM the reference fleets; the reference fleets
+  # never defer to the oracle. THIS BLOCK IS THE WHOLE OF THAT SEAM — the only place under
+  # `conformance/` that knows where `examples/` is, or which of the people in it the suite borrows.
+  # (Reference names still appear elsewhere as SYNTHETIC fixture data — a refusal's expected
+  # message, a diagnostic's subject — but nothing there reads the reference fleet.)
+  #
+  # Two things follow, and both are the point of naming the atoms here rather than reaching past
+  # them. Renaming a reference user, or restructuring the users repo, is an edit to THIS FILE and
+  # nowhere else, so the reference fleet stays free to change shape. And the fleet can read one
+  # screen to see exactly which of its atoms the oracle leans on — a debt that was otherwise
+  # invisible from the side that would pay it.
+  #
+  # A borrowing domain asks by ROLE, never by person: it wants "the user who runs cli alone", not
+  # "ben". Every atom below carries the one line a caller needs so it never has to open
+  # `examples/` to know what it got.
+
+  # The reference users repo's users directory: the `users/<u>/{identity.json,user.nix}` layout a
+  # real consumer ships, seven people deep. What a producer domain points a `usersDir` at.
+  referenceUsersDir = ../examples/users/users;
+
+  # The member set over it, derived through the contract's OWN `mkMembers` — ONE read of that
+  # directory for the whole suite. A domain borrowing "the reference fleet's members" and a domain
+  # borrowing one person's identity therefore read the same records, and no second scan can drift
+  # from this one.
+  referenceMembers = mkMembers { usersDir = referenceUsersDir; };
+
+  # THE ROLE TABLE — the only place a reference person's name appears. Each entry is that user's
+  # `mkMembers` record, `{ name; dir; identity; declaration; }`, so a domain reads the directory,
+  # the identity or the declaration off one value instead of re-resolving a path.
+  referenceUsers = {
+    # ada — the PORTABLE user, and the default borrow. Runs BOTH modes and asks for the `plasma`
+    # desktop; her `identity.json` is the fleet's one FULL FORM (every schema field spelled out,
+    # name "Ada Reference"), and her credential is `$y$` yescrypt, because `examples/users` is a
+    # public repo and ADR-0004 assigns a public repo that posture. Her cleartext is
+    # `referenceSecret` below.
+    portable = referenceMembers.ada;
+    # ben — runs `cli` ALONE, in a one-line declaration. The atom for "a mode this user does not
+    # run in": the only reference user for whom a `gui` home is a producer mistake rather than a
+    # home.
+    cliOnly = referenceMembers.ben;
+    # duo-a — half the shared-setup pair, and the fleet's one user whose modes SUBSTITUTE content:
+    # `gui` and `cli` name two DIFFERENT modules (`referenceHomeModules` below), and the `gui` mode
+    # asks for the `sway` desktop. The atom that makes per-mode composition observable at all.
+    twoModule = referenceMembers.duo-a;
+    # duo-b — the other half of that pair, and the CONTROL for it: both modes name ONE module, so
+    # its two homes compose the same configuration.
+    oneModule = referenceMembers.duo-b;
+  };
+
+  # The home MODULES those two declarations name — what the home-composition domain compares a
+  # composed slot against. Spelled here, beside the users they belong to, so which file the pair
+  # keeps its home in stays the reference fleet's business rather than the oracle's.
+  #
+  # The two SHAPES are the fact: the two-module user names one module PER MODE, the one-module user
+  # names a single module for both. An `oneModule.<mode>` keyed like its neighbour would spell that
+  # difference away.
+  referenceHomeModules = {
+    twoModule = {
+      cli = referenceUsers.twoModule.dir + "/cli.nix";
+      gui = referenceUsers.twoModule.dir + "/gui.nix";
+    };
+    oneModule = referenceUsers.oneModule.dir + "/home.nix";
+  };
+
+  # The cleartext behind every reference credential (`examples/users/flake.nix` says so out loud —
+  # they are teaching fixtures). Borrowed exactly as the paths are: the greeter's auth-flow proof
+  # has to type a real password at a real `identity.json`, so the secret is an atom of the
+  # reference fleet like any other.
+  referenceSecret = "correct-horse-battery-staple";
 }

@@ -28,7 +28,13 @@
   versionsCompatible,
 }:
 let
-  inherit (toolkit) eval referenceIdentity;
+  inherit (toolkit) eval;
+  # The reference fleet's PORTABLE user, borrowed by role through the toolkit's reference seam
+  # (../conformance/toolkit.nix): a real shipped identity, so the account the kernel materializes
+  # below is one a consumer actually binds. `portableName` is the attribute every account-side
+  # claim keys on, since the kernel keys the account by `identity.username`.
+  referenceIdentity = toolkit.referenceUsers.portable.identity;
+  portableName = referenceIdentity.username;
 
   # --- mkContractPackage execution proof ---
   # A minimal activationPackage stub: just an `activate` script at the root.
@@ -163,7 +169,7 @@ let
             gui = true;
           };
         })
-      ]).users.users.ada.isNormalUser
+      ]).users.users.${portableName}.isNormalUser
     );
   guardAccept = bindFixtureOn guiFixture hostRunsBoth;
   guardReject = bindFixtureOn guiFixture [ "cli" ];
@@ -176,6 +182,9 @@ let
   # below attests the committed JSON is byte-identical to `writeManifest`'s output — the fixtures
   # are produced by the schema owner, not a hand-typed blob that could drift from it.
   cliFields = {
+    # A LITERAL, not the reference user's name: this is the value the committed fixture was
+    # generated from, and the equivalence claim below is byte-for-byte against that file. It has
+    # to survive the reference fleet renaming anybody.
     username = "ada";
     packages = [ "hello" ];
     mode = "cli";
@@ -255,8 +264,8 @@ in
     {
       name = "bindContractPackage: the account materializes from identity";
       ok =
-        boundGranted.users.users.ada.isNormalUser
-        && boundGranted.users.users.ada.description == "Ada Reference";
+        boundGranted.users.users.${portableName}.isNormalUser
+        && boundGranted.users.users.${portableName}.description == referenceIdentity.name;
     }
     {
       # The kernel writes the GRANT onto the account, verbatim and complete. There is nothing to
@@ -265,9 +274,11 @@ in
       name = "bindContractPackage: the grant reaches the account, and only what was afforded";
       ok =
         let
-          g = boundGranted.contract.users.ada.granted;
+          g = boundGranted.contract.users.${portableName}.granted;
         in
-        g.sudo && !g.containers && lib.all (v: !v) (lib.attrValues boundNone.contract.users.ada.granted);
+        g.sudo
+        && !g.containers
+        && lib.all (v: !v) (lib.attrValues boundNone.contract.users.${portableName}.granted);
     }
     {
       # …and the MODE the manifest froze reaches it too, because the account needs it: a session
@@ -276,19 +287,19 @@ in
       # binds turns one on, and both are perfectly ordinary.
       name = "bindContractPackage: the frozen mode reaches the account; no bind turns on a display";
       ok =
-        boundGranted.contract.users.ada.mode == "cli"
+        boundGranted.contract.users.${portableName}.mode == "cli"
         && !boundGranted.contract.display.enabled
         && !boundNone.contract.display.enabled;
     }
     {
       name = "bindContractPackage: activation service is registered in systemd";
-      ok = boundGranted.systemd.services ? "contract-activate-ada";
+      ok = boundGranted.systemd.services ? "contract-activate-${portableName}";
     }
     {
       name = "bindContractPackage: no profile replacement when allowedPrograms is empty (default)";
       ok =
         let
-          svcConfig = boundGranted.systemd.services."contract-activate-ada".serviceConfig or { };
+          svcConfig = boundGranted.systemd.services."contract-activate-${portableName}".serviceConfig or { };
         in
         !(svcConfig ? ExecStartPost);
     }

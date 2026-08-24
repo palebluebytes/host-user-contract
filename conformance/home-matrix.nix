@@ -31,7 +31,8 @@
 let
   modeNames = lib.attrNames modes;
 
-  # The reference fleet's own shape (examples/users): a headless aarch64 tier beside x86 seats that
+  # A matrix MODELLED on the reference fleet's shape — synthetic, not borrowed: nothing here reads
+  # `examples/`, so this is a shape this domain owns. A headless aarch64 tier beside x86 seats that
   # can run everything the contract names. Note what the rows say — the x86 row takes NOTHING away,
   # and the arm row names only `gui`. Neither enumerates a mode it permits, which is the whole point.
   referenceSystems = {

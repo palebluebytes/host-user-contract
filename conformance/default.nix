@@ -79,8 +79,8 @@ let
       homeModule
       userOptions
       nixosSystem
-      loadIdentity
       resolveIdentity
+      mkMembers
       floorMode
       system
       ;
@@ -157,7 +157,6 @@ let
         lib
         pkgs
         toolkit
-        mkMembers
         mkMemberChecks
         ;
     })
@@ -231,7 +230,6 @@ let
         pkgs
         system
         toolkit
-        loadIdentity
         mkContractFleet
         mkContractUsers
         ;
@@ -241,7 +239,6 @@ let
         lib
         pkgs
         toolkit
-        loadIdentity
         mkContractUser
         mkContractUsers
         bindContractUser

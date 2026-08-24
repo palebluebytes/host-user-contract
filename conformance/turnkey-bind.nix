@@ -13,7 +13,6 @@
 {
   lib,
   toolkit,
-  loadIdentity,
   bindContractUser,
   bindContractUsers,
   mkContractUser,
@@ -22,7 +21,15 @@
   system,
 }:
 let
-  inherit (toolkit) eval evalDeclaration;
+  inherit (toolkit) eval evalDeclaration referenceUsersDir;
+  # The two reference atoms this domain borrows, BY ROLE, through the toolkit's reference seam
+  # (./toolkit.nix): the users directory a producer bakes from, and the two people in it whose
+  # declarations the coin reads. Nothing here names a path into `examples/` or a person in it.
+  inherit (toolkit.referenceUsers) portable cliOnly;
+  # The portable user runs BOTH modes, so she is the one every publication claim below is about;
+  # the cli-only user is the one a producer can wrongly hand a gui home.
+  portableName = portable.name;
+  cliOnlyName = cliOnly.name;
 
   # The repo-path fixture (a plain path, not a derivation) that stands in for a published
   # contractPackage. `bindContractPackage` reads its manifest at eval time — no build, no IFD. It
@@ -32,14 +39,14 @@ let
   guiFixture = ./fixtures/reference-contract-package-gui;
   fixtureFor = mode: if mode == "gui" then guiFixture else cliFixture;
 
-  # A synthetic user's on-disk identity, reused for the binding index and the account assertions.
-  # ada declares no privileged group; a second identity below declares `wheel` to prove the clamp
+  # A real on-disk identity, reused for the binding index and the account assertions. The portable
+  # user declares no privileged group; a second identity below declares `wheel` to prove the clamp
   # still drops a self-declared privileged group.
-  adaIdentity = loadIdentity ../examples/users/users/ada/identity.json;
+  portableIdentity = portable.identity;
   # A second identity, so a host can bind two people with different powers. It carries no groups —
   # an identity CANNOT name one, which is what makes "granted nothing ⇒ holds nothing" a structural
   # fact rather than the result of a filter.
-  wheelClaimant = adaIdentity // {
+  wheelClaimant = portableIdentity // {
     username = "mallory";
     name = "Mallory Claimant";
   };
@@ -81,7 +88,7 @@ let
       index,
       modes ? [ ],
       affordances ? { },
-      username ? "ada",
+      username ? portableName,
     }:
     eval [
       { contract.modes = modes; }
@@ -97,7 +104,7 @@ let
   # containers and sudo confers exactly those, and one that affords neither confers neither — on
   # the SAME user, from the SAME flake.
   bothModesIndex = mkIndex {
-    identity = adaIdentity;
+    identity = portableIdentity;
     published = [
       "cli"
       "gui"
@@ -133,19 +140,19 @@ let
     (bindContractUser {
       source = {
         contractUsers.${system} = {
-          ada = bothModesIndex;
+          ${portableName} = bothModesIndex;
           mallory = mkIndex {
             identity = wheelClaimant;
             published = [ "cli" ];
           };
         };
       };
-      username = "ada";
+      username = portableName;
     })
     (bindContractUser {
       source = {
         contractUsers.${system} = {
-          ada = bothModesIndex;
+          ${portableName} = bothModesIndex;
           mallory = mkIndex {
             identity = wheelClaimant;
             published = [ "cli" ];
@@ -165,7 +172,7 @@ let
       affordances = {
         sudoo = true;
       };
-    }).contract.users.ada.granted
+    }).contract.users.${portableName}.granted
   );
   # A MODE is not a feature, and naming one as an affordance is the mistake this split makes
   # possible to make — so it is the one the guard has to catch by name. `gui` used to be both.
@@ -175,7 +182,7 @@ let
       affordances = {
         gui = true;
       };
-    }).contract.users.ada.granted
+    }).contract.users.${portableName}.granted
   );
 
   # --- (b) MODE SELECTION ---
@@ -189,11 +196,11 @@ let
   # because a home built for a graphical session activated on a machine with no display is the
   # worse answer.
   guiOnlyIndex = mkIndex {
-    identity = adaIdentity;
+    identity = portableIdentity;
     published = [ "gui" ];
   };
   noCommonModeEval = builtins.tryEval (
-    (bindTurnkey { index = guiOnlyIndex; }).contract.users.ada.granted
+    (bindTurnkey { index = guiOnlyIndex; }).contract.users.${portableName}.granted
   );
   # …and its positive control: the SAME gui-only user on a host that RUNS gui binds fine, so the
   # refusal is about the mismatch and not about publishing one mode.
@@ -203,12 +210,12 @@ let
   };
 
   # --- (b2) THE MATRIX SUBTRACTION ---
-  # ada runs in BOTH modes, but this system's home matrix took gui away, so only cli is published
-  # for her here. The host declares gui, so it RUNS gui. Selection alone would answer the floor and
-  # activate a terminal home on a graphical seat with no message at all; the guard names the matrix
-  # as the cause instead.
+  # The portable user runs in BOTH modes, but this system's home matrix took gui away, so only cli
+  # is published for her here. The host declares gui, so it RUNS gui. Selection alone would answer
+  # the floor and activate a terminal home on a graphical seat with no message at all; the guard
+  # names the matrix as the cause instead.
   subtractedIndex = mkIndex {
-    identity = adaIdentity;
+    identity = portableIdentity;
     published = [ "cli" ];
     modes = [
       "cli"
@@ -219,15 +226,15 @@ let
     (bindTurnkey {
       index = subtractedIndex;
       modes = [ "gui" ];
-    }).contract.users.ada.granted
+    }).contract.users.${portableName}.granted
   );
   # The control, and it is what makes the claim above mean anything: the SAME publication on the
-  # SAME host, with ada running only in what is published. Nothing was taken away, so the floor
-  # binds and the guard stays silent — the refusal is about the SUBTRACTION and not about binding
-  # the floor on a gui-affording host, which is ordinary and must keep working.
+  # SAME host, with the user running only in what is published. Nothing was taken away, so the
+  # floor binds and the guard stays silent — the refusal is about the SUBTRACTION and not about
+  # binding the floor on a gui-affording host, which is ordinary and must keep working.
   unsubtractedBind = bindTurnkey {
     index = mkIndex {
-      identity = adaIdentity;
+      identity = portableIdentity;
       published = [ "cli" ];
     };
     modes = [ "gui" ];
@@ -271,48 +278,49 @@ let
     };
   };
   # `{ <mode> = home; }` — what a system BUILT for this user, its matrix row ∩ what she runs in.
-  # ada's real `user.nix` runs in both, so both are published.
-  adaHomes = {
-    cli = syntheticHome "ada";
-    gui = syntheticHome "ada";
+  # The portable user's real `user.nix` runs in both, so both are published.
+  portableHomes = {
+    cli = syntheticHome portableName;
+    gui = syntheticHome portableName;
   };
   bindings = mkContractUsers {
     inherit pkgs;
-    usersDir = ../examples/users/users;
-    homes.ada = adaHomes;
+    usersDir = referenceUsersDir;
+    homes.${portableName} = portableHomes;
   };
-  emittedIndex = bindings.contractUsers.${system}.ada;
+  emittedIndex = bindings.contractUsers.${system}.${portableName};
   # The SINGULAR partner: `mkContractUser` bakes ONE user and must emit byte-identical outputs to
   # the member-set form for that user (`mkContractUsers` is nothing but this mapped over them).
   singleUser = mkContractUser {
     inherit pkgs;
-    usersDir = ../examples/users/users;
-    name = "ada";
-    homes = adaHomes;
+    usersDir = referenceUsersDir;
+    name = portableName;
+    homes = portableHomes;
   };
 
-  # ben's real `user.nix` runs in `cli` alone, so a producer handing him a gui home has built
-  # something with no `configuration` behind it that no host could ever select. That is a mistake
-  # in the producer's own fold, and it must fail the bake rather than publish an empty home.
+  # The cli-only user's real `user.nix` runs in `cli` alone, so a producer handing them a gui home
+  # has built something with no `configuration` behind it that no host could ever select. That is a
+  # mistake in the producer's own fold, and it must fail the bake rather than publish an empty
+  # home.
   unrunModeBake = builtins.tryEval (
     builtins.deepSeq (lib.attrNames
       (mkContractUser {
         inherit pkgs;
-        usersDir = ../examples/users/users;
-        name = "ben";
+        usersDir = referenceUsersDir;
+        name = cliOnlyName;
         homes = {
-          cli = syntheticHome "ben";
-          gui = syntheticHome "ben";
+          cli = syntheticHome cliOnlyName;
+          gui = syntheticHome cliOnlyName;
         };
       }).packages.${system}
     ) true
   );
-  # …and its control: the same ben, handed only the mode he runs in, bakes.
+  # …and its control: the same user, handed only the mode they run in, bakes.
   runModeBake = mkContractUser {
     inherit pkgs;
-    usersDir = ../examples/users/users;
-    name = "ben";
-    homes.cli = syntheticHome "ben";
+    usersDir = referenceUsersDir;
+    name = cliOnlyName;
+    homes.cli = syntheticHome cliOnlyName;
   };
 
   # A system baking NONE of a user's modes publishes nothing for that user there — an index entry
@@ -320,44 +328,43 @@ let
   # fail-OPEN on coverage, and the refusal belongs at the bind, where both sides can be named.
   uncoveredUser = mkContractUser {
     inherit pkgs;
-    usersDir = ../examples/users/users;
-    name = "ada";
+    usersDir = referenceUsersDir;
+    name = portableName;
     homes = { };
   };
   # …and that is exactly what the bind then refuses, naming what it runs against what she publishes.
   uncoveredBind = builtins.tryEval (
     (bindTurnkey {
-      index = uncoveredUser.contractUsers.${system}.ada;
+      index = uncoveredUser.contractUsers.${system}.${portableName};
       modes = [ "gui" ];
-    }).contract.users.ada.granted
+    }).contract.users.${portableName}.granted
   );
 
   # --- (f) the coin takes a MEMBER ---
   # A `mkMembers` entry, stood in for by hand so these stay claims about the COIN. Its `identity`
   # and its `declaration` deliberately do NOT match what is on disk under its `dir` (the fixture's
-  # own name is "Ada Reference", and ada's own file runs in both modes), so the index can only
+  # own name is the reference one, and her own file runs in both modes), so the index can only
   # carry them if `mkContractUser` stopped resolving `<usersDir>/<name>/` for itself — which is the
   # point: the member set resolved those files once, and the coin reads the member.
   #
   # The `usersDir` + `name` calls above are the same claim from the other side: they still work, so
   # a single-user repo bakes without constructing a member set at all.
-  adaMember = {
-    name = "ada";
-    dir = ../examples/users/users/ada;
-    identity = adaIdentity // {
+  portableMember = {
+    inherit (portable) name dir;
+    identity = portableIdentity // {
       name = "Rosa Member";
     };
     declaration = evalDeclaration [ { contract.cli.enable = true; } ];
   };
   memberUser = mkContractUser {
     inherit pkgs;
-    member = adaMember;
-    homes.cli = syntheticHome "ada";
+    member = portableMember;
+    homes.cli = syntheticHome portableName;
   };
   membersFromMember = mkContractUsers {
     inherit pkgs;
-    members.ada = adaMember;
-    homes.ada.cli = syntheticHome "ada";
+    members.${portableName} = portableMember;
+    homes.${portableName}.cli = syntheticHome portableName;
   };
 
   # The routes OUT of a bake, spelled once, so each guard is probed through the ones it must reach
@@ -371,16 +378,16 @@ let
   readPackageNames = u: lib.attrNames u.packages.${system};
   readIndex = u: u.contractUsers.${system};
   # A member handed alongside a DISAGREEING `name`: the package name and the index key come from
-  # `name`, the identity from the member, so this would publish ada's identity under ben's name —
-  # invisible downstream, since a host binds by the index key it finds.
+  # `name`, the identity from the member, so this would publish one person's identity under
+  # another's name — invisible downstream, since a host binds by the index key it finds.
   mismatched =
     read:
     builtins.tryEval (
       read (mkContractUser {
         inherit pkgs;
-        member = adaMember;
-        name = "ben";
-        homes.cli = syntheticHome "ada";
+        member = portableMember;
+        name = cliOnlyName;
+        homes.cli = syntheticHome portableName;
       })
     );
   mismatchedIndex = mismatched readIndex;
@@ -390,16 +397,16 @@ let
   strayEval = builtins.tryEval (
     (mkContractUsers {
       inherit pkgs;
-      members.ada = adaMember;
-      homes.ben.cli = syntheticHome "ben";
-    }).contractUsers.${system}.ben.identity
+      members.${portableName} = portableMember;
+      homes.${cliOnlyName}.cli = syntheticHome cliOnlyName;
+    }).contractUsers.${system}.${cliOnlyName}.identity
   );
   # The anti-vacuity guard one rung up: a member fold that collapsed to no users at all would have
   # published, bound and checked NOTHING with every output green.
   noUsersBaked = builtins.tryEval (
     builtins.deepSeq (mkContractUsers {
       inherit pkgs;
-      usersDir = ../examples/users/users;
+      usersDir = referenceUsersDir;
       homes = { };
     }) true
   );
@@ -407,10 +414,12 @@ let
   # A three-user source, so selection is a real choice rather than "the only one there is".
   threeUp = {
     contractUsers.${system} = {
-      ada = bothModesIndex;
-      ben = mkIndex {
-        identity = adaIdentity // {
-          username = "ben";
+      ${portableName} = bothModesIndex;
+      # A wholly SYNTHETIC third party (the reference fleet is not consulted for this one): the
+      # claim is about naming a subset, so what these two need is to exist and to differ.
+      bo = mkIndex {
+        identity = portableIdentity // {
+          username = "bo";
         };
         published = [ "cli" ];
       };
@@ -423,7 +432,7 @@ let
   # A SECOND source, holding one user the first does not.
   elsewhere = {
     contractUsers.${system}.contractor = mkIndex {
-      identity = adaIdentity // {
+      identity = portableIdentity // {
         username = "contractor";
       };
       published = [ "cli" ];
@@ -439,7 +448,7 @@ let
   subset = boundBy {
     source = threeUp;
     users = {
-      ada = { };
+      ${portableName} = { };
       mallory.sudo = true;
     };
   };
@@ -460,13 +469,15 @@ let
     builtins.deepSeq
       (boundBy {
         source = threeUp;
-        users.ada.sudoo = true;
+        users.${portableName}.sudoo = true;
       }).users.users
       true
   );
   allWithoutSource = builtins.tryEval (builtins.deepSeq (boundBy { all = true; }).users.users true);
   nobody = builtins.tryEval (builtins.deepSeq (boundBy { source = threeUp; }).users.users true);
-  sourceless = builtins.tryEval (builtins.deepSeq (boundBy { users.ada = { }; }).users.users true);
+  sourceless = builtins.tryEval (
+    builtins.deepSeq (boundBy { users.${portableName} = { }; }).users.users true
+  );
 
   # --- (h) the index key must agree with the identity it publishes ---
   # A member published under one name whose identity says another. A host binds by the KEY and gets
@@ -475,12 +486,12 @@ let
     builtins.deepSeq (lib.attrNames
       (mkContractUser {
         inherit pkgs;
-        member = adaMember // {
-          identity = adaMember.identity // {
+        member = portableMember // {
+          identity = portableMember.identity // {
             username = "somebody-else";
           };
         };
-        homes.cli = syntheticHome "ada";
+        homes.cli = syntheticHome portableName;
       }).contractUsers.${system}
     ) true
   );
@@ -493,7 +504,7 @@ in
       name = "grant: a bind confers exactly what it affords";
       ok =
         let
-          g = affordedTwo.contract.users.ada.granted;
+          g = affordedTwo.contract.users.${portableName}.granted;
         in
         g.sudo && g.containers && !g.virtualization;
     }
@@ -505,10 +516,10 @@ in
       name = "machine vs person: a gui machine grants nothing yet seats the user; a headless one grants wheel";
       ok =
         let
-          seated = guiNoGrant.users.users.ada.extraGroups;
-          powered = headlessWithGrant.users.users.ada.extraGroups;
+          seated = guiNoGrant.users.users.${portableName}.extraGroups;
+          powered = headlessWithGrant.users.users.${portableName}.extraGroups;
         in
-        lib.all (v: !v) (lib.attrValues guiNoGrant.contract.users.ada.granted)
+        lib.all (v: !v) (lib.attrValues guiNoGrant.contract.users.${portableName}.granted)
         && lib.elem "uinput" seated
         && !(lib.elem "wheel" seated)
         && lib.elem "wheel" powered
@@ -524,22 +535,22 @@ in
       name = "grant: a bind that affords nothing confers nothing (the host's veto, in its simplest form)";
       ok =
         let
-          g = affordedNothing.contract.users.ada.granted;
+          g = affordedNothing.contract.users.${portableName}.granted;
         in
         !g.sudo && !g.containers;
     }
     {
-      # THE PER-USER CLAIM: one host, two binds, two different affordance sets — so ada gets gui's
-      # input groups and no wheel, while mallory gets wheel and no display surface of her own. No
-      # second mechanism, and no host-wide default for either to inherit.
+      # THE PER-USER CLAIM: one host, two binds, two different affordance sets — so the seated user
+      # gets gui's input groups and no wheel, while mallory gets wheel and no display surface of
+      # her own. No second mechanism, and no host-wide default for either to inherit.
       name = "affordances ride the bind: two users on ONE host hold different powers";
       ok =
         let
-          ada = twoUsersOneHost.users.users.ada.extraGroups;
+          seated = twoUsersOneHost.users.users.${portableName}.extraGroups;
           mallory = twoUsersOneHost.users.users.mallory.extraGroups;
         in
-        lib.elem "uinput" ada
-        && !(lib.elem "wheel" ada)
+        lib.elem "uinput" seated
+        && !(lib.elem "wheel" seated)
         && lib.elem "wheel" mallory
         && !(lib.elem "uinput" mallory);
     }
@@ -559,13 +570,13 @@ in
     {
       # A gui-affording host RUNS { cli, gui }, so the rich mode wins over the floor.
       name = "mode selection: a gui-declaring host runs { cli, gui } and binds the gui home";
-      ok = selGui.users.users.ada.isNormalUser && selGui.contract.display.enabled;
+      ok = selGui.users.users.${portableName}.isNormalUser && selGui.contract.display.enabled;
     }
     {
       # …and one declaring nothing runs { cli } alone, so selection falls back to the floor —
       # without any host having written `cli` anywhere.
       name = "mode selection: a host declaring no mode falls back to the floor";
-      ok = selFloor.users.users.ada.isNormalUser && !selFloor.contract.display.enabled;
+      ok = selFloor.users.users.${portableName}.isNormalUser && !selFloor.contract.display.enabled;
     }
     {
       # THE REFUSAL: a gui-only user on a headless host has no mode in common with it, and that is
@@ -577,7 +588,7 @@ in
       # …and its control: the same user on a gui-affording seat binds, so the refusal is about the
       # mismatch and not about publishing one mode.
       name = "mode selection: the same gui-only user binds on a gui-declaring seat (the control)";
-      ok = guiOnlyOnASeat.users.users.ada.isNormalUser;
+      ok = guiOnlyOnASeat.users.users.${portableName}.isNormalUser;
     }
 
     # (b2) the matrix subtraction — the mode the producer took away from THIS system
@@ -590,13 +601,13 @@ in
     }
     {
       name = "matrix subtraction: the same publication with nothing subtracted binds the floor (the control)";
-      ok = unsubtractedBind.users.users.ada.isNormalUser;
+      ok = unsubtractedBind.users.users.${portableName}.isNormalUser;
     }
 
     # (c) the mode coupling guard, reached through the real selection
     {
       name = "coupling guard: a home frozen as `gui` binds on a host that runs gui (accept)";
-      ok = frozenModeBind.users.users.ada.isNormalUser;
+      ok = frozenModeBind.users.users.${portableName}.isNormalUser;
     }
 
     # (d) untrusted safety
@@ -614,8 +625,8 @@ in
       name = "mkContractUsers: emits the named package <user>-contractPackage-<mode>";
       ok =
         lib.attrNames bindings.packages.${system} == [
-          "ada-contractPackage-cli"
-          "ada-contractPackage-gui"
+          "${portableName}-contractPackage-cli"
+          "${portableName}-contractPackage-gui"
         ];
     }
     {
@@ -626,7 +637,7 @@ in
           "identity"
           "modes"
         ]
-        && emittedIndex.identity.username == "ada";
+        && emittedIndex.identity.username == portableName;
     }
     {
       # `modes` is read off the user's own `user.nix`, not off a home: a home does not speak
@@ -656,7 +667,7 @@ in
     }
     {
       name = "mkContractUser: the same user handed only the mode she runs in bakes (the control)";
-      ok = runModeBake.contractUsers.${system}.ben.modes == [ "cli" ];
+      ok = runModeBake.contractUsers.${system}.${cliOnlyName}.modes == [ "cli" ];
     }
     {
       # A system baking none of a user's modes publishes nothing THERE, and says so: the entry
@@ -664,9 +675,9 @@ in
       # topology decide what a self-contained user may BE.
       name = "mkContractUser: a system baking none of a user's modes publishes an empty entry, not an error";
       ok =
-        uncoveredUser.contractUsers.${system}.ada.contractPackages == { }
+        uncoveredUser.contractUsers.${system}.${portableName}.contractPackages == { }
         &&
-          uncoveredUser.contractUsers.${system}.ada.modes == [
+          uncoveredUser.contractUsers.${system}.${portableName}.modes == [
             "cli"
             "gui"
           ]
@@ -688,24 +699,24 @@ in
       name = "mkContractUser: the singular producer matches mkContractUsers for one user";
       ok =
         (
-          singleUser.packages.${system}."ada-contractPackage-gui".outPath
-          == bindings.packages.${system}."ada-contractPackage-gui".outPath
+          singleUser.packages.${system}."${portableName}-contractPackage-gui".outPath
+          == bindings.packages.${system}."${portableName}-contractPackage-gui".outPath
         )
-        && singleUser.contractUsers.${system}.ada == emittedIndex;
+        && singleUser.contractUsers.${system}.${portableName} == emittedIndex;
     }
 
     # (f) the member as the coin's input
     {
       name = "mkContractUser: a member's identity AND declaration reach the index (no path re-derived)";
       ok =
-        memberUser.contractUsers.${system}.ada.identity.name == "Rosa Member"
-        && memberUser.contractUsers.${system}.ada.modes == [ "cli" ];
+        memberUser.contractUsers.${system}.${portableName}.identity.name == "Rosa Member"
+        && memberUser.contractUsers.${system}.${portableName}.modes == [ "cli" ];
     }
     {
       name = "mkContractUsers: the member set's members are what its `homes` entries bake";
       ok =
-        membersFromMember.contractUsers.${system}.ada.identity.name == "Rosa Member"
-        && membersFromMember.packages.${system} ? "ada-contractPackage-cli";
+        membersFromMember.contractUsers.${system}.${portableName}.identity.name == "Rosa Member"
+        && membersFromMember.packages.${system} ? "${portableName}-contractPackage-cli";
     }
     {
       name = "mkContractUsers: a `homes` entry the member set does not hold is a hard bake error";
@@ -722,10 +733,10 @@ in
       ok =
         (mkContractUser {
           inherit pkgs;
-          member = adaMember;
-          name = "ada";
-          homes.cli = syntheticHome "ada";
-        }).contractUsers.${system}.ada.identity.name == "Rosa Member";
+          member = portableMember;
+          name = portableName;
+          homes.cli = syntheticHome portableName;
+        }).contractUsers.${system}.${portableName}.identity.name == "Rosa Member";
     }
 
     # no-IFD, and the gui host-glue fold
@@ -734,7 +745,10 @@ in
       # A users repo holds more people than any one machine wants, which is the whole reason a name
       # is written at all: it SELECTS. Three published, two named, two bound.
       name = "bindContractUsers: binds the users it names, and no others";
-      ok = (subset.users.users ? ada) && (subset.users.users ? mallory) && !(subset.users.users ? ben);
+      ok =
+        (subset.users.users ? ${portableName})
+        && (subset.users.users ? mallory)
+        && !(subset.users.users ? bo);
     }
     {
       # …and `all` is the case where a host does not have to choose. Note `mallory` is named there
@@ -742,15 +756,15 @@ in
       # live.
       name = "bindContractUsers: `all` binds everybody the source publishes";
       ok =
-        (everyone.users.users ? ada)
-        && (everyone.users.users ? ben)
+        (everyone.users.users ? ${portableName})
+        && (everyone.users.users ? bo)
         && lib.elem "wheel" everyone.users.users.mallory.extraGroups;
     }
     {
       # A per-user `source` reaches somebody the default source has never heard of — so it is an
       # ADDITION beside `all`, not an override of it, and one host can bind across repos.
       name = "bindContractUsers: a per-user source binds somebody the default source does not publish";
-      ok = (mixed.users.users ? contractor) && (mixed.users.users ? ada);
+      ok = (mixed.users.users ? contractor) && (mixed.users.users ? ${portableName});
     }
     {
       # An entry holds affordances beside a few settings, so a key that is neither would be read as
@@ -775,14 +789,15 @@ in
     # (h) the key and the identity are one answer
     {
       # The argument a host writes is the INDEX KEY; the account is named by the IDENTITY. Left
-      # unguarded these could differ, so an operator writing `ada` would create `somebody-else`.
+      # unguarded these could differ, so an operator writing the index key would create
+      # `somebody-else`.
       name = "mkContractUser: publishing under a key that disagrees with the identity is a hard bake error";
       ok = !misnamedBake.success;
     }
 
     {
       name = "no-IFD: selection reads the index (plain data) and binds against a repo-path fixture";
-      ok = selGui.systemd.services ? "contract-activate-ada";
+      ok = selGui.systemd.services ? "contract-activate-${portableName}";
     }
     {
       name = "XDG fold: a granted gui surface links the XDG portal/applications dirs";
