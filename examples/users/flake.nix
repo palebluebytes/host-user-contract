@@ -22,8 +22,9 @@
     }:
     let
       inherit (nixpkgs) lib;
-      # The system this flake publishes its `home-manager switch` surface on. NOT a per-user fact:
-      # every user here is buildable on every system the matrix names.
+      # The system this flake publishes its `home-manager switch` surface on — handed to the
+      # producer as its `defaultSystem`, which is the one thing the flat CLI adapter below cannot
+      # derive. NOT a per-user fact: every user here is buildable on every system the matrix names.
       system = "x86_64-linux";
       # This system's nixpkgs, taken from the FLEET's own per-system memo (below) rather than
       # instantiated a second time here — so the published homes, the binding artifacts and the
@@ -62,11 +63,6 @@
       #     published on purpose — "correct-horse-battery-staple", and "password" for admin —
       #     because these are teaching fixtures.)
       members = contract.lib.mkMembers { usersDir = ./users; };
-      # One projection OF the members, for the single site here that wants a list rather than the
-      # attrset: the member names the flat `homeConfigurations` adapter below folds over. A
-      # projection, never a second derivation of "who is here" — and the only one this file needs,
-      # because the checks module beside it takes the members themselves and projects what it wants.
-      userNames = lib.attrNames members;
 
       # ── The home matrix: which MODES, on which system ────────────────────────────────────────
       # `contract.modes` is the contract's own answer to "what session shapes exist?" — today `cli`
@@ -147,13 +143,16 @@
       # `mkContractFleet` is the whole join between the two derived facts above and this repo's
       # builder. It takes WHO is here (`members`), WHAT each system builds (`homeMatrix`), a
       # nixpkgs FUNCTION, and the builder — and returns the published surface entire:
-      # `{ homes; packages; contractUsers; systems; pkgsBySystem; }`.
+      # `{ homes; homeConfigurations; packages; contractUsers; systems; pkgsBySystem; }`.
       #
       # What it replaces here was mechanics rather than choices: the per-home eval loop, the
       # members × system × mode fold, the two output merges, and the derivation of `systems` and
       # the per-system `pkgs`. None of that is a fleet's FACT.
       fleet = contract.lib.mkContractFleet {
         inherit members homeMatrix;
+        # Which system the flat `homeConfigurations` adapter publishes on — the one half of that
+        # adapter that IS a fleet fact, and so the only half stated here.
+        defaultSystem = system;
         # PLAIN nixpkgs — the producer contributes NO overlay and NO config. A user's own pkgs is
         # declared by its OWN home: home-manager re-imports nixpkgs inside every home eval and
         # CONCATENATES the home's `nixpkgs.overlays` onto the ones the producer passed, so the duo
@@ -184,25 +183,14 @@
       # as it does for `contractUsers`.
       inherit (fleet) homes;
 
-      # `homeConfigurations` is a PURE home-manager CLI adapter, publishing `<user>-<mode>`.
-      # Nothing in the contract reads it — a host binds through `contractUsers` and a greeter
-      # builds `homes` — so it exists for one loop only: `home-manager switch --flake .#ada-gui`,
-      # which is what someone authoring a home actually runs.
+      # The home-manager CLI adapter — `<user>-<mode>` over `defaultSystem`'s homes, straight out
+      # of the producer. It exists for one loop: `home-manager switch --flake .#ada-gui`, which is
+      # what someone authoring a home actually runs.
       #
-      # The FLAT naming is forced from outside and confined to the one consumer that imposes it:
-      # home-manager's CLI wraps the fragment name in quotes before it reaches Nix
-      # (`homeConfigurations."ada.gui"`), so no nested spelling can ever resolve. There is no bare
-      # `<user>` name, because there is no privileged mode to give it to.
-      #
-      # On the default system only (other systems' homes are reachable through `homes.<sys>`).
-      homeConfigurations = lib.listToAttrs (
-        lib.concatMap (
-          n:
-          map (mode: lib.nameValuePair "${n}-${mode}" homes.${system}.${n}.${mode}) (
-            lib.attrNames homes.${system}.${n}
-          )
-        ) userNames
-      );
+      # This file used to fold it by hand, and the fold was never a fleet fact — the naming rule is
+      # home-manager's, forced identically on every users repo. It and its reason are stated where
+      # the adapter now lives (`mkContractFleet`), so this file states neither.
+      inherit (fleet) homeConfigurations;
 
       # Both of the fleet's published attributes, straight out of the producer — it emits them
       # already nested by system, which is the shape a flake output is.

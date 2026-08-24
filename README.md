@@ -143,13 +143,14 @@ fleet = contract.lib.mkContractFleet {
     };
   };
   pkgsFor   = sys: nixpkgs.legacyPackages.${sys};
+  defaultSystem = "x86_64-linux";     # which system `homeConfigurations` publishes on
   buildHome = { member, mode, pkgs }: contract.lib.mkContractHome {
     inherit member mode pkgs;
     homeManagerConfiguration = home-manager.lib.homeManagerConfiguration;
     stateVersion = "25.11";
   };
 };
-# → inherit (fleet) homes packages contractUsers;
+# → inherit (fleet) homes homeConfigurations packages contractUsers;
 ```
 
 It builds every member for every mode its system's row names **and** the user runs in, instantiates
@@ -158,6 +159,12 @@ flake outputs already nested by system. Your builder stays yours — the contrac
 imports home-manager. Reach for `mkContractUsers` / `mkContractUser` when your build is *not* every
 member × every mode. [`examples/users/`](examples/users/) is the worked multi-system version, with
 checks.
+
+`homeConfigurations` is the flat `<user>-<mode>` adapter `home-manager switch --flake .#ada-gui`
+resolves. The flat naming is not your repo's choice — home-manager's CLI quotes the fragment before
+it reaches Nix, so no nested spelling resolves — which is why the producer owns it rather than every
+users repo re-folding it. `defaultSystem` says which system it publishes on, and a fleet baking for
+a single system need not say.
 
 ### I have a seat, and I want people to just log in
 
@@ -222,7 +229,7 @@ the claim stays the caller's to write.
 | `bindContractUser` | `{ source; username; affordances ? {} }` | the singular underneath |
 | `mkMembers` | `{ usersDir }` | `{ <name> = { name; dir; identity; declaration; }; }` |
 | `mkHomeMatrix` | `{ systems }` | `{ <system> = [ <mode> ]; }` — the modes each system bakes |
-| `mkContractFleet` | `{ members; homeMatrix; pkgsFor; buildHome }` | `{ homes; packages; contractUsers; systems; pkgsBySystem; }` |
+| `mkContractFleet` | `{ members; homeMatrix; pkgsFor; buildHome; defaultSystem ? null }` | `{ homes; homeConfigurations; packages; contractUsers; systems; pkgsBySystem; }` |
 | `mkContractHome` | `{ homeManagerConfiguration; pkgs; member; mode; stateVersion; extraModules ? [] }` | a built home |
 | `mkContractUser` | `{ pkgs; member; homes }` | `{ packages.<sys>; contractUsers.<sys>.<u>; }` |
 | `mkContractUsers` | `{ pkgs; members; homes }` | the same, for every member |

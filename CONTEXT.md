@@ -219,6 +219,16 @@ provisioned by the user's own home module.
   function; a consumer never writes what the fold reads.
 - **home** — one built home, identified by its mode: `homes.<system>.<user>.<mode>`. What a greeter
   builds against, and what a consumer's checks read.
+- **CLI adapter** — `homeConfigurations.<user>-<mode>`, the flat shape home-manager's own CLI
+  resolves, returned by the producer over the same homes. Nothing in the contract reads it: a host
+  binds through the binding index and a greeter builds `homes`. The flat naming is not a fleet's
+  choice — home-manager quotes the fragment before it reaches Nix, so no nested spelling resolves —
+  and being *external and identical for every users repo* is precisely why it has one owner rather
+  than a fold per repo.
+- **default system** — which system the CLI adapter publishes on (`defaultSystem`). The one thing
+  the adapter cannot derive, because a CLI fragment carries a user and a mode and has nowhere to put
+  a third. A fleet baking for one system is not asked; a multi-system fleet that stays silent is
+  refused when the adapter is read, never before.
 - **publication** — a system's row ∩ the modes the user runs in. The fold intersects *before* it
   builds, so a home nobody could bind is never built. A system baking none of a user's modes
   publishes an empty index entry there rather than refusing: the matrix is fail-**open** on

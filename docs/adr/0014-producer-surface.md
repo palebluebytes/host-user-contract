@@ -33,6 +33,13 @@ The recurring **tell** that a rule belonged here was a producer holding both the
 of the rule*: a hand-written per-system filter beside an `assert` catching that filter's own failure
 mode, with a comment naming the mode exactly.
 
+The other tell is a fold every users repo writes **identically because something outside decided it
+would**. `mkContractFleet`'s `homeConfigurations` is that case: home-manager's CLI forces a flat
+`<user>-<mode>` fragment on every producer, so the fold was one external rule re-typed per repo
+rather than a fleet fact ([0012](0012-homes-are-keyed-by-mode.md)). It joins on the naming
+convention alone — the values are homes the producer already built, and nothing here imports
+home-manager.
+
 ### `mkContractUsers` is kept although no reference producer calls it
 
 That is precisely the caller-less condition that internalized four other functions, and it is not
@@ -95,9 +102,14 @@ thing is. That it *reads* like domain language is what made it plausible and wha
 
 - **A thinner surface, leaving the joins to each producer** — rejected on the tell above: a rule
   held in prose in two repos is a rule with no owner.
-- **A fatter one absorbing the published home names** — rejected: those names are the producer's own
-  and owe the published packages nothing, which makes the rule a choice however mechanical the loop
-  around it looks.
+- **A fatter one absorbing the published home names** — *partly reversed.* The `<user>-<mode>`
+  home-manager CLI adapter moved in ([0012](0012-homes-are-keyed-by-mode.md)); the rest stands. The
+  original argument missed one distinction. A name the producer *chooses* is a choice however
+  mechanical the loop around it looks, and stays the producer's. A name an outside tool *forces* —
+  home-manager's CLI will not resolve a nested fragment, so every users repo wrote the same flat
+  fold and none of them picked it — is the tell above wearing different clothes. What was absorbed
+  is the forced name alone; the flake output names, the `homes` tree and anything a producer is free
+  to spell differently stay the producer's.
 - **Extending one function with a third mode instead of adding a name** — rejected: a function with
   three modes is the accretion this surface was cleaned up to stop. One more name is cheaper to read
   than one more mode.

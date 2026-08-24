@@ -201,10 +201,13 @@ in
     # contract's (ADR-0012).
     inherit (contractLib) mkHomeMatrix;
 
-    # mkContractFleet `{ members; homeMatrix; pkgsFor; buildHome }` → the whole published surface
-    # (`{ homes; packages; contractUsers; systems; pkgsBySystem; }`). The fleet-level producer, and
-    # the one a multi-user repo calls: it owns the members × system × mode fold, the output merges
-    # and the once-per-system `pkgs`. Package-free by injection (ADR-0014).
+    # mkContractFleet `{ members; homeMatrix; pkgsFor; buildHome; defaultSystem ? null }` → the
+    # whole published surface
+    # (`{ homes; homeConfigurations; packages; contractUsers; systems; pkgsBySystem; }`). The
+    # fleet-level producer, and the one a multi-user repo calls: it owns the members × system ×
+    # mode fold, the output merges, the once-per-system `pkgs`, and the flat `<user>-<mode>`
+    # home-manager CLI adapter over `defaultSystem` — a naming rule forced on every users repo
+    # from outside (ADR-0012). Package-free by injection (ADR-0014).
     mkContractFleet =
       args: contractLib.mkContractFleet (args // { inherit (identityJson) loadIdentity; });
 

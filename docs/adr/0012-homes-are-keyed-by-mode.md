@@ -75,10 +75,18 @@ happen to be present.
   it quietly becomes a double evaluation.
 - **Identical bakes are unproducible.** Two homes of one user differ in the mode they were built
   for, so the redundancy that once made most users publish byte-identical artifacts cannot arise.
-- **`homeConfigurations` is a pure `home-manager` CLI adapter**, publishing `<user>-<mode>`. Nothing
-  in the contract reads it. The flat naming is forced from outside: `home-manager`'s CLI quotes the
-  fragment name before it reaches Nix, so no nested spelling resolves. Keeping the adapter preserves
-  `home-manager switch --flake .#ada-gui`, which is the loop a home author actually uses.
+- **`homeConfigurations` is a pure `home-manager` CLI adapter**, publishing `<user>-<mode>`, and
+  **the producer returns it** beside the homes it is derived from. Nothing in the contract reads it;
+  it preserves `home-manager switch --flake .#ada-gui`, the loop a home author actually uses. The
+  flat naming is forced from outside — `home-manager`'s CLI quotes the fragment name before it
+  reaches Nix, so no nested spelling resolves — and forced *identically for every users repo*, which
+  is why the fold has one owner rather than one per consumer
+  ([0014](0014-producer-surface.md) records the reversal). What crosses is the **naming convention
+  alone**: the values are the already-built homes, `<user>-<mode>` is a string, and no home-manager
+  import or package appears ([0002](0002-contract-is-a-standalone-flake.md) intact). A CLI fragment
+  has nowhere to put a system, so the adapter is one system's — `defaultSystem`, which a
+  single-system fleet need not state and a multi-system one is refused for omitting **at the
+  adapter**, not at the fold.
 
 ## Considered alternatives
 

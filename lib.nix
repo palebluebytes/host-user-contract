@@ -954,7 +954,7 @@ let
   # (`members`) and WHAT each system bakes (`homeMatrix`), it builds every member's every mode on
   # every system and emits the whole published producer surface:
   #
-  #   { homes; packages; contractUsers; systems; pkgsBySystem; }
+  #   { homes; homeConfigurations; packages; contractUsers; systems; pkgsBySystem; }
   #
   # so `inherit (fleet) packages contractUsers homes;` IS the flake outputs.
   #
@@ -984,6 +984,11 @@ let
       # WHAT each system bakes — `mkHomeMatrix`'s value, `{ <system> = [ <mode> ]; }`. Its key set
       # is this fleet's `systems`, which is why neither is stated twice.
       homeMatrix,
+      # WHICH of those systems the flat `homeConfigurations` adapter publishes on — see it below.
+      # Optional, and read by that one attribute: a fleet baking for a single system has nothing to
+      # choose between and is not made to say, and a fleet that never publishes the adapter is
+      # never asked at all.
+      defaultSystem ? null,
       # `system -> pkgs`. Applied once per system; see above.
       pkgsFor,
       # `{ member, mode, pkgs } -> home` — the consumer's own builder.
@@ -1058,6 +1063,67 @@ let
           homes = byMember;
         }
       ) builtEntries;
+
+      # ── THE home-manager CLI ADAPTER ────────────────────────────────────────────────────────
+      # `{ "<user>-<mode>" = home; }` over ONE system's already-built homes — the flat shape
+      # home-manager's own CLI resolves, and the whole of what this attribute is.
+      #
+      # IT IS HERE BECAUSE THE RULE IS NOT A FLEET'S FACT. home-manager's CLI wraps the fragment
+      # name in quotes before it reaches Nix (`homeConfigurations."ada.gui"`), so no NESTED
+      # spelling can ever resolve and the flat form is forced. That constraint is EXTERNAL and
+      # identical for every users repo, which is why it was the same hand-written fold in each one
+      # rather than a choice any of them made. There is no bare `<user>` name, because there is no
+      # privileged mode to give it to.
+      #
+      # WHAT CROSSES INTO THE CONTRACT IS THE NAMING CONVENTION ALONE (ADR-0002 intact): the values
+      # are the homes built above, `<user>-<mode>` is a string, and nothing here imports
+      # home-manager, names a package, or is read by anything else in the contract — a host binds
+      # through `contractUsers` and a greeter builds `homes`. It exists for one loop:
+      # `home-manager switch --flake .#ada-gui`, which is what someone authoring a home runs.
+      #
+      # ONE SYSTEM, because a CLI fragment carries a user and a mode and has nowhere to put a
+      # third thing. Every other system's homes stay reachable through `homes.<sys>`.
+      #
+      # THE GUARDS RIDE THE ATTRIBUTE, not the fold, for the reason `pkgsBySystem`'s does: this is
+      # the only reader of `defaultSystem`, so a fleet that does not publish the adapter is not
+      # charged for one — and a multi-system fleet's `homes` keep forcing whether or not it ever
+      # named a default.
+      #
+      # `adapterSystem`, not `defaultSystem`: the argument is what a caller MAY say (nullable) and
+      # this is what the adapter publishes on (always a system). They sit either side of one
+      # inference, exactly as `rowOf` and `modesOf` sit either side of the matrix, so one word for
+      # both would be one word for two types.
+      adapterSystem = if defaultSystem == null then lib.head systems else defaultSystem;
+      homeConfigurations =
+        assert diag.must {
+          ok = defaultSystem != null || lib.length systems == 1;
+          who = "mkContractFleet";
+          problem =
+            "`homeConfigurations` has no system to publish on — this fleet bakes for "
+            + "${showList systems} and named no `defaultSystem`";
+          why =
+            "A home-manager CLI fragment is `<user>-<mode>` and has nowhere to put a system, so "
+            + "the adapter is one system's or it is nothing.";
+          fix =
+            "Pass `defaultSystem` — the system this repo publishes its `home-manager switch` "
+            + "surface on. Every other system's homes stay reachable through `homes.<system>`.";
+        };
+        assert diag.must {
+          ok = homeMatrix ? ${adapterSystem};
+          who = "mkContractFleet";
+          problem =
+            "`defaultSystem` is ${showName adapterSystem}, which this fleet does not bake for "
+            + "(${showList systems})";
+          why = "The adapter publishes homes that were BUILT, and a system with no row has none.";
+          fix = "Name one of the systems the matrix holds.";
+        };
+        lib.listToAttrs (
+          lib.concatLists (
+            lib.mapAttrsToList (
+              name: byMode: lib.mapAttrsToList (mode: home: lib.nameValuePair "${name}-${mode}" home) byMode
+            ) builtEntries.${adapterSystem}
+          )
+        );
     in
     # Grouped by SUBJECT — the member set, then the matrix, then its rows — and within each the
     # same order the rest of this file uses: a shape that cannot be read before anything is read
@@ -1116,6 +1182,10 @@ let
       # is what a greeter's `homeBuilder` builds against. It is the built set, because the fold
       # builds exactly what is publishable: this system's row ∩ what the user runs in.
       homes = builtEntries;
+      # The same homes, on `defaultSystem`, under the flat names home-manager's CLI needs. It folds
+      # over `builtEntries` rather than building anything, so an adapter entry IS its published
+      # home — never a second derivation of one.
+      inherit homeConfigurations;
       # Nested by system, so `inherit (fleet) packages contractUsers;` is the flake outputs. Each
       # system's bake already keys its own outputs by that system, so this only unwraps the key it
       # was going to be looked up under anyway — never a re-keying.
