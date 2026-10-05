@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.2](https://github.com/palebluebytes/host-user-contract/compare/host-user-contract-v0.1.1...host-user-contract-v0.1.2) (2026-10-05)
+
+
+### Documentation
+
+* **research:** measure the posture floor and unlock KDF parameters ([#114](https://github.com/palebluebytes/host-user-contract/issues/114)) ([e25cdc5](https://github.com/palebluebytes/host-user-contract/commit/e25cdc5f53d3619666c9496d5667143a9e1e1fe5))
+* **research:** survey key delivery at an unfamiliar machine ([#105](https://github.com/palebluebytes/host-user-contract/issues/105)) ([cc87d1f](https://github.com/palebluebytes/host-user-contract/commit/cc87d1fb10778e86c3142f736f1534a91fc27f29))
+* **research:** survey the desktop secret-unlock surface ([#106](https://github.com/palebluebytes/host-user-contract/issues/106)) ([2232f80](https://github.com/palebluebytes/host-user-contract/commit/2232f806db569367703a8cac919c463b006de750))
+
 ## [0.1.1](https://github.com/palebluebytes/host-user-contract/compare/host-user-contract-v0.1.0...host-user-contract-v0.1.1) (2026-08-24)
 
 
